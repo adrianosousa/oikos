@@ -19,6 +19,7 @@ wallet-data/
 
 # Audit logs (contain transaction data)
 audit-*.jsonl
+audit.jsonl
 
 # OS
 .DS_Store
