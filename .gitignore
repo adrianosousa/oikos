@@ -25,6 +25,12 @@ audit.jsonl
 .DS_Store
 Thumbs.db
 
+# Dev-only files (never push to GitHub)
+CLAUDE.md
+ROADMAP.md
+BUILD-LOG.md
+CLAUDE CODE PROMPT v4 FINAL.pdf
+
 # IDE
 .vscode/
 .idea/
