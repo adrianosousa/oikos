@@ -23,7 +23,11 @@ export function createDashboard(
   const app = express();
 
   // Serve static files
-  app.use(express.static(join(__dirname, 'public')));
+  // In compiled output, __dirname is dist/src/dashboard — but public/ lives in src/dashboard/public.
+  // Resolve relative to the project root to work in both dev and compiled modes.
+  const projectRoot = join(__dirname, '..', '..', '..');
+  const publicDir = join(projectRoot, 'src', 'dashboard', 'public');
+  app.use(express.static(publicDir));
 
   // -- API Routes --
 
