@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SovClaw Dashboard</title>
+  <title>Oikos Dashboard</title>
   <style>
     :root {
       --bg: #0a0a0f;
@@ -16,6 +16,9 @@
       --yellow: #eab308;
       --blue: #3b82f6;
       --purple: #a855f7;
+      --orange: #f97316;
+      --gold: #d4a843;
+      --cyan: #06b6d4;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -74,17 +77,100 @@
     .tx-executed { border-left: 3px solid var(--green); }
     .tx-rejected { border-left: 3px solid var(--red); }
     .tx-failed { border-left: 3px solid var(--yellow); }
-    .balance-row { display: flex; justify-content: space-between; padding: 0.3rem 0; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .balance-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .balance-row:last-child { border-bottom: none; }
+    .balance-symbol {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .balance-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-usdt { background: var(--green); }
+    .dot-xaut { background: var(--gold); }
+    .dot-usat { background: var(--blue); }
+    .dot-btc { background: var(--orange); }
+    .dot-eth { background: var(--cyan); }
+    .balance-amount { text-align: right; }
+    .balance-pct { color: var(--muted); font-size: 0.7rem; margin-left: 0.5rem; }
+
+    /* Portfolio allocation bar */
+    .alloc-bar {
+      display: flex;
+      height: 24px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.75rem;
+      background: var(--border);
+    }
+    .alloc-segment {
+      height: 100%;
+      transition: width 0.5s ease;
+      min-width: 2px;
+    }
+    .alloc-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      font-size: 0.7rem;
+    }
+    .alloc-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .alloc-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem; }
     .connected { color: var(--green); }
     .disconnected { color: var(--red); }
-    .arch-note { font-size: 0.7rem; color: var(--muted); margin-top: 0.5rem; }
+    .arch-note { font-size: 0.7rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
     .policy-rule { font-size: 0.75rem; padding: 0.2rem 0; color: var(--muted); }
+    .op-badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-right: 0.3rem;
+    }
+    .op-payment { background: #1e3a1e; color: var(--green); }
+    .op-swap { background: #1e1b4b; color: var(--purple); }
+    .op-bridge { background: #172554; color: var(--blue); }
+    .op-yield { background: #2d1f08; color: var(--orange); }
+    .op-unknown { background: #1e1e2e; color: var(--muted); }
+    .defi-count { font-size: 0.85rem; color: var(--purple); margin-top: 0.3rem; }
+
+    /* Responsive for mobile companion viewport */
+    @media (max-width: 480px) {
+      body { padding: 0.5rem; }
+      h1 { font-size: 1.2rem; }
+      .grid { grid-template-columns: 1fr; }
+      .stat { font-size: 1.5rem; }
+      .header { flex-direction: column; align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>SovClaw Dashboard</h1>
+    <h1>Oikos Dashboard</h1>
     <div>
       <span id="wallet-status" class="disconnected">WALLET: --</span>
       &nbsp;|&nbsp;
@@ -94,10 +180,12 @@
 
   <div class="grid">
     <div class="card">
-      <h2>Wallet Balance</h2>
+      <h2>Portfolio Balances</h2>
       <div id="balances">
         <div class="balance-row"><span>Loading...</span></div>
       </div>
+      <div class="alloc-bar" id="alloc-bar"></div>
+      <div class="alloc-legend" id="alloc-legend"></div>
     </div>
 
     <div class="card">
@@ -108,6 +196,7 @@
         <div><span class="label">Approved</span><div class="stat green" id="approved">0</div></div>
         <div><span class="label">Rejected</span><div class="stat red" id="rejected">0</div></div>
       </div>
+      <div class="defi-count" id="defi-ops"></div>
     </div>
 
     <div class="card full">
@@ -117,9 +206,9 @@
     </div>
 
     <div class="card">
-      <h2>Recent Transactions</h2>
+      <h2>Recent Operations</h2>
       <ul class="tx-list" id="tx-list">
-        <li class="tx-item">No transactions yet</li>
+        <li class="tx-item">No operations yet</li>
       </ul>
     </div>
 
@@ -130,23 +219,79 @@
   </div>
 
   <div class="arch-note">
-    SovClaw: Process-isolated AI agent wallet.
-    Brain (Node.js) proposes payments via IPC.
-    Wallet (Bare Runtime) enforces policies and signs.
+    Oikos Protocol: Process-isolated, multi-chain, multi-asset wallet for autonomous AI agents.
+    Brain (Node.js) reasons about portfolio strategy and proposes operations via IPC.
+    Wallet Isolate (Bare Runtime) enforces policies and signs transactions.
+    Supported ops: payment, swap, bridge, yield. All policy-enforced.
     The brain NEVER touches private keys.
   </div>
 
   <script>
+    var ASSET_COLORS = {
+      USDT: '#22c55e',
+      XAUT: '#d4a843',
+      USAT: '#3b82f6',
+      BTC: '#f97316',
+      ETH: '#06b6d4'
+    };
+
+    var ASSET_DOTS = {
+      USDT: 'dot-usdt',
+      XAUT: 'dot-xaut',
+      USAT: 'dot-usat',
+      BTC: 'dot-btc',
+      ETH: 'dot-eth'
+    };
+
+    var PRICES_USD = { USDT: 1, USAT: 1, XAUT: 2400, BTC: 60000, ETH: 3000 };
+    var DECIMALS = { USDT: 6, USAT: 6, XAUT: 6, BTC: 8, ETH: 18 };
+
+    function computeAllocations(balances) {
+      var entries = balances.map(function(b) {
+        var raw = parseInt(b.balance || '0', 10);
+        var dec = DECIMALS[b.symbol] || 18;
+        var human = raw / Math.pow(10, dec);
+        var usd = human * (PRICES_USD[b.symbol] || 0);
+        return { symbol: b.symbol, chain: b.chain, formatted: b.formatted, usdValue: usd };
+      });
+      var total = entries.reduce(function(s, e) { return s + e.usdValue; }, 0);
+      return entries.map(function(e) {
+        return {
+          symbol: e.symbol,
+          chain: e.chain,
+          formatted: e.formatted,
+          percentage: total > 0 ? (e.usdValue / total * 100).toFixed(1) : '0.0'
+        };
+      });
+    }
+
+    function getOpType(result) {
+      return (result.proposalType || 'payment').toLowerCase();
+    }
+
+    function getOpBadge(type) {
+      var cls = 'op-' + (type || 'unknown');
+      if (!['op-payment', 'op-swap', 'op-bridge', 'op-yield'].includes(cls)) cls = 'op-unknown';
+      return '<span class="op-badge ' + cls + '">' + (type || 'payment').toUpperCase() + '</span>';
+    }
+
+    function formatAmount(result) {
+      var proposal = result.proposal;
+      if (!proposal) return '?';
+      var raw = parseInt(proposal.amount, 10);
+      var dec = DECIMALS[proposal.symbol] || 6;
+      return (raw / Math.pow(10, dec)).toFixed(dec <= 6 ? 2 : 6);
+    }
+
     async function fetchJSON(url) {
       try {
-        const res = await fetch(url);
+        var res = await fetch(url);
         return await res.json();
-      } catch { return null; }
+      } catch(e) { return null; }
     }
 
     async function update() {
-      // State
-      const state = await fetchJSON('/api/state');
+      var state = await fetchJSON('/api/state');
       if (state) {
         document.getElementById('brain-status').textContent = state.status.toUpperCase();
         document.getElementById('brain-status').className = 'status-badge status-' + state.status;
@@ -157,52 +302,90 @@
         document.getElementById('reasoning').textContent = state.lastReasoning || 'Waiting for events...';
         document.getElementById('last-decision').textContent = state.lastDecision;
 
-        // Balances
-        if (state.balances && state.balances.length > 0) {
-          document.getElementById('balances').innerHTML = state.balances
-            .map(b => '<div class="balance-row"><span>' + b.symbol + ' (' + b.chain + ')</span><span>' + b.formatted + '</span></div>')
-            .join('');
+        // DeFi ops count
+        var defiEl = document.getElementById('defi-ops');
+        if (state.defiOps > 0) {
+          defiEl.textContent = 'DeFi operations: ' + state.defiOps + ' (swaps, bridges, yield)';
+        } else {
+          defiEl.textContent = '';
         }
 
-        // Transactions
+        // Balances with allocations
+        if (state.balances && state.balances.length > 0) {
+          var allocs = computeAllocations(state.balances);
+          document.getElementById('balances').innerHTML = allocs.map(function(a) {
+            var dotCls = ASSET_DOTS[a.symbol] || '';
+            return '<div class="balance-row">'
+              + '<span class="balance-symbol"><span class="balance-dot ' + dotCls + '"></span>' + a.symbol + ' <span class="label">(' + a.chain + ')</span></span>'
+              + '<span class="balance-amount">' + a.formatted + '<span class="balance-pct">' + a.percentage + '%</span></span>'
+              + '</div>';
+          }).join('');
+
+          // Allocation bar
+          var barHtml = allocs.map(function(a) {
+            var color = ASSET_COLORS[a.symbol] || '#555';
+            var pct = parseFloat(a.percentage);
+            return '<div class="alloc-segment" style="width:' + pct + '%;background:' + color + ';" title="' + a.symbol + ': ' + a.percentage + '%"></div>';
+          }).join('');
+          document.getElementById('alloc-bar').innerHTML = barHtml;
+
+          // Legend
+          var legendHtml = allocs.map(function(a) {
+            var color = ASSET_COLORS[a.symbol] || '#555';
+            return '<span class="alloc-legend-item"><span class="alloc-legend-dot" style="background:' + color + ';"></span>' + a.symbol + ' ' + a.percentage + '%</span>';
+          }).join('');
+          document.getElementById('alloc-legend').innerHTML = legendHtml;
+        }
+
+        // Operations (transactions)
         if (state.recentResults && state.recentResults.length > 0) {
-          document.getElementById('tx-list').innerHTML = state.recentResults
-            .map(r => {
-              const cls = 'tx-' + r.status;
-              const amount = r.proposal ? (parseInt(r.proposal.amount) / 1000000).toFixed(2) : '?';
-              const hash = r.txHash ? r.txHash.slice(0, 16) + '...' : '';
-              const violations = r.violations && r.violations.length > 0 ? ' | ' + r.violations[0] : '';
-              return '<li class="tx-item ' + cls + '">'
-                + '<strong>' + r.status.toUpperCase() + '</strong> '
-                + amount + ' ' + (r.proposal ? r.proposal.symbol : '')
-                + (hash ? ' | tx: ' + hash : '')
-                + violations
-                + '</li>';
-            }).join('');
+          document.getElementById('tx-list').innerHTML = state.recentResults.map(function(r) {
+            var cls = 'tx-' + r.status;
+            var amount = formatAmount(r);
+            var opType = getOpType(r);
+            var badge = getOpBadge(opType);
+            var symbol = r.proposal ? r.proposal.symbol : '';
+            var hash = r.txHash ? r.txHash.slice(0, 16) + '...' : '';
+            var violations = r.violations && r.violations.length > 0 ? ' | ' + r.violations[0] : '';
+            var extra = '';
+            if (opType === 'swap' && r.proposal) {
+              extra = ' -> ' + (r.proposal.toSymbol || '?');
+            } else if (opType === 'bridge' && r.proposal) {
+              extra = ' ' + (r.proposal.fromChain || '?') + ' -> ' + (r.proposal.toChain || '?');
+            } else if (opType === 'yield' && r.proposal) {
+              extra = ' ' + (r.proposal.action || '') + ' on ' + (r.proposal.protocol || '?');
+            }
+            return '<li class="tx-item ' + cls + '">'
+              + badge
+              + '<strong>' + r.status.toUpperCase() + '</strong> '
+              + amount + ' ' + symbol + extra
+              + (hash ? ' | tx: ' + hash : '')
+              + violations
+              + '</li>';
+          }).join('');
         }
       }
 
       // Health
-      const health = await fetchJSON('/api/health');
+      var health = await fetchJSON('/api/health');
       if (health) {
-        const walletEl = document.getElementById('wallet-status');
+        var walletEl = document.getElementById('wallet-status');
         walletEl.textContent = 'WALLET: ' + (health.walletConnected ? 'CONNECTED' : 'DISCONNECTED');
         walletEl.className = health.walletConnected ? 'connected' : 'disconnected';
       }
 
       // Policies
-      const policies = await fetchJSON('/api/policies');
+      var policies = await fetchJSON('/api/policies');
       if (policies && policies.policies) {
-        document.getElementById('policy-status').innerHTML = policies.policies
-          .map(p => {
-            const session = Object.entries(p.state.sessionTotals || {})
-              .map(([k, v]) => k + ': ' + v)
-              .join(', ');
-            return '<div><strong>' + p.name + '</strong>'
-              + '<div class="policy-rule">Session spent: ' + (session || 'none') + '</div>'
-              + '<div class="policy-rule">Day: ' + p.state.currentDay + '</div>'
-              + '</div>';
-          }).join('');
+        document.getElementById('policy-status').innerHTML = policies.policies.map(function(p) {
+          var session = Object.entries(p.state.sessionTotals || {})
+            .map(function(kv) { return kv[0] + ': ' + kv[1]; })
+            .join(', ');
+          return '<div><strong>' + p.name + '</strong>'
+            + '<div class="policy-rule">Session spent: ' + (session || 'none') + '</div>'
+            + '<div class="policy-rule">Day: ' + p.state.currentDay + '</div>'
+            + '</div>';
+        }).join('');
       }
     }
 

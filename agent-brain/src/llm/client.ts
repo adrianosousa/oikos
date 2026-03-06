@@ -4,14 +4,14 @@
  * Defaults to Ollama (local, zero cloud deps).
  * Falls back to any OpenAI-compatible endpoint when configured.
  *
- * The LLM produces structured reasoning and PaymentProposal decisions.
+ * The LLM produces structured reasoning and operation decisions.
  * It NEVER has access to seed phrases or private keys.
  */
 
 import OpenAI from 'openai';
 import type { BrainConfig } from '../config/env.js';
 
-/** Structured output from the LLM for payment decisions */
+/** Structured output from the LLM for payment/operation decisions */
 export interface LLMPaymentDecision {
   shouldPay: boolean;
   reason: string;
@@ -21,6 +21,12 @@ export interface LLMPaymentDecision {
   chain: string;
   to: string;
   strategy: string;
+  operationType?: string; // 'payment' | 'swap' | 'bridge' | 'yield'
+  toSymbol?: string;      // For swaps
+  fromChain?: string;     // For bridges
+  toChain?: string;       // For bridges
+  protocol?: string;      // For yield
+  action?: string;        // For yield: 'deposit' | 'withdraw'
 }
 
 /** LLM reasoning result */
@@ -42,13 +48,13 @@ export function createLLMClient(config: BrainConfig): OpenAI {
 }
 
 /**
- * Ask the LLM to reason about events and produce a payment decision.
+ * Ask the LLM to reason about events and produce an operation decision.
  *
  * @param client OpenAI-compatible client (Ollama or cloud)
  * @param model Model name to use
  * @param systemPrompt The agent's system prompt (includes policy context)
  * @param userPrompt The current events/context for reasoning
- * @returns Structured reasoning and optional payment decision
+ * @returns Structured reasoning and optional operation decision
  */
 export async function reasonAboutPayment(
   client: OpenAI,
@@ -83,6 +89,24 @@ export async function reasonAboutPayment(
       chain: String(parsed['chain'] ?? 'ethereum'),
       to: String(parsed['to'] ?? ''),
       strategy: String(parsed['strategy'] ?? 'unknown'),
+      operationType: parsed['operationType'] !== undefined
+        ? String(parsed['operationType'])
+        : undefined,
+      toSymbol: parsed['toSymbol'] !== undefined
+        ? String(parsed['toSymbol'])
+        : undefined,
+      fromChain: parsed['fromChain'] !== undefined
+        ? String(parsed['fromChain'])
+        : undefined,
+      toChain: parsed['toChain'] !== undefined
+        ? String(parsed['toChain'])
+        : undefined,
+      protocol: parsed['protocol'] !== undefined
+        ? String(parsed['protocol'])
+        : undefined,
+      action: parsed['action'] !== undefined
+        ? String(parsed['action'])
+        : undefined,
     } : null;
 
     return {

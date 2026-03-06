@@ -13,6 +13,10 @@ export const TESTNET_CHAINS: ChainConfig[] = [
     provider: 'https://rpc.sepolia.org'
   },
   {
+    chain: 'arbitrum',
+    provider: 'https://sepolia-rollup.arbitrum.io/rpc'
+  },
+  {
     chain: 'bitcoin',
     network: 'testnet',
     host: 'electrum.blockstream.info',

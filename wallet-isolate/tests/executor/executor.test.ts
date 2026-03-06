@@ -7,7 +7,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PaymentExecutor } from '../../src/executor/executor.js';
+import { ProposalExecutor } from '../../src/executor/executor.js';
 import { PolicyEngine } from '../../src/policies/engine.js';
 import { AuditLog } from '../../src/audit/log.js';
 import { MockWalletManager } from '../../src/wallet/manager.js';
@@ -37,7 +37,7 @@ async function createTestExecutor() {
   return { auditLines, audit, wallet };
 }
 
-describe('PaymentExecutor: rejected proposals never sign', () => {
+describe('ProposalExecutor: rejected proposals never sign', () => {
   it('returns rejected status when policy fails', async () => {
     const { audit, wallet } = await createTestExecutor();
     const policy = new PolicyEngine({
@@ -45,9 +45,9 @@ describe('PaymentExecutor: rejected proposals never sign', () => {
         { type: 'max_per_tx', amount: '500000', symbol: 'USDT' } // 0.5 USDT max
       ]}]
     });
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
-    const result = await executor.execute(makeProposal({ amount: '1000000' })); // 1 USDT > 0.5
+    const result = await executor.execute('payment', makeProposal({ amount: '1000000' })); // 1 USDT > 0.5
 
     assert.equal(result.status, 'rejected');
     assert.ok(result.violations.length > 0);
@@ -61,10 +61,10 @@ describe('PaymentExecutor: rejected proposals never sign', () => {
         { type: 'max_per_tx', amount: '500000', symbol: 'USDT' }
       ]}]
     });
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
     const balanceBefore = await wallet.getBalance('ethereum', 'USDT');
-    await executor.execute(makeProposal({ amount: '1000000' }));
+    await executor.execute('payment', makeProposal({ amount: '1000000' }));
     const balanceAfter = await wallet.getBalance('ethereum', 'USDT');
 
     assert.equal(balanceBefore.raw, balanceAfter.raw);
@@ -77,9 +77,9 @@ describe('PaymentExecutor: rejected proposals never sign', () => {
         { type: 'max_per_tx', amount: '10000000', symbol: 'USDT' }
       ]}]
     });
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
-    const result = await executor.execute(makeProposal({ amount: '1000000' }));
+    const result = await executor.execute('payment', makeProposal({ amount: '1000000' }));
 
     assert.equal(result.status, 'executed');
     assert.ok(result.txHash);
@@ -89,10 +89,10 @@ describe('PaymentExecutor: rejected proposals never sign', () => {
   it('returns failed status on transaction error', async () => {
     const { audit, wallet } = await createTestExecutor();
     const policy = new PolicyEngine({ policies: [] }); // No rules = approve all
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
     // Try to send more than mock balance
-    const result = await executor.execute(makeProposal({
+    const result = await executor.execute('payment', makeProposal({
       amount: '999999999999'
     }));
 
@@ -108,12 +108,12 @@ describe('PaymentExecutor: rejected proposals never sign', () => {
         { type: 'max_per_tx', amount: '5000000', symbol: 'USDT' }
       ]}]
     });
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
     // Approved transaction
-    await executor.execute(makeProposal({ amount: '1000000' }));
+    await executor.execute('payment', makeProposal({ amount: '1000000' }));
     // Rejected transaction
-    await executor.execute(makeProposal({ amount: '9000000' }));
+    await executor.execute('payment', makeProposal({ amount: '9000000' }));
 
     // Should have: proposal_received, execution_success, proposal_received, policy_enforcement
     assert.ok(auditLines.length >= 4);
@@ -126,7 +126,7 @@ describe('PaymentExecutor: rejected proposals never sign', () => {
   });
 });
 
-describe('PaymentExecutor: confidence rejection', () => {
+describe('ProposalExecutor: confidence rejection', () => {
   it('rejects low-confidence proposals', async () => {
     const { audit, wallet } = await createTestExecutor();
     const policy = new PolicyEngine({
@@ -134,9 +134,9 @@ describe('PaymentExecutor: confidence rejection', () => {
         { type: 'require_confidence', min: 0.8 }
       ]}]
     });
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
-    const result = await executor.execute(makeProposal({ confidence: 0.5 }));
+    const result = await executor.execute('payment', makeProposal({ confidence: 0.5 }));
 
     assert.equal(result.status, 'rejected');
     assert.match(result.violations[0]!, /require_confidence/);
@@ -144,7 +144,7 @@ describe('PaymentExecutor: confidence rejection', () => {
   });
 });
 
-describe('PaymentExecutor: session budget exhaustion', () => {
+describe('ProposalExecutor: session budget exhaustion', () => {
   it('rejects after session budget is spent', async () => {
     const { audit, wallet } = await createTestExecutor();
     const policy = new PolicyEngine({
@@ -152,14 +152,14 @@ describe('PaymentExecutor: session budget exhaustion', () => {
         { type: 'max_per_session', amount: '3000000', symbol: 'USDT' }
       ]}]
     });
-    const executor = new PaymentExecutor(policy, wallet, audit);
+    const executor = new ProposalExecutor(policy, wallet, audit);
 
     // Send 2 USDT — approved
-    const r1 = await executor.execute(makeProposal({ amount: '2000000' }));
+    const r1 = await executor.execute('payment', makeProposal({ amount: '2000000' }));
     assert.equal(r1.status, 'executed');
 
     // Send 2 USDT — rejected (session total would be 4 > 3)
-    const r2 = await executor.execute(makeProposal({ amount: '2000000' }));
+    const r2 = await executor.execute('payment', makeProposal({ amount: '2000000' }));
     assert.equal(r2.status, 'rejected');
     assert.equal(r2.txHash, undefined);
   });

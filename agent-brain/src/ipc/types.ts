@@ -6,12 +6,18 @@
  * duplicate the minimal set needed.
  */
 
-export type TokenSymbol = 'USDT' | 'XAUT' | 'BTC';
-export type Chain = 'ethereum' | 'polygon' | 'bitcoin';
+// ── Symbols & Chains ──
 
-/** Brain → Wallet: propose a payment */
-export interface PaymentProposal {
-  to: string;
+export type TokenSymbol = 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH';
+export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum';
+
+/** Source of a proposal — used for audit trail attribution */
+export type ProposalSource = 'llm' | 'x402' | 'companion' | 'swarm';
+
+// ── Proposal Types (Brain → Wallet) ──
+
+/** Common fields shared by all proposal types. */
+export interface ProposalCommon {
   amount: string;
   symbol: TokenSymbol;
   chain: Chain;
@@ -21,34 +27,61 @@ export interface PaymentProposal {
   timestamp: number;
 }
 
-/** Brain → Wallet: query balance */
+/** Send tokens to a recipient address */
+export interface PaymentProposal extends ProposalCommon {
+  to: string;
+}
+
+/** Swap between token pairs (e.g., USDt → XAUt) */
+export interface SwapProposal extends ProposalCommon {
+  toSymbol: TokenSymbol;
+}
+
+/** Move tokens cross-chain (e.g., Ethereum → Arbitrum) */
+export interface BridgeProposal extends ProposalCommon {
+  fromChain: Chain;
+  toChain: Chain;
+}
+
+/** Deposit/withdraw from yield protocols */
+export interface YieldProposal extends ProposalCommon {
+  protocol: string;
+  action: 'deposit' | 'withdraw';
+}
+
+/** Discriminated union of all proposal types */
+export type AnyProposal = PaymentProposal | SwapProposal | BridgeProposal | YieldProposal;
+
+// ── Query Types ──
+
 export interface BalanceQuery {
   chain: Chain;
   symbol: TokenSymbol;
 }
 
-/** Brain → Wallet: query address */
 export interface AddressQuery {
   chain: Chain;
 }
 
-/** Brain → Wallet: query audit */
 export interface AuditQuery {
   limit?: number;
   since?: string;
 }
 
-/** Wallet → Brain: execution result */
+// ── Response Types (Wallet → Brain) ──
+
+/** Execution result from the wallet */
 export interface ExecutionResult {
   status: 'executed' | 'rejected' | 'failed';
-  proposal: PaymentProposal;
+  proposalType: string;
+  proposal: ProposalCommon;
   violations: string[];
   txHash?: string;
   error?: string;
   timestamp: number;
 }
 
-/** Wallet → Brain: balance response */
+/** Balance response from the wallet */
 export interface BalanceResponse {
   chain: Chain;
   symbol: TokenSymbol;
@@ -56,13 +89,13 @@ export interface BalanceResponse {
   formatted: string;
 }
 
-/** Wallet → Brain: address response */
+/** Address response from the wallet */
 export interface AddressResponse {
   chain: Chain;
   address: string;
 }
 
-/** Wallet → Brain: policy status */
+/** Policy status from the wallet */
 export interface PolicyStatus {
   id: string;
   name: string;
@@ -74,16 +107,30 @@ export interface PolicyStatus {
   };
 }
 
-/** IPC request envelope */
+// ── IPC Envelopes ──
+
+export type IPCRequestType =
+  | 'propose_payment'
+  | 'propose_swap'
+  | 'propose_bridge'
+  | 'propose_yield'
+  | 'query_balance'
+  | 'query_balance_all'
+  | 'query_address'
+  | 'query_policy'
+  | 'query_audit';
+
 export interface IPCRequest {
   id: string;
-  type: 'propose_payment' | 'query_balance' | 'query_address' | 'query_policy' | 'query_audit';
-  payload: PaymentProposal | BalanceQuery | AddressQuery | Record<string, unknown> | AuditQuery;
+  type: IPCRequestType;
+  source?: ProposalSource;
+  payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal
+    | BalanceQuery | AddressQuery | Record<string, unknown> | AuditQuery;
 }
 
-/** IPC response envelope */
 export interface IPCResponse {
   id: string;
-  type: 'execution_result' | 'balance' | 'address' | 'policy_status' | 'audit_entries' | 'error';
-  payload: ExecutionResult | BalanceResponse | AddressResponse | { policies: PolicyStatus[] } | { entries: unknown[] } | { message: string };
+  type: 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'error';
+  payload: ExecutionResult | BalanceResponse | BalanceResponse[]
+    | AddressResponse | { policies: PolicyStatus[] } | { entries: unknown[] } | { message: string };
 }

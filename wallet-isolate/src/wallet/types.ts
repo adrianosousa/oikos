@@ -38,9 +38,24 @@ export interface WalletOperations {
   /** Get the balance for a chain and token. */
   getBalance(chain: Chain, symbol: TokenSymbol): Promise<WalletBalance>;
 
+  /** Get all balances across all chains and assets. */
+  getBalances(): Promise<WalletBalance[]>;
+
   /**
    * Send a transaction.
-   * @security This is the ONLY function that moves funds.
+   * @security This is the code path that moves funds for payments.
    */
   sendTransaction(chain: Chain, to: string, amount: bigint, symbol: TokenSymbol): Promise<TransactionResult>;
+
+  /** Swap between token pairs on the same chain. */
+  swap(chain: Chain, fromSymbol: TokenSymbol, toSymbol: TokenSymbol, fromAmount: bigint): Promise<TransactionResult>;
+
+  /** Bridge tokens cross-chain. */
+  bridge(fromChain: Chain, toChain: Chain, symbol: TokenSymbol, amount: bigint): Promise<TransactionResult>;
+
+  /** Deposit tokens into a yield protocol. */
+  deposit(chain: Chain, symbol: TokenSymbol, amount: bigint, protocol: string): Promise<TransactionResult>;
+
+  /** Withdraw tokens from a yield protocol. */
+  withdraw(chain: Chain, symbol: TokenSymbol, amount: bigint, protocol: string): Promise<TransactionResult>;
 }

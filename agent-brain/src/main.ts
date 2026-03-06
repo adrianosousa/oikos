@@ -23,12 +23,12 @@ import { createDashboard } from './dashboard/server.js';
 import { resolve } from 'path';
 
 async function main(): Promise<void> {
-  console.error('[sovclaw] Starting Agent Brain...');
+  console.error('[oikos] Starting Agent Brain...');
 
   // 1. Load configuration
   const config = loadConfig();
-  console.error(`[sovclaw] LLM mode: ${config.llmMode} (mock: ${String(config.mockLlm)})`);
-  console.error(`[sovclaw] Events: ${config.mockEvents ? 'mock' : 'live'}`);
+  console.error(`[oikos] LLM mode: ${config.llmMode} (mock: ${String(config.mockLlm)})`);
+  console.error(`[oikos] Events: ${config.mockEvents ? 'mock' : 'live'}`);
 
   // 2. Spawn wallet-isolate
   const wallet = new WalletIPCClient();
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   // Detect runtime — use 'node' for development, 'bare' for production
   const runtime: 'bare' | 'node' = process.env['WALLET_RUNTIME'] === 'bare' ? 'bare' : 'node';
-  console.error(`[sovclaw] Spawning wallet-isolate (${runtime}): ${walletPath}`);
+  console.error(`[oikos] Spawning wallet-isolate (${runtime}): ${walletPath}`);
 
   wallet.start(walletPath, runtime, {
     MOCK_WALLET: config.mockWallet ? 'true' : 'false',
@@ -45,21 +45,21 @@ async function main(): Promise<void> {
   });
 
   wallet.onDisconnect((reason) => {
-    console.error(`[sovclaw] Wallet disconnected: ${reason ?? 'unknown'}`);
+    console.error(`[oikos] Wallet disconnected: ${reason ?? 'unknown'}`);
   });
 
   // Wait for wallet to initialize
   await new Promise(resolve => setTimeout(resolve, 1000));
 
   if (!wallet.isRunning()) {
-    console.error('[sovclaw] FATAL: Wallet isolate failed to start');
+    console.error('[oikos] FATAL: Wallet isolate failed to start');
     process.exit(1);
   }
 
   // 3. Initialize LLM client
   const llmClient = config.mockLlm ? null : createLLMClient(config);
   if (!config.mockLlm) {
-    console.error(`[sovclaw] LLM: ${config.llmBaseUrl} (model: ${config.llmModel})`);
+    console.error(`[oikos] LLM: ${config.llmBaseUrl} (model: ${config.llmModel})`);
   }
 
   // 4. Initialize agent brain
@@ -70,14 +70,14 @@ async function main(): Promise<void> {
   const defaultCreator = getDefaultCreator(creators, 'ethereum');
   if (defaultCreator) {
     brain.setCreator(defaultCreator.addresses['ethereum'] ?? '');
-    console.error(`[sovclaw] Creator: ${defaultCreator.name} (${defaultCreator.addresses['ethereum'] ?? 'unknown'})`);
+    console.error(`[oikos] Creator: ${defaultCreator.name} (${defaultCreator.addresses['ethereum'] ?? 'unknown'})`);
   }
 
   // Initial wallet state refresh
   await brain.refreshWalletState();
   const state = brain.getState();
   if (state.balances.length > 0) {
-    console.error(`[sovclaw] Balance: ${state.balances[0]?.formatted ?? 'unknown'}`);
+    console.error(`[oikos] Balance: ${state.balances[0]?.formatted ?? 'unknown'}`);
   }
 
   // 5. Start event source
@@ -88,19 +88,19 @@ async function main(): Promise<void> {
     });
     eventSource.start();
   } else {
-    console.error('[sovclaw] Live events not yet implemented — using idle mode');
+    console.error('[oikos] Live events not yet implemented — using idle mode');
   }
 
   // 6. Start dashboard
   createDashboard(brain, wallet, config.dashboardPort);
 
-  console.error('[sovclaw] Agent Brain ready.');
-  console.error(`[sovclaw] Dashboard: http://127.0.0.1:${config.dashboardPort}`);
-  console.error('[sovclaw] Press Ctrl+C to stop.');
+  console.error('[oikos] Agent Brain ready.');
+  console.error(`[oikos] Dashboard: http://127.0.0.1:${config.dashboardPort}`);
+  console.error('[oikos] Press Ctrl+C to stop.');
 
   // Graceful shutdown
   const shutdown = (): void => {
-    console.error('[sovclaw] Shutting down...');
+    console.error('[oikos] Shutting down...');
     wallet.stop();
     process.exit(0);
   };
@@ -110,6 +110,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error('[sovclaw] FATAL:', err);
+  console.error('[oikos] FATAL:', err);
   process.exit(1);
 });

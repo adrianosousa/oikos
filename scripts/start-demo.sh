@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# SovClaw Demo — One-command start.
+# Oikos Demo — One-command start.
 #
 # Boots the full dual-process system in mock mode:
 # - Wallet Isolate (Bare Runtime) with mock wallet
@@ -44,7 +44,7 @@ fi
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║                                                          ║"
-echo "║   SovClaw — Sovereign Agent Wallet                       ║"
+echo "║   Oikos — Sovereign Agent Wallet Protocol                 ║"
 echo "║                                                          ║"
 echo "║   Wallet: ${WALLET_RUNTIME} (mock, no real blockchain)           ║"
 echo "║   LLM: mock (deterministic demo sequence)               ║"

@@ -1,5 +1,5 @@
 {
-  "name": "sovclaw",
+  "name": "oikos",
   "version": "0.1.0",
   "private": true,
   "description": "Sovereign AI agent with process-isolated self-custodial wallet on Tether's runtime stack",

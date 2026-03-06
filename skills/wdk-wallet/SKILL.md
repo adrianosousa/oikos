@@ -2,7 +2,7 @@
 name: wdk-wallet
 description: Self-custodial crypto wallet with policy-enforced spending limits
 version: 0.1.0
-author: SovClaw
+author: Oikos
 tags:
   - wallet
   - crypto

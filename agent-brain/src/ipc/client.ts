@@ -14,6 +14,11 @@ import type {
   IPCRequest,
   IPCResponse,
   PaymentProposal,
+  SwapProposal,
+  BridgeProposal,
+  YieldProposal,
+  ProposalCommon,
+  ProposalSource,
   BalanceQuery,
   AddressQuery,
   AuditQuery,
@@ -76,7 +81,6 @@ export class WalletIPCClient {
     // Read stderr (wallet-isolate logs)
     this.child.stderr?.setEncoding('utf-8');
     this.child.stderr?.on('data', (chunk: string) => {
-      // Forward wallet-isolate stderr to brain stderr (prefixed)
       for (const line of chunk.split('\n')) {
         if (line.trim()) {
           console.error(`[wallet] ${line}`);
@@ -90,7 +94,6 @@ export class WalletIPCClient {
       const reason = signal ? `signal ${signal}` : `code ${String(code)}`;
       console.error(`[brain] Wallet isolate exited: ${reason}`);
 
-      // Reject all pending requests
       for (const [id, request] of this.pending) {
         clearTimeout(request.timeout);
         request.reject(new Error(`Wallet isolate exited: ${reason}`));
@@ -128,19 +131,67 @@ export class WalletIPCClient {
     }
   }
 
-  // ── Public API ──
+  // ── Proposal API ──
 
   /** Propose a payment to the wallet for policy evaluation and execution */
-  async proposePayment(proposal: PaymentProposal): Promise<ExecutionResult> {
-    const response = await this.send('propose_payment', proposal);
+  async proposePayment(proposal: PaymentProposal, source?: ProposalSource): Promise<ExecutionResult> {
+    const response = await this.send('propose_payment', proposal, source);
     return response.payload as ExecutionResult;
   }
+
+  /** Propose a token swap (e.g., USDT → XAUT) */
+  async proposeSwap(proposal: SwapProposal, source?: ProposalSource): Promise<ExecutionResult> {
+    const response = await this.send('propose_swap', proposal, source);
+    return response.payload as ExecutionResult;
+  }
+
+  /** Propose a cross-chain bridge (e.g., Ethereum → Arbitrum) */
+  async proposeBridge(proposal: BridgeProposal, source?: ProposalSource): Promise<ExecutionResult> {
+    const response = await this.send('propose_bridge', proposal, source);
+    return response.payload as ExecutionResult;
+  }
+
+  /** Propose a yield deposit or withdrawal */
+  async proposeYield(proposal: YieldProposal, source?: ProposalSource): Promise<ExecutionResult> {
+    const response = await this.send('propose_yield', proposal, source);
+    return response.payload as ExecutionResult;
+  }
+
+  /**
+   * Universal entry point for external proposal sources.
+   * Routes to the appropriate propose method with source attribution.
+   * Used by x402 client, companion channel, and swarm negotiation.
+   */
+  async proposalFromExternal(
+    source: ProposalSource,
+    type: 'payment' | 'swap' | 'bridge' | 'yield',
+    proposal: ProposalCommon
+  ): Promise<ExecutionResult> {
+    switch (type) {
+      case 'payment':
+        return this.proposePayment(proposal as PaymentProposal, source);
+      case 'swap':
+        return this.proposeSwap(proposal as SwapProposal, source);
+      case 'bridge':
+        return this.proposeBridge(proposal as BridgeProposal, source);
+      case 'yield':
+        return this.proposeYield(proposal as YieldProposal, source);
+    }
+  }
+
+  // ── Query API ──
 
   /** Query balance for a specific chain and token */
   async queryBalance(chain: string, symbol: string): Promise<BalanceResponse> {
     const query: BalanceQuery = { chain: chain as BalanceQuery['chain'], symbol: symbol as BalanceQuery['symbol'] };
     const response = await this.send('query_balance', query);
     return response.payload as BalanceResponse;
+  }
+
+  /** Query all balances across all chains and assets */
+  async queryBalanceAll(): Promise<BalanceResponse[]> {
+    const response = await this.send('query_balance_all', {});
+    return response.payload as BalanceResponse[];
   }
 
   /** Query wallet address for a specific chain */
@@ -167,7 +218,7 @@ export class WalletIPCClient {
 
   // ── Internal ──
 
-  private send(type: IPCRequest['type'], payload: IPCRequest['payload']): Promise<IPCResponse> {
+  private send(type: IPCRequest['type'], payload: IPCRequest['payload'], source?: ProposalSource): Promise<IPCResponse> {
     return new Promise<IPCResponse>((resolve, reject) => {
       if (!this.running || !this.child?.stdin) {
         reject(new Error('Wallet isolate not running'));
@@ -176,6 +227,9 @@ export class WalletIPCClient {
 
       const id = randomUUID();
       const request: IPCRequest = { id, type, payload };
+      if (source) {
+        request.source = source;
+      }
 
       const timeout = setTimeout(() => {
         this.pending.delete(id);
@@ -191,8 +245,6 @@ export class WalletIPCClient {
 
   private processBuffer(): void {
     const lines = this.buffer.split('\n');
-
-    // Keep the last partial line in the buffer
     this.buffer = lines.pop() ?? '';
 
     for (const line of lines) {

@@ -9,8 +9,7 @@
  * It MUST NOT provide delete or update operations.
  */
 
-import type { AuditEntry } from './types.js';
-import type { PaymentProposal } from '../ipc/types.js';
+import type { AuditEntry, ProposalCommon, ProposalSource } from '../ipc/types.js';
 
 export type AppendFunction = (line: string) => void;
 
@@ -30,43 +29,51 @@ export class AuditLog {
   }
 
   /** Log a received proposal (before policy evaluation). */
-  logProposalReceived(proposal: PaymentProposal): AuditEntry {
+  logProposalReceived(proposal: ProposalCommon, proposalType?: string, source?: ProposalSource): AuditEntry {
     return this.writeEntry({
       id: generateEntryId(),
       timestamp: new Date().toISOString(),
       type: 'proposal_received',
+      proposalType,
+      source,
       proposal
     });
   }
 
   /** Log a policy enforcement (rejection with violations). */
-  logPolicyEnforcement(proposal: PaymentProposal, violations: string[]): AuditEntry {
+  logPolicyEnforcement(proposal: ProposalCommon, violations: string[], proposalType?: string, source?: ProposalSource): AuditEntry {
     return this.writeEntry({
       id: generateEntryId(),
       timestamp: new Date().toISOString(),
       type: 'policy_enforcement',
+      proposalType,
+      source,
       proposal,
       violations
     });
   }
 
   /** Log a successful execution. */
-  logExecutionSuccess(proposal: PaymentProposal, txHash: string): AuditEntry {
+  logExecutionSuccess(proposal: ProposalCommon, txHash: string, proposalType?: string, source?: ProposalSource): AuditEntry {
     return this.writeEntry({
       id: generateEntryId(),
       timestamp: new Date().toISOString(),
       type: 'execution_success',
+      proposalType,
+      source,
       proposal,
       txHash
     });
   }
 
   /** Log a failed execution (network error, insufficient funds, etc.). */
-  logExecutionFailure(proposal: PaymentProposal, error: string): AuditEntry {
+  logExecutionFailure(proposal: ProposalCommon, error: string, proposalType?: string, source?: ProposalSource): AuditEntry {
     return this.writeEntry({
       id: generateEntryId(),
       timestamp: new Date().toISOString(),
       type: 'execution_failure',
+      proposalType,
+      source,
       proposal,
       error
     });

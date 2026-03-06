@@ -24,14 +24,14 @@ import { IPCResponder } from './ipc/responder.js';
 import type {
   IPCRequest,
   IPCResponse,
-  PaymentProposal,
+  ProposalCommon,
   BalanceQuery,
   AddressQuery,
   AuditQuery,
 } from './ipc/types.js';
 import { PolicyEngine } from './policies/engine.js';
 import type { PolicyConfig } from './policies/types.js';
-import { PaymentExecutor } from './executor/executor.js';
+import { ProposalExecutor } from './executor/executor.js';
 import { AuditLog } from './audit/log.js';
 import { WalletManager, MockWalletManager } from './wallet/manager.js';
 import type { WalletOperations } from './wallet/types.js';
@@ -81,11 +81,20 @@ function createAuditAppender(): (line: string) => void {
   };
 }
 
+// ── Proposal type mapping (IPC request type → executor proposal type) ──
+
+const PROPOSAL_TYPE_MAP: Record<string, string> = {
+  'propose_payment': 'payment',
+  'propose_swap': 'swap',
+  'propose_bridge': 'bridge',
+  'propose_yield': 'yield',
+};
+
 // ── Request Handler ──
 
 async function handleRequest(
   request: IPCRequest,
-  executor: PaymentExecutor,
+  executor: ProposalExecutor,
   wallet: WalletOperations,
   policy: PolicyEngine,
   audit: AuditLog,
@@ -94,66 +103,90 @@ async function handleRequest(
   let response: IPCResponse;
 
   try {
-    switch (request.type) {
-      case 'propose_payment': {
-        const result = await executor.execute(request.payload as PaymentProposal);
-        response = { id: request.id, type: 'execution_result', payload: result };
-        break;
-      }
+    // Check if this is a proposal type
+    const proposalType = PROPOSAL_TYPE_MAP[request.type];
 
-      case 'query_balance': {
-        const query = request.payload as BalanceQuery;
-        const balance = await wallet.getBalance(query.chain, query.symbol);
-        response = {
-          id: request.id,
-          type: 'balance',
-          payload: {
-            chain: balance.chain,
-            symbol: balance.symbol,
-            balance: balance.raw.toString(),
-            formatted: balance.formatted
-          }
-        };
-        break;
-      }
+    if (proposalType !== undefined) {
+      // All proposal types go through the executor
+      const result = await executor.execute(
+        proposalType,
+        request.payload as ProposalCommon,
+        request.source
+      );
+      response = { id: request.id, type: 'execution_result', payload: result };
+    } else {
+      // Query types
+      switch (request.type) {
+        case 'query_balance': {
+          const query = request.payload as BalanceQuery;
+          const balance = await wallet.getBalance(query.chain, query.symbol);
+          response = {
+            id: request.id,
+            type: 'balance',
+            payload: {
+              chain: balance.chain,
+              symbol: balance.symbol,
+              balance: balance.raw.toString(),
+              formatted: balance.formatted
+            }
+          };
+          break;
+        }
 
-      case 'query_address': {
-        const query = request.payload as AddressQuery;
-        const address = await wallet.getAddress(query.chain);
-        response = {
-          id: request.id,
-          type: 'address',
-          payload: { chain: query.chain, address }
-        };
-        break;
-      }
+        case 'query_balance_all': {
+          const balances = await wallet.getBalances();
+          const payload = balances.map(b => ({
+            chain: b.chain,
+            symbol: b.symbol,
+            balance: b.raw.toString(),
+            formatted: b.formatted
+          }));
+          response = {
+            id: request.id,
+            type: 'balance_all',
+            payload
+          };
+          break;
+        }
 
-      case 'query_policy': {
-        response = {
-          id: request.id,
-          type: 'policy_status',
-          payload: { policies: policy.getStatus() }
-        };
-        break;
-      }
+        case 'query_address': {
+          const query = request.payload as AddressQuery;
+          const address = await wallet.getAddress(query.chain);
+          response = {
+            id: request.id,
+            type: 'address',
+            payload: { chain: query.chain, address }
+          };
+          break;
+        }
 
-      case 'query_audit': {
-        const query = request.payload as AuditQuery;
-        const entries = audit.getEntries(query.limit, query.since);
-        response = {
-          id: request.id,
-          type: 'audit_entries',
-          payload: { entries }
-        };
-        break;
-      }
+        case 'query_policy': {
+          response = {
+            id: request.id,
+            type: 'policy_status',
+            payload: { policies: policy.getStatus() }
+          };
+          break;
+        }
 
-      default: {
-        response = {
-          id: request.id,
-          type: 'error',
-          payload: { message: `Unknown request type` }
-        };
+        case 'query_audit': {
+          const query = request.payload as AuditQuery;
+          const entries = audit.getEntries(query.limit, query.since);
+          response = {
+            id: request.id,
+            type: 'audit_entries',
+            payload: { entries }
+          };
+          break;
+        }
+
+        default: {
+          response = {
+            id: request.id,
+            type: 'error',
+            payload: { message: `Unknown request type` }
+          };
+        }
       }
     }
   } catch (err: unknown) {
@@ -198,7 +231,7 @@ async function main(): Promise<void> {
   }
 
   // 4. Create executor (the single code path that moves funds)
-  const executor = new PaymentExecutor(policy, wallet, audit);
+  const executor = new ProposalExecutor(policy, wallet, audit);
 
   // 5. Set up IPC
   const responder = new IPCResponder((data: string) => {

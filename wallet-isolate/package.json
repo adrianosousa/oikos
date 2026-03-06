@@ -1,5 +1,5 @@
 {
-  "name": "sovclaw-wallet-isolate",
+  "name": "oikos-wallet-isolate",
   "version": "0.1.0",
   "private": true,
   "description": "Process-isolated WDK wallet with policy engine — runs on Bare Runtime",

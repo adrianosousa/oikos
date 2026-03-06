@@ -1,8 +1,9 @@
 /**
- * Policy Engine — deterministic evaluation of payment proposals.
+ * Policy Engine — deterministic evaluation of all proposal types.
  *
- * Evaluates a PaymentProposal against all loaded policies.
- * If ANY rule in ANY policy is violated, the proposal is rejected.
+ * Evaluates any ProposalCommon (payment, swap, bridge, yield) against
+ * all loaded policies. If ANY rule in ANY policy is violated, the
+ * proposal is rejected.
  *
  * The engine maintains mutable state (session/day totals, cooldowns)
  * but the policies themselves are IMMUTABLE after construction.
@@ -11,7 +12,8 @@
  * Evaluation is deterministic: same proposal + same state = same result.
  */
 
-import type { PaymentProposal } from '../ipc/types.js';
+import type { ProposalCommon } from '../ipc/types.js';
+import { getCounterparty } from '../ipc/types.js';
 import type {
   PaymentPolicy,
   PolicyConfig,
@@ -53,10 +55,11 @@ export class PolicyEngine {
   /**
    * Evaluate a proposal against all policies.
    * Returns the result with any violations found.
+   * Works with all proposal types (payment, swap, bridge, yield).
    *
-   * @security This is the ONLY function that decides whether a payment proceeds.
+   * @security This is the ONLY function that decides whether a proposal proceeds.
    */
-  evaluate(proposal: PaymentProposal): PolicyEvaluationResult {
+  evaluate(proposal: ProposalCommon): PolicyEvaluationResult {
     this.rollDayIfNeeded();
 
     const allViolations: string[] = [];
@@ -80,12 +83,13 @@ export class PolicyEngine {
   }
 
   /**
-   * Record that a payment was successfully executed.
+   * Record that a proposal was successfully executed.
    * Updates session/day totals and cooldown timer.
+   * Works with all proposal types.
    *
    * MUST only be called AFTER successful execution.
    */
-  recordExecution(proposal: PaymentProposal): void {
+  recordExecution(proposal: ProposalCommon): void {
     this.rollDayIfNeeded();
 
     const amount = BigInt(proposal.amount);
@@ -100,10 +104,13 @@ export class PolicyEngine {
     const currentDay = this.state.dayTotalBySymbol.get(symbol) ?? 0n;
     this.state.dayTotalBySymbol.set(symbol, currentDay + amount);
 
-    // Per-recipient-per-day
-    const recipientKey = `${proposal.to}:${symbol}`;
-    const currentRecipient = this.state.dayTotalByRecipientBySymbol.get(recipientKey) ?? 0n;
-    this.state.dayTotalByRecipientBySymbol.set(recipientKey, currentRecipient + amount);
+    // Per-recipient-per-day (only for proposals with a counterparty)
+    const counterparty = getCounterparty(proposal);
+    if (counterparty) {
+      const recipientKey = `${counterparty}:${symbol}`;
+      const currentRecipient = this.state.dayTotalByRecipientBySymbol.get(recipientKey) ?? 0n;
+      this.state.dayTotalByRecipientBySymbol.set(recipientKey, currentRecipient + amount);
+    }
 
     // Cooldown
     this.state.lastTransactionTime = this.getNow();
@@ -134,7 +141,7 @@ export class PolicyEngine {
     }));
   }
 
-  private evaluateRule(rule: PolicyRule, proposal: PaymentProposal, policyId: string): string | null {
+  private evaluateRule(rule: PolicyRule, proposal: ProposalCommon, policyId: string): string | null {
     const amount = BigInt(proposal.amount);
 
     switch (rule.type) {
@@ -169,11 +176,15 @@ export class PolicyEngine {
 
       case 'max_per_recipient_per_day': {
         if (proposal.symbol !== rule.symbol) return null;
+        // Only applies to proposals with a counterparty (payment, yield)
+        // Swaps and bridges have no specific counterparty — skip this rule
+        const counterparty = getCounterparty(proposal);
+        if (!counterparty) return null;
         const limit = BigInt(rule.amount);
-        const key = `${proposal.to}:${rule.symbol}`;
+        const key = `${counterparty}:${rule.symbol}`;
         const spent = this.state.dayTotalByRecipientBySymbol.get(key) ?? 0n;
         if (spent + amount > limit) {
-          return `[${policyId}] max_per_recipient_per_day: recipient ${proposal.to} daily total ${(spent + amount).toString()} would exceed limit ${rule.amount} ${rule.symbol}`;
+          return `[${policyId}] max_per_recipient_per_day: counterparty ${counterparty} daily total ${(spent + amount).toString()} would exceed limit ${rule.amount} ${rule.symbol}`;
         }
         return null;
       }
@@ -195,9 +206,13 @@ export class PolicyEngine {
       }
 
       case 'whitelist_recipients': {
+        // Only applies to proposals with a counterparty
+        // Swaps and bridges have no counterparty — skip whitelist
+        const counterparty = getCounterparty(proposal);
+        if (!counterparty) return null;
         const normalizedAddresses = rule.addresses.map(a => a.toLowerCase());
-        if (!normalizedAddresses.includes(proposal.to.toLowerCase())) {
-          return `[${policyId}] whitelist_recipients: ${proposal.to} not in whitelist`;
+        if (!normalizedAddresses.includes(counterparty.toLowerCase())) {
+          return `[${policyId}] whitelist_recipients: ${counterparty} not in whitelist`;
         }
         return null;
       }

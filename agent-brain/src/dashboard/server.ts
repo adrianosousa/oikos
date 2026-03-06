@@ -2,6 +2,7 @@
  * Dashboard Server — localhost-only monitoring UI.
  *
  * Serves a static HTML dashboard and REST API for agent state.
+ * Displays multi-asset portfolio with allocation percentages.
  * NEVER exposed to the internet. Binds to 127.0.0.1 only.
  */
 
@@ -24,21 +25,18 @@ export function createDashboard(
   // Serve static files
   app.use(express.static(join(__dirname, 'public')));
 
-  // ── API Routes ──
+  // -- API Routes --
 
   /** Agent brain state */
   app.get('/api/state', (_req, res) => {
     res.json(brain.getState());
   });
 
-  /** Wallet balances */
+  /** Wallet balances — all assets across all chains */
   app.get('/api/balances', async (_req, res) => {
     try {
-      const [usdt, btc] = await Promise.all([
-        wallet.queryBalance('ethereum', 'USDT').catch(() => null),
-        wallet.queryBalance('ethereum', 'BTC').catch(() => null),
-      ]);
-      res.json({ balances: [usdt, btc].filter(Boolean) });
+      const balances = await wallet.queryBalanceAll();
+      res.json({ balances });
     } catch {
       res.status(500).json({ error: 'Failed to query balances' });
     }
