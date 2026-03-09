@@ -158,6 +158,36 @@
     .op-unknown { background: #1e1e2e; color: var(--muted); }
     .defi-count { font-size: 0.85rem; color: var(--purple); margin-top: 0.3rem; }
 
+    /* Swarm cards */
+    .section-title { font-size: 1.1rem; color: var(--purple); margin: 1.5rem 0 0.75rem 0; }
+    .peer-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .peer-row:last-child { border-bottom: none; }
+    .peer-name { font-weight: bold; }
+    .peer-rep { color: var(--green); }
+    .peer-caps { color: var(--muted); font-size: 0.7rem; }
+    .ann-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .ann-item:last-child { border-bottom: none; }
+    .ann-category { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; }
+    .ann-service { background: #172554; color: var(--blue); }
+    .ann-auction { background: #2d1f08; color: var(--orange); }
+    .ann-request { background: #1e3a1e; color: var(--green); }
+    .room-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .room-item:last-child { border-bottom: none; }
+    .room-status { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; }
+    .room-open { background: #172554; color: var(--blue); }
+    .room-negotiating { background: #1e1b4b; color: var(--purple); }
+    .room-accepted { background: #1e3a1e; color: var(--green); }
+    .room-executing { background: #2d1f08; color: var(--orange); }
+    .room-settled { background: #0f2e0f; color: #4ade80; }
+    .econ-row { display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.85rem; }
+    .econ-label { color: var(--muted); }
+    .econ-value { font-weight: bold; }
+    .econ-positive { color: var(--green); }
+    .econ-negative { color: var(--red); }
+    .swarm-event-item { padding: 0.3rem 0; border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
+    .swarm-event-item:last-child { border-bottom: none; }
+    .swarm-hidden { display: none; }
+
     /* Responsive for mobile companion viewport */
     @media (max-width: 480px) {
       body { padding: 0.5rem; }
@@ -215,6 +245,62 @@
     <div class="card">
       <h2>Policy Status</h2>
       <div id="policy-status">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Swarm Section (hidden when swarm disabled) -->
+  <div id="swarm-section" class="swarm-hidden">
+    <div class="section-title">Swarm Network</div>
+    <div class="grid">
+      <div class="card">
+        <h2>Swarm Status</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+          <div><span class="label">Identity</span><div id="swarm-identity" style="font-size:0.85rem;">--</div></div>
+          <div><span class="label">Reputation</span><div class="stat green" id="swarm-reputation" style="font-size:1.5rem;">--</div></div>
+          <div><span class="label">Peers</span><div class="stat blue" id="swarm-peer-count">0</div></div>
+          <div><span class="label">Active Rooms</span><div class="stat purple" id="swarm-room-count" style="color:var(--purple)">0</div></div>
+        </div>
+        <div style="margin-top:0.75rem;">
+          <span class="label">Known Peers</span>
+          <div id="swarm-peers" style="max-height:150px;overflow-y:auto;margin-top:0.3rem;">
+            <div class="peer-row"><span>No peers yet</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Announcements Board</h2>
+        <div id="swarm-announcements" style="max-height:300px;overflow-y:auto;">
+          <div class="ann-item">No announcements yet</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Active Negotiations</h2>
+        <div id="swarm-rooms" style="max-height:300px;overflow-y:auto;">
+          <div class="room-item">No active rooms</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Economics</h2>
+        <div id="swarm-economics">
+          <div class="econ-row"><span class="econ-label">Total Revenue</span><span class="econ-value econ-positive" id="econ-revenue">$0.00</span></div>
+          <div class="econ-row"><span class="econ-label">Total Costs</span><span class="econ-value econ-negative" id="econ-costs">$0.00</span></div>
+          <div class="econ-row"><span class="econ-label">Net Profit</span><span class="econ-value" id="econ-profit">$0.00</span></div>
+          <div class="econ-row"><span class="econ-label">Deals Completed</span><span class="econ-value" id="econ-deals">0</span></div>
+          <div class="econ-row"><span class="econ-label">Sustainability</span><span class="econ-value" id="econ-sustainability">--</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card full">
+        <h2>Swarm Events</h2>
+        <div id="swarm-events" style="max-height:200px;overflow-y:auto;">
+          <div class="swarm-event-item">No swarm events yet</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -386,6 +472,89 @@
             + '<div class="policy-rule">Day: ' + p.state.currentDay + '</div>'
             + '</div>';
         }).join('');
+      }
+    }
+
+      // Swarm events from brain state
+      if (state && state.swarmEvents && state.swarmEvents.length > 0) {
+        document.getElementById('swarm-events').innerHTML = state.swarmEvents.slice(0, 30).map(function(e) {
+          var time = new Date(e.timestamp).toLocaleTimeString();
+          return '<div class="swarm-event-item">[' + time + '] ' + e.summary + '</div>';
+        }).join('');
+      }
+
+      // Swarm state
+      var swarmData = await fetchJSON('/api/swarm');
+      if (swarmData && swarmData.enabled) {
+        document.getElementById('swarm-section').classList.remove('swarm-hidden');
+
+        // Identity
+        if (swarmData.identity) {
+          document.getElementById('swarm-identity').textContent = swarmData.identity.name || '--';
+          document.getElementById('swarm-reputation').textContent = ((swarmData.identity.reputation || 0) * 100).toFixed(0) + '%';
+        }
+
+        // Peers
+        var peers = swarmData.boardPeers || [];
+        document.getElementById('swarm-peer-count').textContent = peers.length;
+        if (peers.length > 0) {
+          document.getElementById('swarm-peers').innerHTML = peers.map(function(p) {
+            return '<div class="peer-row">'
+              + '<span><span class="peer-name">' + p.name + '</span> <span class="peer-caps">' + (p.capabilities || []).join(', ') + '</span></span>'
+              + '<span class="peer-rep">' + ((p.reputation || 0) * 100).toFixed(0) + '%</span>'
+              + '</div>';
+          }).join('');
+        }
+
+        // Announcements
+        var anns = swarmData.announcements || [];
+        if (anns.length > 0) {
+          document.getElementById('swarm-announcements').innerHTML = anns.slice(0, 20).map(function(a) {
+            var catCls = 'ann-' + (a.category || 'service');
+            return '<div class="ann-item">'
+              + '<span class="ann-category ' + catCls + '">' + (a.category || 'service') + '</span> '
+              + '<strong>' + (a.title || 'Untitled') + '</strong><br>'
+              + '<span class="label">' + (a.agentName || '?') + ' | '
+              + (a.priceRange ? a.priceRange.min + '-' + a.priceRange.max + ' ' + a.priceRange.symbol : '--')
+              + '</span>'
+              + '</div>';
+          }).join('');
+        }
+
+        // Rooms
+        var rooms = swarmData.activeRooms || [];
+        document.getElementById('swarm-room-count').textContent = rooms.length;
+        if (rooms.length > 0) {
+          document.getElementById('swarm-rooms').innerHTML = rooms.map(function(r) {
+            var ann = r.announcement || {};
+            var statusCls = 'room-' + (r.status || 'open');
+            var bidCount = (r.bids || []).length;
+            return '<div class="room-item">'
+              + '<span class="room-status ' + statusCls + '">' + (r.status || 'open') + '</span> '
+              + '<strong>' + (ann.title || 'Room ' + (r.id || '?').slice(0, 8)) + '</strong><br>'
+              + '<span class="label">' + bidCount + ' bid(s)'
+              + (r.agreedPrice ? ' | Agreed: ' + r.agreedPrice + ' ' + (r.agreedSymbol || '') : '')
+              + '</span>'
+              + '</div>';
+          }).join('');
+        }
+
+        // Economics
+        var econData = await fetchJSON('/api/economics');
+        if (econData && econData.enabled && econData.economics) {
+          var econ = econData.economics;
+          document.getElementById('econ-revenue').textContent = '$' + (econ.totalRevenue || 0).toFixed(2);
+          document.getElementById('econ-costs').textContent = '$' + (econ.totalCosts || 0).toFixed(2);
+          var profit = (econ.totalRevenue || 0) - (econ.totalCosts || 0);
+          var profitEl = document.getElementById('econ-profit');
+          profitEl.textContent = '$' + profit.toFixed(2);
+          profitEl.className = 'econ-value ' + (profit >= 0 ? 'econ-positive' : 'econ-negative');
+          document.getElementById('econ-deals').textContent = econ.dealsCompleted || 0;
+          var sus = econ.sustainabilityScore || 0;
+          var susEl = document.getElementById('econ-sustainability');
+          susEl.textContent = (sus * 100).toFixed(0) + '%';
+          susEl.className = 'econ-value ' + (sus >= 0.5 ? 'econ-positive' : 'econ-negative');
+        }
       }
     }
 

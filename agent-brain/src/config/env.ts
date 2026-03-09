@@ -44,6 +44,26 @@ export interface BrainConfig {
 
   /** Event poll interval in ms */
   eventPollIntervalMs: number;
+
+  // ── Swarm Configuration ──
+
+  /** Enable swarm networking */
+  swarmEnabled: boolean;
+
+  /** Swarm ID (all agents in the same swarm use the same ID) */
+  swarmId: string;
+
+  /** Human-readable agent name for the swarm */
+  agentName: string;
+
+  /** Comma-separated agent capabilities */
+  agentCapabilities: string;
+
+  /** Use mock swarm (simulated peers) instead of real Hyperswarm */
+  mockSwarm: boolean;
+
+  /** Path to persist the Ed25519 keypair */
+  keypairPath: string;
 }
 
 function getEnv(key: string, fallback?: string): string {
@@ -74,5 +94,13 @@ export function loadConfig(): BrainConfig {
     auditLogPath: getEnv('AUDIT_LOG_PATH', 'audit.jsonl'),
     eventSourceUrl: getEnv('EVENT_SOURCE_URL', ''),
     eventPollIntervalMs: parseInt(getEnv('EVENT_POLL_INTERVAL_MS', '5000'), 10),
+
+    // Swarm
+    swarmEnabled: getEnv('SWARM_ENABLED', 'false') === 'true',
+    swarmId: getEnv('SWARM_ID', 'oikos-hackathon-v1'),
+    agentName: getEnv('AGENT_NAME', 'Oikos-Agent-1'),
+    agentCapabilities: getEnv('AGENT_CAPABILITIES', 'portfolio-analyst,price-feed'),
+    mockSwarm: getEnv('MOCK_SWARM', 'true') === 'true',
+    keypairPath: getEnv('KEYPAIR_PATH', '.oikos-keypair.json'),
   };
 }

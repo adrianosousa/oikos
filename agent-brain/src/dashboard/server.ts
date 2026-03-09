@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { AgentBrain } from '../agent/brain.js';
 import type { WalletIPCClient } from '../ipc/client.js';
+import type { SwarmCoordinatorInterface } from '../swarm/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,7 +19,8 @@ const __dirname = dirname(__filename);
 export function createDashboard(
   brain: AgentBrain,
   wallet: WalletIPCClient,
-  port: number
+  port: number,
+  swarm?: SwarmCoordinatorInterface,
 ): void {
   const app = express();
 
@@ -77,12 +79,32 @@ export function createDashboard(
     }
   });
 
+  /** Swarm state — peers, announcements, rooms */
+  app.get('/api/swarm', (_req, res) => {
+    if (!swarm) {
+      res.json({ enabled: false });
+      return;
+    }
+    res.json({ enabled: true, ...swarm.getState() });
+  });
+
+  /** Swarm economics — revenue, costs, sustainability */
+  app.get('/api/economics', (_req, res) => {
+    if (!swarm) {
+      res.json({ enabled: false });
+      return;
+    }
+    const state = swarm.getState();
+    res.json({ enabled: true, economics: state.economics });
+  });
+
   /** Health check */
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       walletConnected: wallet.isRunning(),
       brainStatus: brain.getState().status,
+      swarmEnabled: !!swarm,
     });
   });
 

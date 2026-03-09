@@ -26,6 +26,7 @@ import type { LLMPaymentDecision } from '../llm/client.js';
 import { MockLLM } from '../llm/mock.js';
 import { reasonAboutPayment } from '../llm/client.js';
 import { buildSystemPrompt, buildEventPrompt } from './prompts.js';
+import type { SwarmEvent, BoardAnnouncement } from '../swarm/types.js';
 
 /** Brain state exposed to the dashboard */
 export interface BrainState {
@@ -43,6 +44,7 @@ export interface BrainState {
   creatorAddress: string;
   portfolioAllocations: Record<string, number>;
   defiOps: number;
+  swarmEvents: Array<{ kind: string; summary: string; timestamp: number }>;
 }
 
 export class AgentBrain {
@@ -66,6 +68,7 @@ export class AgentBrain {
     creatorAddress: '',
     portfolioAllocations: {},
     defiOps: 0,
+    swarmEvents: [],
   };
 
   /** Event buffer — accumulates events between reasoning cycles */
@@ -226,6 +229,48 @@ export class AgentBrain {
       if (this.eventBuffer.length > 0) {
         void this.processEvents();
       }
+    }
+  }
+
+  /** Handle a swarm event — convert to reasoning trigger or track */
+  handleSwarmEvent(event: SwarmEvent): void {
+    // Build summary from event kind
+    let summary: string;
+    switch (event.kind) {
+      case 'peer_connected':
+        summary = `Peer connected: ${event.pubkey.slice(0, 12)}...`;
+        break;
+      case 'peer_disconnected':
+        summary = `Peer disconnected: ${event.pubkey.slice(0, 12)}...`;
+        break;
+      case 'board_message':
+        if (event.message.type === 'announcement') {
+          const ann = event.message as BoardAnnouncement;
+          summary = `Board: ${ann.agentName} posted "${ann.title}" (${ann.category})`;
+        } else {
+          summary = `Board: heartbeat from ${event.fromPubkey.slice(0, 12)}...`;
+        }
+        break;
+      case 'room_message':
+        summary = `Room ${event.roomId.slice(0, 8)}: ${event.message.type} from ${event.fromPubkey.slice(0, 12)}...`;
+        break;
+      case 'feed_message':
+        summary = `Feed: ${event.message.type} from ${event.fromPubkey.slice(0, 12)}...`;
+        break;
+      default:
+        summary = `Swarm event: ${(event as { kind: string }).kind}`;
+    }
+
+    // Track event
+    this.state.swarmEvents.unshift({ kind: event.kind, summary, timestamp: Date.now() });
+    if (this.state.swarmEvents.length > 50) {
+      this.state.swarmEvents.pop();
+    }
+
+    // Log announcements from other agents for dashboard visibility
+    if (event.kind === 'board_message' && event.message.type === 'announcement') {
+      const ann = event.message as BoardAnnouncement;
+      console.error(`[brain] Swarm announcement: "${ann.title}" from ${ann.agentName} (${ann.category})`);
     }
   }
 

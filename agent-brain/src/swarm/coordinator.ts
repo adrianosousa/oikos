@@ -1,0 +1,407 @@
+/**
+ * Swarm Coordinator — Top-level swarm orchestration.
+ *
+ * Wires together: discovery, channels, marketplace, reputation, economics.
+ * Integrates with AgentBrain via event callbacks.
+ *
+ * This is the real Hyperswarm coordinator (not mock).
+ * For demo mode without networking, use MockSwarmCoordinator.
+ */
+
+import type { WalletIPCClient } from '../ipc/client.js';
+import type { AgentCapability } from './types.js';
+import type {
+  AgentIdentity,
+  SwarmState,
+  SwarmPeerInfo,
+  BoardAnnouncement,
+  BoardMessage,
+  RoomMessage,
+  FeedMessage,
+  SwarmEvent,
+  RoomAccept,
+  SwarmCoordinatorInterface,
+} from './types.js';
+import { SwarmDiscovery } from './discovery.js';
+import { ChannelManager } from './channels.js';
+import { Marketplace } from './marketplace.js';
+import { loadOrCreateKeypair, buildIdentity } from './identity.js';
+import type { AgentKeypair } from './identity.js';
+import {
+  computeReputation,
+  computeAuditHash,
+  reputationFromAuditEntries,
+} from './reputation.js';
+
+export interface SwarmConfig {
+  swarmId: string;
+  agentName: string;
+  capabilities: AgentCapability[];
+  keypairPath: string;
+  roomTimeoutMs: number;
+  heartbeatIntervalMs: number;
+  /** Injected HyperDHT for testnet */
+  dht?: unknown;
+}
+
+export class SwarmCoordinator implements SwarmCoordinatorInterface {
+  private wallet: WalletIPCClient;
+  private config: SwarmConfig;
+  private keypair: AgentKeypair | null = null;
+  private identity: AgentIdentity | null = null;
+  private discovery: SwarmDiscovery | null = null;
+  private channels: ChannelManager | null = null;
+  private marketplace: Marketplace;
+  private eventHandlers: Array<(event: SwarmEvent) => void> = [];
+  private knownPeers: Map<string, SwarmPeerInfo> = new Map();
+  private announcements: BoardAnnouncement[] = [];
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private expiryInterval: ReturnType<typeof setInterval> | null = null;
+  private started = false;
+
+  constructor(wallet: WalletIPCClient, config: SwarmConfig) {
+    this.wallet = wallet;
+    this.config = config;
+    this.marketplace = new Marketplace();
+  }
+
+  /** Start the swarm: generate identity, join board, begin heartbeat */
+  async start(): Promise<void> {
+    if (this.started) return;
+
+    // 1. Load/create persistent keypair
+    this.keypair = loadOrCreateKeypair(this.config.keypairPath);
+
+    // 2. Compute reputation from audit log
+    let reputation = 0.5;
+    let auditHash = '';
+    try {
+      const entries = await this.wallet.queryAudit(1000);
+      const input = reputationFromAuditEntries(entries as Array<{ type: string; proposal?: { amount?: string; symbol?: string }; timestamp?: number }>);
+      reputation = computeReputation(input);
+      auditHash = computeAuditHash(entries);
+    } catch {
+      // No audit entries yet — use defaults
+    }
+
+    // 3. Build identity
+    this.identity = buildIdentity(
+      this.keypair,
+      this.config.agentName,
+      this.config.capabilities,
+      reputation,
+      auditHash
+    );
+
+    // 4. Initialize discovery
+    this.discovery = new SwarmDiscovery({
+      swarmId: this.config.swarmId,
+      keypair: this.keypair,
+      dht: this.config.dht,
+    });
+
+    // 5. Initialize channel manager
+    this.channels = new ChannelManager({
+      onBoardMessage: (msg, fromPubkey) => this._handleBoardMessage(msg, fromPubkey),
+      onRoomMessage: (roomId, msg, fromPubkey) => this._handleRoomMessage(roomId, msg, fromPubkey),
+      onFeedMessage: (msg, fromPubkey) => this._handleFeedMessage(msg, fromPubkey),
+    });
+
+    // 6. Wire discovery -> channels
+    this.discovery.onConnection((socket, remotePubkey) => {
+      this.channels!.setupPeer(socket, remotePubkey);
+      this._emit({ kind: 'peer_connected', pubkey: remotePubkey.toString('hex') });
+    });
+
+    this.discovery.onDisconnect((remotePubkey) => {
+      this.channels!.removePeer(remotePubkey);
+      const pubkeyHex = remotePubkey.toString('hex');
+      this.knownPeers.delete(pubkeyHex);
+      this._emit({ kind: 'peer_disconnected', pubkey: pubkeyHex });
+    });
+
+    // 7. Join board
+    await this.discovery.joinBoard();
+
+    // 8. Start heartbeat
+    this.heartbeatInterval = setInterval(() => {
+      this._sendHeartbeat();
+    }, this.config.heartbeatIntervalMs);
+
+    // 9. Start room expiry checker
+    this.expiryInterval = setInterval(() => {
+      this.marketplace.expireStaleRooms();
+    }, 10000);
+
+    this.started = true;
+    console.error(`[swarm] Started. Identity: ${this.identity.name} (${this.identity.pubkey.slice(0, 12)}...)`);
+  }
+
+  /** Post an announcement to the board */
+  postAnnouncement(opts: {
+    category: 'service' | 'auction' | 'request';
+    title: string;
+    description: string;
+    priceRange: { min: string; max: string; symbol: string };
+  }): string {
+    if (!this.identity || !this.channels) {
+      throw new Error('Swarm not started');
+    }
+
+    const announcement: BoardAnnouncement = {
+      type: 'announcement',
+      id: Marketplace.generateAnnouncementId(),
+      agentPubkey: this.identity.pubkey,
+      agentName: this.identity.name,
+      reputation: this.identity.reputation,
+      category: opts.category,
+      title: opts.title,
+      description: opts.description,
+      priceRange: opts.priceRange,
+      capabilities: this.identity.capabilities,
+      expiresAt: Date.now() + this.config.roomTimeoutMs,
+      timestamp: Date.now(),
+    };
+
+    // Broadcast on board channel
+    this.channels.broadcastBoard(announcement);
+
+    // Track locally
+    this.announcements.push(announcement);
+
+    // Create room for this announcement
+    this.marketplace.createRoom(announcement, this.config.roomTimeoutMs);
+
+    console.error(`[swarm] Posted announcement: ${announcement.title} (${announcement.id.slice(0, 8)})`);
+    return announcement.id;
+  }
+
+  /** Bid on a peer's announcement */
+  async bidOnAnnouncement(
+    announcementId: string,
+    price: string,
+    symbol: string,
+    reason: string
+  ): Promise<void> {
+    if (!this.identity || !this.channels || !this.discovery || !this.keypair) {
+      throw new Error('Swarm not started');
+    }
+
+    // Find the announcement
+    const announcement = this.announcements.find((a) => a.id === announcementId);
+    if (!announcement) throw new Error(`Announcement ${announcementId} not found`);
+
+    // Join the room topic
+    const creatorPubkeyBuf = Buffer.from(announcement.agentPubkey, 'hex');
+    await this.discovery.joinRoom(announcementId, creatorPubkeyBuf);
+
+    // Open room channel with creator
+    this.channels.openRoomChannel(creatorPubkeyBuf, announcementId);
+
+    // Join the room in marketplace
+    this.marketplace.joinRoom(announcement);
+
+    // Send bid
+    const bid: RoomMessage = {
+      type: 'bid',
+      announcementId,
+      bidderPubkey: this.identity.pubkey,
+      bidderName: this.identity.name,
+      price,
+      symbol,
+      reason,
+      timestamp: Date.now(),
+    };
+
+    this.channels.broadcastRoom(announcementId, bid);
+    console.error(`[swarm] Bid on ${announcementId.slice(0, 8)}: ${price} ${symbol}`);
+  }
+
+  /** Accept the best bid in a room I created */
+  async acceptBestBid(announcementId: string): Promise<RoomAccept | undefined> {
+    if (!this.channels || !this.wallet) return undefined;
+
+    const bestBid = this.marketplace.getBestBid(announcementId);
+    if (!bestBid) return undefined;
+
+    // Get our payment address
+    let paymentAddress = '0x0000000000000000000000000000000000000000';
+    try {
+      const addr = await this.wallet.queryAddress('ethereum');
+      if (addr && typeof addr === 'object' && 'address' in addr) {
+        paymentAddress = (addr as { address: string }).address;
+      }
+    } catch {
+      // Use default
+    }
+
+    const accept = this.marketplace.acceptBid(
+      announcementId,
+      bestBid.bidderPubkey,
+      paymentAddress,
+      'ethereum'
+    );
+
+    if (accept) {
+      this.channels.broadcastRoom(announcementId, accept);
+      console.error(`[swarm] Accepted bid from ${bestBid.bidderName} for ${bestBid.price} ${bestBid.symbol}`);
+    }
+
+    return accept;
+  }
+
+  /** Submit payment for an accepted task */
+  async submitPayment(announcementId: string): Promise<void> {
+    const room = this.marketplace.getRoom(announcementId);
+    if (!room || !room.acceptedBid || !room.agreedPrice || !room.agreedSymbol) return;
+
+    // Find the accept message details
+    const acceptedBid = room.acceptedBid;
+
+    // Build payment proposal and send via wallet IPC
+    // This goes through PolicyEngine — source='swarm'
+    try {
+      const result = await this.wallet.proposalFromExternal('swarm', 'payment', {
+        amount: room.agreedPrice,
+        symbol: room.agreedSymbol as 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH',
+        chain: 'ethereum' as const,
+        reason: `Swarm payment for: ${room.announcement.title}`,
+        confidence: 0.9,
+        strategy: 'swarm-settlement',
+        timestamp: Date.now(),
+        to: acceptedBid.bidderPubkey.slice(0, 42), // PaymentProposal field
+      } as unknown as import('../ipc/types.js').ProposalCommon);
+
+      if (result.status === 'executed') {
+        // Send payment confirmation
+        const confirm: RoomMessage = {
+          type: 'payment_confirm',
+          announcementId,
+          fromPubkey: this.identity!.pubkey,
+          txHash: result.txHash ?? 'unknown',
+          amount: room.agreedPrice,
+          symbol: room.agreedSymbol,
+          timestamp: Date.now(),
+        };
+
+        this.channels!.broadcastRoom(announcementId, confirm);
+        this.marketplace.settleRoom(announcementId, result.txHash ?? 'unknown');
+        console.error(`[swarm] Payment settled for ${announcementId.slice(0, 8)}: ${result.txHash}`);
+      } else {
+        console.error(`[swarm] Payment ${result.status} for ${announcementId.slice(0, 8)}: ${result.error ?? result.violations.join(', ') ?? 'unknown'}`);
+      }
+    } catch (err) {
+      console.error(`[swarm] Payment error:`, err);
+    }
+  }
+
+  /** Confirm payment (called when we receive payment_confirm as bidder) */
+  confirmPayment(announcementId: string, txHash: string): void {
+    this.marketplace.settleRoom(announcementId, txHash);
+  }
+
+  /** Get current swarm state (for dashboard) */
+  getState(): SwarmState {
+    return {
+      identity: this.identity ?? {
+        pubkey: '',
+        name: this.config.agentName,
+        capabilities: this.config.capabilities,
+        reputation: 0.5,
+        auditHash: '',
+      },
+      boardPeers: Array.from(this.knownPeers.values()),
+      activeRooms: this.marketplace.getRooms(),
+      announcements: this.announcements,
+      economics: this.marketplace.getEconomics(),
+    };
+  }
+
+  /** Register event handler */
+  onEvent(handler: (event: SwarmEvent) => void): void {
+    this.eventHandlers.push(handler);
+  }
+
+  /** Graceful shutdown */
+  async stop(): Promise<void> {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    if (this.expiryInterval) clearInterval(this.expiryInterval);
+    if (this.discovery) await this.discovery.destroy();
+    this.started = false;
+    console.error('[swarm] Stopped.');
+  }
+
+  // ── Private ──
+
+  /** Emit an event to all registered handlers */
+  private _emit(event: SwarmEvent): void {
+    for (const handler of this.eventHandlers) {
+      handler(event);
+    }
+  }
+
+  /** Send heartbeat to all board peers */
+  private _sendHeartbeat(): void {
+    if (!this.identity || !this.channels) return;
+    this.channels.broadcastBoard({
+      type: 'heartbeat',
+      agentPubkey: this.identity.pubkey,
+      agentName: this.identity.name,
+      reputation: this.identity.reputation,
+      capabilities: this.identity.capabilities,
+      timestamp: Date.now(),
+    });
+  }
+
+  /** Handle incoming board message */
+  private _handleBoardMessage(msg: BoardMessage, fromPubkey: Buffer): void {
+    const pubkeyHex = fromPubkey.toString('hex');
+
+    if (msg.type === 'heartbeat') {
+      // Update known peers
+      this.knownPeers.set(pubkeyHex, {
+        pubkey: pubkeyHex,
+        name: msg.agentName,
+        reputation: msg.reputation,
+        capabilities: msg.capabilities,
+        lastSeen: Date.now(),
+      });
+    } else if (msg.type === 'announcement') {
+      // Track announcement
+      if (!this.announcements.find((a) => a.id === msg.id)) {
+        this.announcements.push(msg);
+      }
+
+      // Update known peers from announcement
+      this.knownPeers.set(pubkeyHex, {
+        pubkey: pubkeyHex,
+        name: msg.agentName,
+        reputation: msg.reputation,
+        capabilities: msg.capabilities,
+        lastSeen: Date.now(),
+      });
+    }
+
+    this._emit({ kind: 'board_message', message: msg, fromPubkey: pubkeyHex });
+  }
+
+  /** Handle incoming room message */
+  private _handleRoomMessage(roomId: string, msg: RoomMessage, fromPubkey: Buffer): void {
+    this.marketplace.handleRoomMessage(roomId, msg);
+    this._emit({
+      kind: 'room_message',
+      roomId,
+      message: msg,
+      fromPubkey: fromPubkey.toString('hex'),
+    });
+  }
+
+  /** Handle incoming feed message */
+  private _handleFeedMessage(msg: FeedMessage, fromPubkey: Buffer): void {
+    this._emit({
+      kind: 'feed_message',
+      message: msg,
+      fromPubkey: fromPubkey.toString('hex'),
+    });
+  }
+}
