@@ -1,10 +1,26 @@
 {
   "name": "oikos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Sovereign AI agent with process-isolated self-custodial wallet on Tether's runtime stack",
   "license": "Apache-2.0",
   "type": "module",
+  "main": "index.js",
+  "pear": {
+    "pre": "pear-electron/pre",
+    "name": "oikos-agent",
+    "gui": {
+      "main": "index.html",
+      "width": 1280,
+      "height": 800,
+      "minWidth": 800,
+      "minHeight": 600,
+      "titleBarStyle": "hiddenInset"
+    },
+    "links": {
+      "dashboard": "http://127.0.0.1:3420"
+    }
+  },
   "workspaces": [
     "wallet-isolate",
     "agent-brain"
@@ -13,7 +29,9 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "demo": "./scripts/start-demo.sh",
-    "generate-seed": "node scripts/generate-seed.js"
+    "generate-seed": "node scripts/generate-seed.js",
+    "pear:dev": "pear run -d .",
+    "start": "node agent-brain/dist/src/main.js"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -34,3 +34,12 @@ export interface X402Service {
   asset: string;
   network: string;
 }
+
+/** x402 economics tracking (for dashboard / self-sustaining metrics) */
+export interface X402Economics {
+  totalSpent: string;
+  totalEarned: string;
+  requestsCompleted: number;
+  requestsFailed: number;
+  servicesPaid: string[];
+}

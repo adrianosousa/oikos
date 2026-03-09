@@ -12,6 +12,7 @@ import { dirname, join } from 'path';
 import type { AgentBrain } from '../agent/brain.js';
 import type { WalletIPCClient } from '../ipc/client.js';
 import type { SwarmCoordinatorInterface } from '../swarm/types.js';
+import { mountMCP } from '../mcp/server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,6 +31,10 @@ export function createDashboard(
   const projectRoot = join(__dirname, '..', '..', '..');
   const publicDir = join(projectRoot, 'src', 'dashboard', 'public');
   app.use(express.static(publicDir));
+  app.use(express.json());
+
+  // -- MCP Endpoint --
+  mountMCP(app, brain, wallet, swarm);
 
   // -- API Routes --
 
