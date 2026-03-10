@@ -3,15 +3,20 @@
 # Oikos Demo — One-command start.
 #
 # Boots the full dual-process system in mock mode:
-# - Wallet Isolate (Bare Runtime) with mock wallet
-# - Agent Brain (Node.js) with mock LLM + mock events
+# - Wallet Isolate with mock wallet (no blockchain)
+# - Agent Brain with mock LLM (deterministic demo sequence)
+# - Mock Swarm (2 simulated peer agents: AlphaBot, BetaBot)
+# - Mock Events (3-min simulated event stream)
 # - Dashboard at http://127.0.0.1:3420
+# - ERC-8004 identity (mock mode)
 #
-# Zero API keys required. Zero blockchain access needed.
+# Zero API keys required. Zero blockchain access. Zero setup friction.
 #
 # Usage:
-#   ./scripts/start-demo.sh          # Bare Runtime wallet (production mode)
-#   ./scripts/start-demo.sh --node   # Node.js wallet (development mode)
+#   ./scripts/start-demo.sh              # Auto-detect runtime
+#   ./scripts/start-demo.sh --node       # Force Node.js wallet
+#   ./scripts/start-demo.sh --bare       # Force Bare Runtime wallet
+#   ./scripts/start-demo.sh --port 3421  # Custom dashboard port
 #
 
 set -euo pipefail
@@ -19,41 +24,61 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Detect runtime mode
-WALLET_RUNTIME="bare"
-if [[ "${1:-}" == "--node" ]]; then
-  WALLET_RUNTIME="node"
-  echo "[demo] Using Node.js for wallet isolate (development mode)"
-else
-  # Check if bare is installed
-  if ! command -v bare &>/dev/null; then
-    echo "[demo] Bare Runtime not found, falling back to Node.js"
-    WALLET_RUNTIME="node"
+# Parse args
+WALLET_RUNTIME=""
+DASHBOARD_PORT="3420"
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --node) WALLET_RUNTIME="node"; shift ;;
+    --bare) WALLET_RUNTIME="bare"; shift ;;
+    --port) DASHBOARD_PORT="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+# Auto-detect runtime
+if [[ -z "$WALLET_RUNTIME" ]]; then
+  if command -v bare &>/dev/null; then
+    WALLET_RUNTIME="bare"
   else
-    echo "[demo] Using Bare Runtime for wallet isolate (production mode)"
+    WALLET_RUNTIME="node"
   fi
 fi
 
 # Build if needed
 if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/agent-brain/dist/src/main.js" ]]; then
-  echo "[demo] Building project..."
+  echo "[oikos] Building project..."
   cd "$PROJECT_DIR"
-  npm run build
+  npm run build 2>&1 | tail -5
+  echo ""
 fi
 
+# Copy policy file if needed
+if [[ ! -f "$PROJECT_DIR/policies.json" ]]; then
+  cp "$PROJECT_DIR/policies.example.json" "$PROJECT_DIR/policies.json"
+fi
+
+# Banner
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║                                                          ║"
-echo "║   Oikos — Sovereign Agent Wallet Protocol                 ║"
-echo "║                                                          ║"
-echo "║   Wallet: ${WALLET_RUNTIME} (mock, no real blockchain)           ║"
-echo "║   LLM: mock (deterministic demo sequence)               ║"
-echo "║   Events: mock (3-min simulated stream)                  ║"
-echo "║   Dashboard: http://127.0.0.1:3420                       ║"
-echo "║                                                          ║"
-echo "║   Press Ctrl+C to stop                                   ║"
-echo "║                                                          ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo -e "\033[0;35m"
+echo "  ╔═══════════════════════════════════════════════════════════╗"
+echo "  ║                                                           ║"
+echo "  ║   Oikos — Sovereign Agent Wallet Protocol                  ║"
+echo "  ║                                                           ║"
+echo "  ║   Wallet:    ${WALLET_RUNTIME} (mock, no real blockchain)            ║"
+echo "  ║   LLM:       mock (8-decision deterministic cycle)        ║"
+echo "  ║   Swarm:     mock (2 peers: AlphaBot, BetaBot)            ║"
+echo "  ║   Events:    mock (3-min simulated stream)                ║"
+echo "  ║   Identity:  ERC-8004 (mock mode)                         ║"
+echo "  ║                                                           ║"
+echo "  ║   Dashboard: http://127.0.0.1:${DASHBOARD_PORT}                       ║"
+echo "  ║   MCP:       POST http://127.0.0.1:${DASHBOARD_PORT}/mcp              ║"
+echo "  ║   Agent Card: http://127.0.0.1:${DASHBOARD_PORT}/agent-card.json      ║"
+echo "  ║                                                           ║"
+echo "  ║   Press Ctrl+C to stop                                    ║"
+echo "  ║                                                           ║"
+echo "  ╚═══════════════════════════════════════════════════════════╝"
+echo -e "\033[0m"
 echo ""
 
 cd "$PROJECT_DIR"
@@ -62,8 +87,13 @@ exec env \
   MOCK_LLM=true \
   MOCK_EVENTS=true \
   MOCK_WALLET=true \
+  MOCK_SWARM=true \
+  SWARM_ENABLED=true \
+  ERC8004_ENABLED=true \
   WALLET_RUNTIME="$WALLET_RUNTIME" \
   WALLET_ISOLATE_PATH="./wallet-isolate/dist/src/main.js" \
-  DASHBOARD_PORT=3420 \
+  DASHBOARD_PORT="$DASHBOARD_PORT" \
   AUDIT_LOG_PATH="./audit-demo.jsonl" \
+  AGENT_NAME="oikos-demo-agent" \
+  AGENT_CAPABILITIES="payment,swap,bridge,yield,analysis,price-feed" \
   node agent-brain/dist/src/main.js

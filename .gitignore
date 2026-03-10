@@ -16,6 +16,8 @@ dist/
 # Wallet data (NEVER commit)
 wallet-data/
 *.wallet
+.oikos-seed*
+.oikos-keypair.json
 
 # Audit logs (contain transaction data)
 audit-*.jsonl

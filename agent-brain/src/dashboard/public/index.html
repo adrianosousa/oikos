@@ -6,621 +6,841 @@
   <title>Oikos Dashboard</title>
   <style>
     :root {
-      --bg: #0a0a0f;
-      --card: #12121a;
-      --border: #1e1e2e;
-      --text: #e0e0e8;
-      --muted: #6b6b80;
+      --bg: #06060b;
+      --bg2: #0c0c14;
+      --card: #111119;
+      --card-hover: #16161f;
+      --border: #1c1c2e;
+      --border-light: #252540;
+      --text: #e4e4ee;
+      --muted: #6b6b88;
+      --dim: #44445a;
       --green: #22c55e;
+      --green-dim: #166534;
       --red: #ef4444;
+      --red-dim: #7f1d1d;
       --yellow: #eab308;
       --blue: #3b82f6;
       --purple: #a855f7;
+      --purple-dim: rgba(168,85,247,0.15);
       --orange: #f97316;
       --gold: #d4a843;
       --cyan: #06b6d4;
+      --gradient-purple: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+      --gradient-green: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
-      padding: 1rem;
+      line-height: 1.5;
     }
-    h1 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--purple); }
-    h2 { font-size: 1rem; margin-bottom: 0.5rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem;
-    }
-    .card.full { grid-column: 1 / -1; }
-    .stat { font-size: 2rem; font-weight: bold; margin: 0.5rem 0; }
-    .stat.green { color: var(--green); }
-    .stat.red { color: var(--red); }
-    .stat.yellow { color: var(--yellow); }
-    .stat.blue { color: var(--blue); }
-    .label { color: var(--muted); font-size: 0.75rem; }
-    .status-badge {
-      display: inline-block;
-      padding: 0.2rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: bold;
-      text-transform: uppercase;
-    }
-    .status-idle { background: #1e1e2e; color: var(--muted); }
-    .status-reasoning { background: #1e1b4b; color: var(--purple); }
-    .status-proposing { background: #172554; color: var(--blue); }
-    .reasoning-box {
-      background: #0f0f17;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 0.75rem;
-      margin-top: 0.5rem;
-      font-size: 0.8rem;
-      line-height: 1.4;
-      max-height: 200px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-    }
-    .tx-list { list-style: none; max-height: 300px; overflow-y: auto; }
-    .tx-item {
-      padding: 0.5rem;
+    code, .mono { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+
+    /* Header */
+    .header {
+      background: var(--bg2);
       border-bottom: 1px solid var(--border);
-      font-size: 0.8rem;
-    }
-    .tx-item:last-child { border-bottom: none; }
-    .tx-executed { border-left: 3px solid var(--green); }
-    .tx-rejected { border-left: 3px solid var(--red); }
-    .tx-failed { border-left: 3px solid var(--yellow); }
-    .balance-row {
+      padding: 0.75rem 1.5rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.4rem 0;
-      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
     }
-    .balance-row:last-child { border-bottom: none; }
-    .balance-symbol {
+    .header-left { display: flex; align-items: center; gap: 0.75rem; }
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      background: var(--gradient-purple);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+    .logo-sub { font-size: 0.7rem; color: var(--muted); font-weight: 400; }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .status-pill {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .balance-dot {
-      width: 8px;
-      height: 8px;
+    .status-pill .dot {
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       display: inline-block;
     }
-    .dot-usdt { background: var(--green); }
-    .dot-xaut { background: var(--gold); }
-    .dot-usat { background: var(--blue); }
-    .dot-btc { background: var(--orange); }
-    .dot-eth { background: var(--cyan); }
-    .balance-amount { text-align: right; }
-    .balance-pct { color: var(--muted); font-size: 0.7rem; margin-left: 0.5rem; }
+    .pill-connected { background: rgba(34,197,94,0.12); color: var(--green); }
+    .pill-connected .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .pill-disconnected { background: rgba(239,68,68,0.12); color: var(--red); }
+    .pill-disconnected .dot { background: var(--red); }
+    .pill-brain { background: var(--purple-dim); color: var(--purple); }
+    .refresh-indicator { font-size: 0.65rem; color: var(--dim); }
 
-    /* Portfolio allocation bar */
+    /* Main content */
+    .main { padding: 1.25rem 1.5rem; max-width: 1440px; margin: 0 auto; }
+
+    /* KPI strip */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .kpi {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      transition: border-color 0.2s;
+    }
+    .kpi:hover { border-color: var(--border-light); }
+    .kpi-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+    .kpi-value { font-size: 1.6rem; font-weight: 700; margin-top: 0.2rem; }
+    .kpi-sub { font-size: 0.7rem; color: var(--dim); margin-top: 0.15rem; }
+    .kpi-value.green { color: var(--green); }
+    .kpi-value.red { color: var(--red); }
+    .kpi-value.blue { color: var(--blue); }
+    .kpi-value.purple { color: var(--purple); }
+
+    /* Grid */
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0.75rem; margin-bottom: 0.75rem; }
+    .col-4 { grid-column: span 4; }
+    .col-5 { grid-column: span 5; }
+    .col-6 { grid-column: span 6; }
+    .col-7 { grid-column: span 7; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.15rem;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border-light); }
+    .card-title {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-title .badge {
+      font-size: 0.62rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    /* Portfolio */
+    .portfolio-total { font-size: 2rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .portfolio-total .currency { font-size: 1rem; color: var(--muted); font-weight: 400; }
     .alloc-bar {
       display: flex;
-      height: 24px;
+      height: 8px;
       border-radius: 4px;
       overflow: hidden;
-      margin-top: 0.75rem;
       background: var(--border);
+      margin-bottom: 0.75rem;
     }
-    .alloc-segment {
+    .alloc-seg {
       height: 100%;
-      transition: width 0.5s ease;
+      transition: width 0.6s ease;
       min-width: 2px;
     }
-    .alloc-legend {
+    .asset-row {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-      font-size: 0.7rem;
-    }
-    .alloc-legend-item {
-      display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 0.3rem;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
     }
-    .alloc-legend-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 2px;
+    .asset-row:last-child { border-bottom: none; }
+    .asset-left { display: flex; align-items: center; gap: 0.5rem; }
+    .asset-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
       display: inline-block;
+      flex-shrink: 0;
     }
+    .asset-symbol { font-weight: 600; }
+    .asset-chain { font-size: 0.68rem; color: var(--dim); }
+    .asset-right { text-align: right; }
+    .asset-amount { font-weight: 600; font-family: 'SF Mono', monospace; }
+    .asset-usd { font-size: 0.7rem; color: var(--muted); }
+    .asset-pct { font-size: 0.68rem; color: var(--dim); margin-left: 0.3rem; }
 
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem; }
-    .connected { color: var(--green); }
-    .disconnected { color: var(--red); }
-    .arch-note { font-size: 0.7rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
-    .policy-rule { font-size: 0.75rem; padding: 0.2rem 0; color: var(--muted); }
+    /* Asset colors */
+    .c-usdt { background: var(--green); }
+    .c-xaut { background: var(--gold); }
+    .c-usat { background: var(--blue); }
+    .c-btc { background: var(--orange); }
+    .c-eth { background: var(--cyan); }
+
+    /* Reasoning */
+    .reasoning-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: var(--muted);
+    }
+    .decision-label { font-size: 0.75rem; color: var(--text); margin-bottom: 0.4rem; }
+    .decision-label strong { color: var(--purple); }
+
+    /* Operations list */
+    .op-list { list-style: none; max-height: 380px; overflow-y: auto; }
+    .op-item {
+      padding: 0.55rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .op-item:last-child { border-bottom: none; }
+    .op-indicator {
+      width: 3px;
+      min-height: 100%;
+      border-radius: 2px;
+      flex-shrink: 0;
+      align-self: stretch;
+    }
+    .op-ind-executed { background: var(--green); }
+    .op-ind-rejected { background: var(--red); }
+    .op-ind-failed { background: var(--yellow); }
+    .op-body { flex: 1; }
     .op-badge {
       display: inline-block;
-      padding: 0.1rem 0.4rem;
+      padding: 0.1rem 0.35rem;
       border-radius: 3px;
-      font-size: 0.65rem;
-      font-weight: bold;
+      font-size: 0.62rem;
+      font-weight: 700;
       text-transform: uppercase;
-      margin-right: 0.3rem;
+      letter-spacing: 0.03em;
     }
-    .op-payment { background: #1e3a1e; color: var(--green); }
-    .op-swap { background: #1e1b4b; color: var(--purple); }
-    .op-bridge { background: #172554; color: var(--blue); }
-    .op-yield { background: #2d1f08; color: var(--orange); }
-    .op-unknown { background: #1e1e2e; color: var(--muted); }
-    .defi-count { font-size: 0.85rem; color: var(--purple); margin-top: 0.3rem; }
+    .badge-payment { background: rgba(34,197,94,0.12); color: var(--green); }
+    .badge-swap { background: var(--purple-dim); color: var(--purple); }
+    .badge-bridge { background: rgba(59,130,246,0.12); color: var(--blue); }
+    .badge-yield { background: rgba(249,115,22,0.12); color: var(--orange); }
+    .badge-feedback { background: rgba(6,182,212,0.12); color: var(--cyan); }
+    .op-status { font-weight: 600; margin-left: 0.3rem; }
+    .op-detail { color: var(--muted); font-size: 0.72rem; margin-top: 0.15rem; }
+    .op-hash { font-family: 'SF Mono', monospace; color: var(--dim); font-size: 0.65rem; }
 
-    /* Swarm cards */
-    .section-title { font-size: 1.1rem; color: var(--purple); margin: 1.5rem 0 0.75rem 0; }
-    .peer-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
-    .peer-row:last-child { border-bottom: none; }
-    .peer-name { font-weight: bold; }
-    .peer-rep { color: var(--green); }
-    .peer-caps { color: var(--muted); font-size: 0.7rem; }
-    .ann-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    /* Policy */
+    .policy-item { margin-bottom: 0.65rem; }
+    .policy-name { font-size: 0.78rem; font-weight: 600; margin-bottom: 0.3rem; }
+    .policy-rule { font-size: 0.72rem; color: var(--muted); padding: 0.15rem 0; }
+    .budget-bar-bg { height: 4px; background: var(--border); border-radius: 2px; margin-top: 0.25rem; }
+    .budget-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+
+    /* Section divider */
+    .section {
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .section-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--purple);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+    .section-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* Swarm */
+    .peer-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.55rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.72rem;
+      margin: 0.2rem;
+    }
+    .peer-chip .peer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+    .peer-rep { color: var(--green); font-weight: 600; font-size: 0.68rem; }
+    .ann-item {
+      padding: 0.55rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+    }
     .ann-item:last-child { border-bottom: none; }
-    .ann-category { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; }
-    .ann-service { background: #172554; color: var(--blue); }
-    .ann-auction { background: #2d1f08; color: var(--orange); }
-    .ann-request { background: #1e3a1e; color: var(--green); }
-    .room-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .ann-cat {
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .cat-service { background: rgba(59,130,246,0.12); color: var(--blue); }
+    .cat-auction { background: rgba(249,115,22,0.12); color: var(--orange); }
+    .cat-request { background: rgba(34,197,94,0.12); color: var(--green); }
+    .room-item { padding: 0.55rem; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
     .room-item:last-child { border-bottom: none; }
-    .room-status { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; }
-    .room-open { background: #172554; color: var(--blue); }
-    .room-negotiating { background: #1e1b4b; color: var(--purple); }
-    .room-accepted { background: #1e3a1e; color: var(--green); }
-    .room-executing { background: #2d1f08; color: var(--orange); }
-    .room-settled { background: #0f2e0f; color: #4ade80; }
-    .econ-row { display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.85rem; }
+    .room-badge {
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .rb-open { background: rgba(59,130,246,0.12); color: var(--blue); }
+    .rb-negotiating { background: var(--purple-dim); color: var(--purple); }
+    .rb-accepted { background: rgba(34,197,94,0.12); color: var(--green); }
+    .rb-executing { background: rgba(249,115,22,0.12); color: var(--orange); }
+    .rb-settled { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .econ-row { display: flex; justify-content: space-between; padding: 0.4rem 0; font-size: 0.82rem; border-bottom: 1px solid var(--border); }
+    .econ-row:last-child { border-bottom: none; }
     .econ-label { color: var(--muted); }
-    .econ-value { font-weight: bold; }
-    .econ-positive { color: var(--green); }
-    .econ-negative { color: var(--red); }
-    .swarm-event-item { padding: 0.3rem 0; border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
-    .swarm-event-item:last-child { border-bottom: none; }
-    .swarm-hidden { display: none; }
+    .econ-val { font-weight: 700; font-family: 'SF Mono', monospace; }
+    .econ-pos { color: var(--green); }
+    .econ-neg { color: var(--red); }
+    .event-line { font-size: 0.7rem; color: var(--dim); padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
+    .event-line:last-child { border-bottom: none; }
+    .event-time { color: var(--muted); font-family: 'SF Mono', monospace; }
 
-    /* Responsive for mobile companion viewport */
+    /* Identity */
+    .id-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .id-item .id-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .id-item .id-value { font-size: 1rem; font-weight: 700; margin-top: 0.1rem; }
+    .id-yes { color: var(--green); }
+    .id-no { color: var(--red); }
+    .id-link { color: var(--cyan); text-decoration: none; }
+    .id-link:hover { text-decoration: underline; }
+
+    /* Architecture note */
+    .arch-strip {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      margin-top: 1.25rem;
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .arch-item { font-size: 0.68rem; color: var(--dim); }
+    .arch-item strong { color: var(--muted); }
+
+    .hidden { display: none !important; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .col-4, .col-5, .col-6, .col-7, .col-8, .col-12 { grid-column: span 12; }
+      .header { padding: 0.6rem 1rem; }
+      .main { padding: 0.75rem 1rem; }
+    }
     @media (max-width: 480px) {
-      body { padding: 0.5rem; }
-      h1 { font-size: 1.2rem; }
-      .grid { grid-template-columns: 1fr; }
-      .stat { font-size: 1.5rem; }
-      .header { flex-direction: column; align-items: flex-start; }
+      .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+      .kpi-value { font-size: 1.2rem; }
+      .portfolio-total { font-size: 1.4rem; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>Oikos Dashboard</h1>
-    <div>
-      <span id="wallet-status" class="disconnected">WALLET: --</span>
-      &nbsp;|&nbsp;
-      <span id="brain-status" class="status-badge status-idle">IDLE</span>
+
+<div class="header">
+  <div class="header-left">
+    <span class="logo">Oikos <span class="logo-sub">Protocol</span></span>
+  </div>
+  <div class="header-right">
+    <span class="status-pill" id="wallet-pill">
+      <span class="dot"></span>
+      <span id="wallet-label">Wallet</span>
+    </span>
+    <span class="status-pill pill-brain" id="brain-pill">
+      <span id="brain-label">Idle</span>
+    </span>
+    <span class="refresh-indicator" id="refresh-ts"></span>
+  </div>
+</div>
+
+<div class="main">
+  <!-- KPI Strip -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Portfolio Value</div>
+      <div class="kpi-value green" id="kpi-portfolio">--</div>
+      <div class="kpi-sub" id="kpi-assets">-- assets</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Events Seen</div>
+      <div class="kpi-value blue" id="kpi-events">0</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Proposals</div>
+      <div class="kpi-value" id="kpi-proposals">0</div>
+      <div class="kpi-sub" id="kpi-proposal-detail">0 approved / 0 rejected</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">DeFi Ops</div>
+      <div class="kpi-value purple" id="kpi-defi">0</div>
+      <div class="kpi-sub">swaps + bridges + yield</div>
+    </div>
+    <div class="kpi" id="kpi-sustainability-card" class="hidden">
+      <div class="kpi-label">Sustainability</div>
+      <div class="kpi-value green" id="kpi-sustainability">--</div>
+      <div class="kpi-sub">revenue / costs</div>
+    </div>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="grid">
+    <!-- Portfolio -->
+    <div class="card col-5">
+      <div class="card-title">Portfolio Allocation</div>
+      <div class="portfolio-total" id="portfolio-total">$0.00 <span class="currency">USD</span></div>
+      <div class="alloc-bar" id="alloc-bar"></div>
+      <div id="asset-list"></div>
+    </div>
+
+    <!-- Reasoning + Decision -->
+    <div class="card col-7">
+      <div class="card-title">Agent Reasoning
+        <span class="badge" id="decision-badge" style="background:var(--purple-dim);color:var(--purple);">--</span>
+      </div>
+      <div class="decision-label" id="decision-line">Last decision: <strong>--</strong></div>
+      <div class="reasoning-box" id="reasoning">Waiting for events...</div>
     </div>
   </div>
 
   <div class="grid">
-    <div class="card">
-      <h2>Portfolio Balances</h2>
-      <div id="balances">
-        <div class="balance-row"><span>Loading...</span></div>
-      </div>
-      <div class="alloc-bar" id="alloc-bar"></div>
-      <div class="alloc-legend" id="alloc-legend"></div>
-    </div>
-
-    <div class="card">
-      <h2>Agent Stats</h2>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-        <div><span class="label">Events Seen</span><div class="stat blue" id="events-seen">0</div></div>
-        <div><span class="label">Proposals Sent</span><div class="stat" id="proposals-sent">0</div></div>
-        <div><span class="label">Approved</span><div class="stat green" id="approved">0</div></div>
-        <div><span class="label">Rejected</span><div class="stat red" id="rejected">0</div></div>
-      </div>
-      <div class="defi-count" id="defi-ops"></div>
-    </div>
-
-    <div class="card full">
-      <h2>Agent Reasoning</h2>
-      <div><span class="label">Last Decision:</span> <span id="last-decision">--</span></div>
-      <div class="reasoning-box" id="reasoning">Waiting for events...</div>
-    </div>
-
-    <div class="card">
-      <h2>Recent Operations</h2>
-      <ul class="tx-list" id="tx-list">
-        <li class="tx-item">No operations yet</li>
+    <!-- Recent Operations -->
+    <div class="card col-7">
+      <div class="card-title">Recent Operations</div>
+      <ul class="op-list" id="op-list">
+        <li class="op-item"><div class="op-body" style="color:var(--dim)">No operations yet</div></li>
       </ul>
     </div>
 
-    <div class="card">
-      <h2>Policy Status</h2>
-      <div id="policy-status">Loading...</div>
+    <!-- Policy Status -->
+    <div class="card col-5">
+      <div class="card-title">Policy Engine</div>
+      <div id="policy-content">Loading...</div>
     </div>
   </div>
 
-  <!-- Swarm Section (hidden when swarm disabled) -->
-  <div id="swarm-section" class="swarm-hidden">
-    <div class="section-title">Swarm Network</div>
+  <!-- Swarm Section -->
+  <div id="swarm-section" class="hidden">
+    <div class="section">
+      <span class="section-title">Swarm Network</span>
+      <span class="section-line"></span>
+    </div>
     <div class="grid">
-      <div class="card">
-        <h2>Swarm Status</h2>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-          <div><span class="label">Identity</span><div id="swarm-identity" style="font-size:0.85rem;">--</div></div>
-          <div><span class="label">Reputation</span><div class="stat green" id="swarm-reputation" style="font-size:1.5rem;">--</div></div>
-          <div><span class="label">Peers</span><div class="stat blue" id="swarm-peer-count">0</div></div>
-          <div><span class="label">Active Rooms</span><div class="stat purple" id="swarm-room-count" style="color:var(--purple)">0</div></div>
+      <div class="card col-4">
+        <div class="card-title">Swarm Identity</div>
+        <div style="margin-bottom:0.5rem;">
+          <div class="kpi-label">Agent Name</div>
+          <div style="font-size:1rem;font-weight:700;" id="swarm-name">--</div>
         </div>
-        <div style="margin-top:0.75rem;">
-          <span class="label">Known Peers</span>
-          <div id="swarm-peers" style="max-height:150px;overflow-y:auto;margin-top:0.3rem;">
-            <div class="peer-row"><span>No peers yet</span></div>
+        <div style="margin-bottom:0.5rem;">
+          <div class="kpi-label">Reputation Score</div>
+          <div style="font-size:1.4rem;font-weight:700;color:var(--green);" id="swarm-rep">--</div>
+        </div>
+        <div>
+          <div class="kpi-label">Connected Peers</div>
+          <div id="swarm-peers" style="margin-top:0.3rem;"></div>
+        </div>
+      </div>
+
+      <div class="card col-4">
+        <div class="card-title">Announcements Board</div>
+        <div id="ann-list" style="max-height:280px;overflow-y:auto;">
+          <div class="ann-item" style="color:var(--dim)">No announcements</div>
+        </div>
+      </div>
+
+      <div class="card col-4">
+        <div class="card-title">Active Negotiations</div>
+        <div id="room-list" style="max-height:280px;overflow-y:auto;">
+          <div class="room-item" style="color:var(--dim)">No active rooms</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card col-5">
+        <div class="card-title">Self-Sustaining Economics</div>
+        <div id="econ-content">
+          <div class="econ-row"><span class="econ-label">Total Revenue</span><span class="econ-val econ-pos" id="econ-rev">$0.00</span></div>
+          <div class="econ-row"><span class="econ-label">Total Costs</span><span class="econ-val econ-neg" id="econ-cost">$0.00</span></div>
+          <div class="econ-row"><span class="econ-label">Net Profit</span><span class="econ-val" id="econ-profit">$0.00</span></div>
+          <div class="econ-row"><span class="econ-label">Deals Completed</span><span class="econ-val" id="econ-deals">0</span></div>
+          <div class="econ-row"><span class="econ-label">Sustainability</span><span class="econ-val" id="econ-sus">--</span></div>
+        </div>
+      </div>
+
+      <div class="card col-7">
+        <div class="card-title">Swarm Events</div>
+        <div id="swarm-events" style="max-height:200px;overflow-y:auto;">
+          <div class="event-line" style="color:var(--dim)">No events yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ERC-8004 Identity Section -->
+  <div id="identity-section" class="hidden">
+    <div class="section">
+      <span class="section-title">On-Chain Identity (ERC-8004)</span>
+      <span class="section-line"></span>
+    </div>
+    <div class="grid">
+      <div class="card col-6">
+        <div class="card-title">Identity Status</div>
+        <div class="id-grid">
+          <div class="id-item">
+            <div class="id-label">Registered</div>
+            <div class="id-value" id="id-registered">--</div>
+          </div>
+          <div class="id-item">
+            <div class="id-label">Agent ID</div>
+            <div class="id-value" id="id-agent-id">--</div>
+          </div>
+          <div class="id-item">
+            <div class="id-label">Wallet Linked</div>
+            <div class="id-value" id="id-wallet-set">--</div>
+          </div>
+          <div class="id-item">
+            <div class="id-label">Agent Card</div>
+            <div class="id-value" id="id-card" style="font-size:0.75rem;">--</div>
           </div>
         </div>
-      </div>
-
-      <div class="card">
-        <h2>Announcements Board</h2>
-        <div id="swarm-announcements" style="max-height:300px;overflow-y:auto;">
-          <div class="ann-item">No announcements yet</div>
+        <div style="margin-top:0.5rem;">
+          <div class="kpi-label">Registration Tx</div>
+          <div class="mono" id="id-tx" style="font-size:0.68rem;color:var(--dim);word-break:break-all;margin-top:0.15rem;">--</div>
         </div>
       </div>
-
-      <div class="card">
-        <h2>Active Negotiations</h2>
-        <div id="swarm-rooms" style="max-height:300px;overflow-y:auto;">
-          <div class="room-item">No active rooms</div>
+      <div class="card col-6">
+        <div class="card-title">On-Chain Reputation</div>
+        <div class="id-grid" style="margin-bottom:0.75rem;">
+          <div class="id-item">
+            <div class="id-label">Feedback Count</div>
+            <div class="id-value blue" id="rep-count">0</div>
+          </div>
+          <div class="id-item">
+            <div class="id-label">Total Value</div>
+            <div class="id-value green" id="rep-value">0</div>
+          </div>
         </div>
-      </div>
-
-      <div class="card">
-        <h2>Economics</h2>
-        <div id="swarm-economics">
-          <div class="econ-row"><span class="econ-label">Total Revenue</span><span class="econ-value econ-positive" id="econ-revenue">$0.00</span></div>
-          <div class="econ-row"><span class="econ-label">Total Costs</span><span class="econ-value econ-negative" id="econ-costs">$0.00</span></div>
-          <div class="econ-row"><span class="econ-label">Net Profit</span><span class="econ-value" id="econ-profit">$0.00</span></div>
-          <div class="econ-row"><span class="econ-label">Deals Completed</span><span class="econ-value" id="econ-deals">0</span></div>
-          <div class="econ-row"><span class="econ-label">Sustainability</span><span class="econ-value" id="econ-sustainability">--</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid">
-      <div class="card full">
-        <h2>Swarm Events</h2>
-        <div id="swarm-events" style="max-height:200px;overflow-y:auto;">
-          <div class="swarm-event-item">No swarm events yet</div>
+        <div style="font-size:0.7rem;color:var(--dim);line-height:1.5;">
+          Two-layer reputation: Off-chain (BLAKE2b audit hash, fast, local) + On-chain (ERC-8004 ReputationRegistry, persistent, Sybil-resistant).
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ERC-8004 On-Chain Identity Section -->
-  <div id="identity-section" class="swarm-hidden">
-    <div class="section-title">On-Chain Identity (ERC-8004)</div>
-    <div class="grid">
-      <div class="card">
-        <h2>Identity Status</h2>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-          <div><span class="label">Registered</span><div id="id-registered" style="font-size:1.2rem;font-weight:bold;color:var(--muted)">--</div></div>
-          <div><span class="label">Agent ID</span><div id="id-agent-id" style="font-size:1.2rem;font-weight:bold;">--</div></div>
-          <div><span class="label">Wallet Linked</span><div id="id-wallet-set" style="font-size:1.2rem;font-weight:bold;color:var(--muted)">--</div></div>
-          <div><span class="label">Agent Card</span><div id="id-agent-card" style="font-size:0.75rem;">--</div></div>
-        </div>
-        <div style="margin-top:0.75rem;">
-          <span class="label">Registration Tx</span>
-          <div id="id-reg-tx" style="font-size:0.75rem;color:var(--muted);word-break:break-all;">--</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>On-Chain Reputation</h2>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-          <div><span class="label">Feedback Count</span><div class="stat blue" id="rep-feedback-count" style="font-size:1.5rem;">0</div></div>
-          <div><span class="label">Total Value</span><div class="stat green" id="rep-total-value" style="font-size:1.5rem;">0</div></div>
-        </div>
-        <div class="arch-note" style="margin-top:0.5rem;">
-          Two-layer reputation: Off-chain (BLAKE2b audit hash) + On-chain (ERC-8004 ReputationRegistry).
-          On-chain reputation is persistent, cross-agent verifiable, and Sybil-resistant.
-        </div>
-      </div>
-    </div>
+  <!-- Architecture footer -->
+  <div class="arch-strip">
+    <div class="arch-item"><strong>Brain</strong> Node.js (LLM + Swarm)</div>
+    <div class="arch-item"><strong>IPC</strong> stdin/stdout JSON-lines</div>
+    <div class="arch-item"><strong>Wallet</strong> Bare Runtime (WDK)</div>
+    <div class="arch-item"><strong>Policy</strong> 8 rules, immutable</div>
+    <div class="arch-item"><strong>Audit</strong> Append-only</div>
+    <div class="arch-item"><strong>Tests</strong> 140 passing</div>
   </div>
+</div>
 
-  <div class="arch-note">
-    Oikos Protocol: Process-isolated, multi-chain, multi-asset wallet for autonomous AI agents.
-    Brain (Node.js) reasons about portfolio strategy and proposes operations via IPC.
-    Wallet Isolate (Bare Runtime) enforces policies and signs transactions.
-    Supported ops: payment, swap, bridge, yield, feedback. All policy-enforced.
-    The brain NEVER touches private keys. ERC-8004 identity is on-chain, portable, cross-platform.
-  </div>
+<script>
+var COLORS = { USDT:'#22c55e', XAUT:'#d4a843', USAT:'#3b82f6', BTC:'#f97316', ETH:'#06b6d4' };
+var DOTS = { USDT:'c-usdt', XAUT:'c-xaut', USAT:'c-usat', BTC:'c-btc', ETH:'c-eth' };
+var PRICES = { USDT:1, USAT:1, XAUT:2400, BTC:60000, ETH:3000 };
+var DECS = { USDT:6, USAT:6, XAUT:6, BTC:8, ETH:18 };
 
-  <script>
-    var ASSET_COLORS = {
-      USDT: '#22c55e',
-      XAUT: '#d4a843',
-      USAT: '#3b82f6',
-      BTC: '#f97316',
-      ETH: '#06b6d4'
-    };
+function allocate(balances) {
+  var items = balances.map(function(b) {
+    var raw = parseInt(b.balance||'0',10);
+    var d = DECS[b.symbol]||18;
+    var human = raw / Math.pow(10,d);
+    var usd = human * (PRICES[b.symbol]||0);
+    return { symbol:b.symbol, chain:b.chain, formatted:b.formatted, usd:usd };
+  });
+  var total = items.reduce(function(s,e){return s+e.usd;},0);
+  return { total:total, items:items.map(function(e){
+    return { symbol:e.symbol, chain:e.chain, formatted:e.formatted, usd:e.usd, pct:total>0?(e.usd/total*100).toFixed(1):'0.0' };
+  })};
+}
 
-    var ASSET_DOTS = {
-      USDT: 'dot-usdt',
-      XAUT: 'dot-xaut',
-      USAT: 'dot-usat',
-      BTC: 'dot-btc',
-      ETH: 'dot-eth'
-    };
+function opBadge(type) {
+  var t = (type||'payment').toLowerCase();
+  var cls = 'badge-'+(t==='feedback'?'feedback':t);
+  if(!['badge-payment','badge-swap','badge-bridge','badge-yield','badge-feedback'].includes(cls)) cls='badge-payment';
+  return '<span class="op-badge '+cls+'">'+(t).toUpperCase()+'</span>';
+}
 
-    var PRICES_USD = { USDT: 1, USAT: 1, XAUT: 2400, BTC: 60000, ETH: 3000 };
-    var DECIMALS = { USDT: 6, USAT: 6, XAUT: 6, BTC: 8, ETH: 18 };
+function fmtAmt(result) {
+  var p = result.proposal;
+  if(!p) return '?';
+  var raw = parseInt(p.amount,10);
+  var d = DECS[p.symbol]||6;
+  return (raw/Math.pow(10,d)).toFixed(d<=6?2:6);
+}
 
-    function computeAllocations(balances) {
-      var entries = balances.map(function(b) {
-        var raw = parseInt(b.balance || '0', 10);
-        var dec = DECIMALS[b.symbol] || 18;
-        var human = raw / Math.pow(10, dec);
-        var usd = human * (PRICES_USD[b.symbol] || 0);
-        return { symbol: b.symbol, chain: b.chain, formatted: b.formatted, usdValue: usd };
-      });
-      var total = entries.reduce(function(s, e) { return s + e.usdValue; }, 0);
-      return entries.map(function(e) {
-        return {
-          symbol: e.symbol,
-          chain: e.chain,
-          formatted: e.formatted,
-          percentage: total > 0 ? (e.usdValue / total * 100).toFixed(1) : '0.0'
-        };
-      });
+async function api(url) {
+  try { var r = await fetch(url); return await r.json(); } catch(e) { return null; }
+}
+
+// Try to fetch live pricing
+async function fetchPrices() {
+  var data = await api('/api/prices');
+  if (data && data.prices && data.prices.length > 0) {
+    data.prices.forEach(function(p) {
+      if (p.symbol && p.priceUsd !== undefined) PRICES[p.symbol] = p.priceUsd;
+    });
+  }
+}
+
+async function update() {
+  var state = await api('/api/state');
+  if (state) {
+    // Brain status
+    document.getElementById('brain-label').textContent = state.status.toUpperCase();
+
+    // KPIs
+    document.getElementById('kpi-events').textContent = state.eventsSeen;
+    document.getElementById('kpi-proposals').textContent = state.proposalsSent;
+    document.getElementById('kpi-proposal-detail').textContent = state.proposalsApproved+' approved / '+state.proposalsRejected+' rejected';
+    document.getElementById('kpi-defi').textContent = state.defiOps||0;
+
+    // Reasoning
+    document.getElementById('reasoning').textContent = state.lastReasoning||'Waiting for events...';
+    document.getElementById('decision-line').innerHTML = 'Last decision: <strong>'+(state.lastDecision||'--')+'</strong>';
+    document.getElementById('decision-badge').textContent = state.status.toUpperCase();
+
+    // Portfolio
+    if (state.balances && state.balances.length>0) {
+      var a = allocate(state.balances);
+      document.getElementById('portfolio-total').innerHTML = '$'+a.total.toFixed(2)+' <span class="currency">USD</span>';
+      document.getElementById('kpi-portfolio').textContent = '$'+a.total.toFixed(0);
+      document.getElementById('kpi-assets').textContent = state.balances.length+' assets';
+
+      // Allocation bar
+      document.getElementById('alloc-bar').innerHTML = a.items.map(function(i){
+        var c = COLORS[i.symbol]||'#555';
+        return '<div class="alloc-seg" style="width:'+parseFloat(i.pct)+'%;background:'+c+';" title="'+i.symbol+': '+i.pct+'%"></div>';
+      }).join('');
+
+      // Asset list
+      document.getElementById('asset-list').innerHTML = a.items.map(function(i){
+        var dotCls = DOTS[i.symbol]||'';
+        return '<div class="asset-row">'
+          +'<div class="asset-left"><span class="asset-dot '+dotCls+'"></span><span class="asset-symbol">'+i.symbol+'</span><span class="asset-chain">'+i.chain+'</span></div>'
+          +'<div class="asset-right"><span class="asset-amount">'+i.formatted+'</span><span class="asset-usd"> $'+i.usd.toFixed(2)+'</span><span class="asset-pct">'+i.pct+'%</span></div>'
+          +'</div>';
+      }).join('');
     }
 
-    function getOpType(result) {
-      return (result.proposalType || 'payment').toLowerCase();
+    // Operations
+    if (state.recentResults && state.recentResults.length>0) {
+      document.getElementById('op-list').innerHTML = state.recentResults.map(function(r){
+        var type = (r.proposalType||'payment').toLowerCase();
+        var badge = opBadge(type);
+        var amount = fmtAmt(r);
+        var sym = r.proposal?r.proposal.symbol:'';
+        var hash = r.txHash?r.txHash.slice(0,12)+'...':'';
+        var violations = r.violations&&r.violations.length>0?' '+r.violations[0]:'';
+        var extra = '';
+        if(type==='swap'&&r.proposal) extra = ' &rarr; '+(r.proposal.toSymbol||'?');
+        else if(type==='bridge'&&r.proposal) extra = ' '+(r.proposal.fromChain||'?')+' &rarr; '+(r.proposal.toChain||'?');
+        else if(type==='yield'&&r.proposal) extra = ' '+(r.proposal.action||'')+' on '+(r.proposal.protocol||'?');
+
+        var indCls = 'op-ind-'+r.status;
+        return '<li class="op-item"><div class="op-indicator '+indCls+'"></div><div class="op-body">'
+          +badge+'<span class="op-status">'+r.status.toUpperCase()+'</span> '+amount+' '+sym+extra
+          +(hash?'<div class="op-hash">tx: '+hash+'</div>':'')
+          +(violations?'<div class="op-detail">'+violations+'</div>':'')
+          +'</div></li>';
+      }).join('');
     }
 
-    function getOpBadge(type) {
-      var cls = 'op-' + (type || 'unknown');
-      if (!['op-payment', 'op-swap', 'op-bridge', 'op-yield'].includes(cls)) cls = 'op-unknown';
-      return '<span class="op-badge ' + cls + '">' + (type || 'payment').toUpperCase() + '</span>';
+    // Swarm events
+    if (state.swarmEvents && state.swarmEvents.length>0) {
+      document.getElementById('swarm-events').innerHTML = state.swarmEvents.slice(0,30).map(function(e){
+        var t = new Date(e.timestamp).toLocaleTimeString();
+        return '<div class="event-line"><span class="event-time">'+t+'</span> '+e.summary+'</div>';
+      }).join('');
+    }
+  }
+
+  // Health
+  var health = await api('/api/health');
+  if (health) {
+    var pill = document.getElementById('wallet-pill');
+    var label = document.getElementById('wallet-label');
+    if (health.walletConnected) {
+      pill.className = 'status-pill pill-connected';
+      label.textContent = 'Wallet';
+    } else {
+      pill.className = 'status-pill pill-disconnected';
+      label.textContent = 'Wallet';
+    }
+  }
+
+  // Policies
+  var pol = await api('/api/policies');
+  if (pol && pol.policies) {
+    document.getElementById('policy-content').innerHTML = pol.policies.map(function(p){
+      var spent = Object.entries(p.state.sessionTotals||{});
+      var rules = (p.rules||[]).slice(0,5);
+      var rulesHtml = rules.map(function(r){
+        var desc = r.type;
+        if(r.amount) desc += ': '+r.amount+' '+r.symbol;
+        else if(r.seconds) desc += ': '+r.seconds+'s';
+        else if(r.min!==undefined) desc += ': min '+r.min;
+        else if(r.start_hour!==undefined) desc += ': '+r.start_hour+'-'+r.end_hour+' '+r.timezone;
+        return '<div class="policy-rule">'+desc+'</div>';
+      }).join('');
+      var budgetHtml = spent.map(function(kv){
+        var pct = Math.min(100, Number(kv[1])/50000000*100);
+        var color = pct>80?'var(--red)':pct>50?'var(--yellow)':'var(--green)';
+        return '<div class="policy-rule">'+kv[0]+': '+kv[1]+' spent</div>'
+          +'<div class="budget-bar-bg"><div class="budget-bar-fill" style="width:'+pct+'%;background:'+color+';"></div></div>';
+      }).join('');
+      return '<div class="policy-item"><div class="policy-name">'+p.name+'</div>'+rulesHtml+budgetHtml+'</div>';
+    }).join('');
+  }
+
+  // Swarm
+  var swarm = await api('/api/swarm');
+  if (swarm && swarm.enabled) {
+    document.getElementById('swarm-section').classList.remove('hidden');
+
+    if (swarm.identity) {
+      document.getElementById('swarm-name').textContent = swarm.identity.name||'--';
+      document.getElementById('swarm-rep').textContent = ((swarm.identity.reputation||0)*100).toFixed(0)+'%';
     }
 
-    function formatAmount(result) {
-      var proposal = result.proposal;
-      if (!proposal) return '?';
-      var raw = parseInt(proposal.amount, 10);
-      var dec = DECIMALS[proposal.symbol] || 6;
-      return (raw / Math.pow(10, dec)).toFixed(dec <= 6 ? 2 : 6);
+    var peers = swarm.boardPeers||[];
+    if (peers.length>0) {
+      document.getElementById('swarm-peers').innerHTML = peers.map(function(p){
+        return '<span class="peer-chip"><span class="peer-dot"></span>'+p.name+' <span class="peer-rep">'+((p.reputation||0)*100).toFixed(0)+'%</span></span>';
+      }).join('');
+    } else {
+      document.getElementById('swarm-peers').innerHTML = '<span style="color:var(--dim);font-size:0.72rem;">No peers connected</span>';
     }
 
-    async function fetchJSON(url) {
-      try {
-        var res = await fetch(url);
-        return await res.json();
-      } catch(e) { return null; }
+    var anns = swarm.announcements||[];
+    if (anns.length>0) {
+      document.getElementById('ann-list').innerHTML = anns.slice(0,15).map(function(a){
+        var catCls = 'cat-'+(a.category||'service');
+        return '<div class="ann-item"><span class="ann-cat '+catCls+'">'+(a.category||'service')+'</span> '
+          +'<strong>'+(a.title||'Untitled')+'</strong><br>'
+          +'<span style="font-size:0.68rem;color:var(--dim);">'+(a.agentName||'?')+' | '
+          +(a.priceRange?a.priceRange.min+'-'+a.priceRange.max+' '+a.priceRange.symbol:'--')+'</span></div>';
+      }).join('');
     }
 
-    async function update() {
-      var state = await fetchJSON('/api/state');
-      if (state) {
-        document.getElementById('brain-status').textContent = state.status.toUpperCase();
-        document.getElementById('brain-status').className = 'status-badge status-' + state.status;
-        document.getElementById('events-seen').textContent = state.eventsSeen;
-        document.getElementById('proposals-sent').textContent = state.proposalsSent;
-        document.getElementById('approved').textContent = state.proposalsApproved;
-        document.getElementById('rejected').textContent = state.proposalsRejected;
-        document.getElementById('reasoning').textContent = state.lastReasoning || 'Waiting for events...';
-        document.getElementById('last-decision').textContent = state.lastDecision;
-
-        // DeFi ops count
-        var defiEl = document.getElementById('defi-ops');
-        if (state.defiOps > 0) {
-          defiEl.textContent = 'DeFi operations: ' + state.defiOps + ' (swaps, bridges, yield)';
-        } else {
-          defiEl.textContent = '';
-        }
-
-        // Balances with allocations
-        if (state.balances && state.balances.length > 0) {
-          var allocs = computeAllocations(state.balances);
-          document.getElementById('balances').innerHTML = allocs.map(function(a) {
-            var dotCls = ASSET_DOTS[a.symbol] || '';
-            return '<div class="balance-row">'
-              + '<span class="balance-symbol"><span class="balance-dot ' + dotCls + '"></span>' + a.symbol + ' <span class="label">(' + a.chain + ')</span></span>'
-              + '<span class="balance-amount">' + a.formatted + '<span class="balance-pct">' + a.percentage + '%</span></span>'
-              + '</div>';
-          }).join('');
-
-          // Allocation bar
-          var barHtml = allocs.map(function(a) {
-            var color = ASSET_COLORS[a.symbol] || '#555';
-            var pct = parseFloat(a.percentage);
-            return '<div class="alloc-segment" style="width:' + pct + '%;background:' + color + ';" title="' + a.symbol + ': ' + a.percentage + '%"></div>';
-          }).join('');
-          document.getElementById('alloc-bar').innerHTML = barHtml;
-
-          // Legend
-          var legendHtml = allocs.map(function(a) {
-            var color = ASSET_COLORS[a.symbol] || '#555';
-            return '<span class="alloc-legend-item"><span class="alloc-legend-dot" style="background:' + color + ';"></span>' + a.symbol + ' ' + a.percentage + '%</span>';
-          }).join('');
-          document.getElementById('alloc-legend').innerHTML = legendHtml;
-        }
-
-        // Operations (transactions)
-        if (state.recentResults && state.recentResults.length > 0) {
-          document.getElementById('tx-list').innerHTML = state.recentResults.map(function(r) {
-            var cls = 'tx-' + r.status;
-            var amount = formatAmount(r);
-            var opType = getOpType(r);
-            var badge = getOpBadge(opType);
-            var symbol = r.proposal ? r.proposal.symbol : '';
-            var hash = r.txHash ? r.txHash.slice(0, 16) + '...' : '';
-            var violations = r.violations && r.violations.length > 0 ? ' | ' + r.violations[0] : '';
-            var extra = '';
-            if (opType === 'swap' && r.proposal) {
-              extra = ' -> ' + (r.proposal.toSymbol || '?');
-            } else if (opType === 'bridge' && r.proposal) {
-              extra = ' ' + (r.proposal.fromChain || '?') + ' -> ' + (r.proposal.toChain || '?');
-            } else if (opType === 'yield' && r.proposal) {
-              extra = ' ' + (r.proposal.action || '') + ' on ' + (r.proposal.protocol || '?');
-            }
-            return '<li class="tx-item ' + cls + '">'
-              + badge
-              + '<strong>' + r.status.toUpperCase() + '</strong> '
-              + amount + ' ' + symbol + extra
-              + (hash ? ' | tx: ' + hash : '')
-              + violations
-              + '</li>';
-          }).join('');
-        }
-      }
-
-      // Health
-      var health = await fetchJSON('/api/health');
-      if (health) {
-        var walletEl = document.getElementById('wallet-status');
-        walletEl.textContent = 'WALLET: ' + (health.walletConnected ? 'CONNECTED' : 'DISCONNECTED');
-        walletEl.className = health.walletConnected ? 'connected' : 'disconnected';
-      }
-
-      // Policies
-      var policies = await fetchJSON('/api/policies');
-      if (policies && policies.policies) {
-        document.getElementById('policy-status').innerHTML = policies.policies.map(function(p) {
-          var session = Object.entries(p.state.sessionTotals || {})
-            .map(function(kv) { return kv[0] + ': ' + kv[1]; })
-            .join(', ');
-          return '<div><strong>' + p.name + '</strong>'
-            + '<div class="policy-rule">Session spent: ' + (session || 'none') + '</div>'
-            + '<div class="policy-rule">Day: ' + p.state.currentDay + '</div>'
-            + '</div>';
-        }).join('');
-      }
-
-      // Swarm events from brain state
-      if (state && state.swarmEvents && state.swarmEvents.length > 0) {
-        document.getElementById('swarm-events').innerHTML = state.swarmEvents.slice(0, 30).map(function(e) {
-          var time = new Date(e.timestamp).toLocaleTimeString();
-          return '<div class="swarm-event-item">[' + time + '] ' + e.summary + '</div>';
-        }).join('');
-      }
-
-      // Swarm state
-      var swarmData = await fetchJSON('/api/swarm');
-      if (swarmData && swarmData.enabled) {
-        document.getElementById('swarm-section').classList.remove('swarm-hidden');
-
-        // Identity
-        if (swarmData.identity) {
-          document.getElementById('swarm-identity').textContent = swarmData.identity.name || '--';
-          document.getElementById('swarm-reputation').textContent = ((swarmData.identity.reputation || 0) * 100).toFixed(0) + '%';
-        }
-
-        // Peers
-        var peers = swarmData.boardPeers || [];
-        document.getElementById('swarm-peer-count').textContent = peers.length;
-        if (peers.length > 0) {
-          document.getElementById('swarm-peers').innerHTML = peers.map(function(p) {
-            return '<div class="peer-row">'
-              + '<span><span class="peer-name">' + p.name + '</span> <span class="peer-caps">' + (p.capabilities || []).join(', ') + '</span></span>'
-              + '<span class="peer-rep">' + ((p.reputation || 0) * 100).toFixed(0) + '%</span>'
-              + '</div>';
-          }).join('');
-        }
-
-        // Announcements
-        var anns = swarmData.announcements || [];
-        if (anns.length > 0) {
-          document.getElementById('swarm-announcements').innerHTML = anns.slice(0, 20).map(function(a) {
-            var catCls = 'ann-' + (a.category || 'service');
-            return '<div class="ann-item">'
-              + '<span class="ann-category ' + catCls + '">' + (a.category || 'service') + '</span> '
-              + '<strong>' + (a.title || 'Untitled') + '</strong><br>'
-              + '<span class="label">' + (a.agentName || '?') + ' | '
-              + (a.priceRange ? a.priceRange.min + '-' + a.priceRange.max + ' ' + a.priceRange.symbol : '--')
-              + '</span>'
-              + '</div>';
-          }).join('');
-        }
-
-        // Rooms
-        var rooms = swarmData.activeRooms || [];
-        document.getElementById('swarm-room-count').textContent = rooms.length;
-        if (rooms.length > 0) {
-          document.getElementById('swarm-rooms').innerHTML = rooms.map(function(r) {
-            var ann = r.announcement || {};
-            var statusCls = 'room-' + (r.status || 'open');
-            var bidCount = (r.bids || []).length;
-            return '<div class="room-item">'
-              + '<span class="room-status ' + statusCls + '">' + (r.status || 'open') + '</span> '
-              + '<strong>' + (ann.title || 'Room ' + (r.id || '?').slice(0, 8)) + '</strong><br>'
-              + '<span class="label">' + bidCount + ' bid(s)'
-              + (r.agreedPrice ? ' | Agreed: ' + r.agreedPrice + ' ' + (r.agreedSymbol || '') : '')
-              + '</span>'
-              + '</div>';
-          }).join('');
-        }
-
-        // Economics
-        var econData = await fetchJSON('/api/economics');
-        if (econData && econData.enabled && econData.economics) {
-          var econ = econData.economics;
-          document.getElementById('econ-revenue').textContent = '$' + (econ.totalRevenue || 0).toFixed(2);
-          document.getElementById('econ-costs').textContent = '$' + (econ.totalCosts || 0).toFixed(2);
-          var profit = (econ.totalRevenue || 0) - (econ.totalCosts || 0);
-          var profitEl = document.getElementById('econ-profit');
-          profitEl.textContent = '$' + profit.toFixed(2);
-          profitEl.className = 'econ-value ' + (profit >= 0 ? 'econ-positive' : 'econ-negative');
-          document.getElementById('econ-deals').textContent = econ.dealsCompleted || 0;
-          var sus = econ.sustainabilityScore || 0;
-          var susEl = document.getElementById('econ-sustainability');
-          susEl.textContent = (sus * 100).toFixed(0) + '%';
-          susEl.className = 'econ-value ' + (sus >= 0.5 ? 'econ-positive' : 'econ-negative');
-        }
-      }
-
-      // ERC-8004 identity
-      var identity = await fetchJSON('/api/identity');
-      if (identity && identity.registered) {
-        document.getElementById('identity-section').classList.remove('swarm-hidden');
-        document.getElementById('id-registered').textContent = 'YES';
-        document.getElementById('id-registered').style.color = 'var(--green)';
-        var agentIdLink = identity.agentId
-          ? '<a href="https://sepolia.etherscan.io/token/0x8004A818BFB912233c491871b3d84c89A494BD9e#' + identity.agentId + '" target="_blank" style="color:var(--purple);text-decoration:none;">#' + identity.agentId + '</a>'
-          : '--';
-        document.getElementById('id-agent-id').innerHTML = agentIdLink;
-        document.getElementById('id-wallet-set').textContent = identity.walletSet ? 'YES' : 'NO';
-        document.getElementById('id-wallet-set').style.color = identity.walletSet ? 'var(--green)' : 'var(--red)';
-        document.getElementById('id-agent-card').innerHTML = identity.agentURI
-          ? '<a href="' + identity.agentURI + '" target="_blank" style="color:var(--cyan);text-decoration:none;">' + identity.agentURI + '</a>'
-          : '--';
-        document.getElementById('id-reg-tx').textContent = identity.registrationTxHash || '--';
-
-        // On-chain reputation
-        var rep = await fetchJSON('/api/reputation/onchain');
-        if (rep && rep.registered) {
-          document.getElementById('rep-feedback-count').textContent = rep.feedbackCount || 0;
-          document.getElementById('rep-total-value').textContent = rep.totalValue || '0';
-        }
-      } else if (identity && !identity.registered) {
-        document.getElementById('identity-section').classList.remove('swarm-hidden');
-        document.getElementById('id-registered').textContent = 'NO';
-        document.getElementById('id-registered').style.color = 'var(--red)';
-      }
+    var rooms = swarm.activeRooms||[];
+    if (rooms.length>0) {
+      document.getElementById('room-list').innerHTML = rooms.map(function(r){
+        var st = r.status||'open';
+        return '<div class="room-item"><span class="room-badge rb-'+st+'">'+st+'</span> '
+          +'<strong>'+(r.announcement?r.announcement.title:'Room '+(r.id||'?').slice(0,8))+'</strong><br>'
+          +'<span style="font-size:0.68rem;color:var(--dim);">'+(r.bids||[]).length+' bid(s)'
+          +(r.agreedPrice?' | Agreed: '+r.agreedPrice+' '+(r.agreedSymbol||''):'')+'</span></div>';
+      }).join('');
     }
 
-    // Poll every 2 seconds
-    setInterval(update, 2000);
-    update();
-  </script>
+    // Economics
+    var econ = await api('/api/economics');
+    if (econ && econ.enabled && econ.economics) {
+      var e = econ.economics;
+      document.getElementById('econ-rev').textContent = '$'+(e.totalRevenue||0).toFixed(2);
+      document.getElementById('econ-cost').textContent = '$'+(e.totalCosts||0).toFixed(2);
+      var profit = (e.totalRevenue||0)-(e.totalCosts||0);
+      var profitEl = document.getElementById('econ-profit');
+      profitEl.textContent = '$'+profit.toFixed(2);
+      profitEl.className = 'econ-val '+(profit>=0?'econ-pos':'econ-neg');
+      document.getElementById('econ-deals').textContent = e.dealsCompleted||0;
+      var sus = e.sustainabilityScore||0;
+      var susEl = document.getElementById('econ-sus');
+      susEl.textContent = (sus*100).toFixed(0)+'%';
+      susEl.className = 'econ-val '+(sus>=0.5?'econ-pos':'econ-neg');
+
+      // KPI card
+      document.getElementById('kpi-sustainability').textContent = (sus*100).toFixed(0)+'%';
+      document.getElementById('kpi-sustainability').className = 'kpi-value '+(sus>=0.5?'green':'red');
+    }
+  }
+
+  // ERC-8004 Identity
+  var identity = await api('/api/identity');
+  if (identity && (identity.registered || identity.enabled !== false)) {
+    document.getElementById('identity-section').classList.remove('hidden');
+    if (identity.registered) {
+      document.getElementById('id-registered').textContent = 'YES';
+      document.getElementById('id-registered').className = 'id-value id-yes';
+      document.getElementById('id-agent-id').innerHTML = identity.agentId
+        ? '<a class="id-link" href="https://sepolia.etherscan.io/token/0x8004A818BFB912233c491871b3d84c89A494BD9e#'+identity.agentId+'" target="_blank">#'+identity.agentId+'</a>'
+        : '--';
+      document.getElementById('id-wallet-set').textContent = identity.walletSet?'YES':'NO';
+      document.getElementById('id-wallet-set').className = 'id-value '+(identity.walletSet?'id-yes':'id-no');
+      document.getElementById('id-card').innerHTML = identity.agentURI
+        ? '<a class="id-link" href="'+identity.agentURI+'" target="_blank">'+identity.agentURI+'</a>'
+        : '--';
+      document.getElementById('id-tx').textContent = identity.registrationTxHash||'--';
+
+      var rep = await api('/api/reputation/onchain');
+      if (rep && rep.registered) {
+        document.getElementById('rep-count').textContent = rep.feedbackCount||0;
+        document.getElementById('rep-value').textContent = rep.totalValue||'0';
+      }
+    } else {
+      document.getElementById('id-registered').textContent = 'NO';
+      document.getElementById('id-registered').className = 'id-value id-no';
+    }
+  }
+
+  // Refresh timestamp
+  document.getElementById('refresh-ts').textContent = new Date().toLocaleTimeString();
+}
+
+// Initial price fetch, then update loop
+fetchPrices();
+setInterval(function(){ fetchPrices(); }, 60000);
+setInterval(update, 2000);
+update();
+</script>
 </body>
 </html>
