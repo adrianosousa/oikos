@@ -29,6 +29,7 @@ import { MockLLM } from '../llm/mock.js';
 import { reasonAboutPayment } from '../llm/client.js';
 import { buildSystemPrompt, buildEventPrompt } from './prompts.js';
 import type { SwarmEvent, SwarmSettlementEvent, BoardAnnouncement } from '../swarm/types.js';
+import type { PricingService } from '../pricing/client.js';
 
 /** ERC-8004 on-chain identity state */
 export interface ERC8004Identity {
@@ -54,6 +55,8 @@ export interface BrainState {
   policies: PolicyStatus[];
   creatorAddress: string;
   portfolioAllocations: Record<string, number>;
+  portfolioTotalUsd: number;
+  assetPrices: Record<string, number>;
   defiOps: number;
   swarmEvents: Array<{ kind: string; summary: string; timestamp: number }>;
   erc8004Identity: ERC8004Identity;
@@ -64,6 +67,7 @@ export class AgentBrain {
   private config: BrainConfig;
   private llmClient: OpenAI | null;
   private mockLlm: MockLLM | null;
+  private pricing: PricingService | null = null;
 
   private state: BrainState = {
     status: 'idle',
@@ -79,6 +83,8 @@ export class AgentBrain {
     policies: [],
     creatorAddress: '',
     portfolioAllocations: {},
+    portfolioTotalUsd: 0,
+    assetPrices: {},
     defiOps: 0,
     swarmEvents: [],
     erc8004Identity: {
@@ -112,6 +118,11 @@ export class AgentBrain {
   /** Set the target creator address */
   setCreator(address: string): void {
     this.state.creatorAddress = address;
+  }
+
+  /** Set the pricing service for live market data */
+  setPricing(pricing: PricingService): void {
+    this.pricing = pricing;
   }
 
   /** Get current brain state (for dashboard) */
@@ -184,17 +195,41 @@ export class AgentBrain {
       this.state.balances = allBalances;
       this.state.policies = policyStatus;
 
-      // Update portfolio allocations
-      this.updatePortfolioAllocations(allBalances);
+      // Update portfolio allocations (uses live prices if available)
+      await this.updatePortfolioAllocations(allBalances);
     } catch (err) {
       console.error('[brain] Failed to refresh wallet state:', err instanceof Error ? err.message : 'Unknown');
     }
   }
 
-  /** Compute portfolio allocation percentages from balances */
-  private updatePortfolioAllocations(balances: BalanceResponse[]): void {
+  /** Compute portfolio allocation percentages from balances (uses live prices if available) */
+  private async updatePortfolioAllocations(balances: BalanceResponse[]): Promise<void> {
+    if (this.pricing) {
+      try {
+        const valuation = await this.pricing.valuatePortfolio(balances);
+        this.state.portfolioTotalUsd = valuation.totalUsd;
+
+        const allocations: Record<string, number> = {};
+        for (const a of valuation.assets) {
+          allocations[a.symbol] = a.allocation;
+        }
+        this.state.portfolioAllocations = allocations;
+
+        // Cache asset prices for dashboard/LLM
+        const prices: Record<string, number> = {};
+        for (const p of valuation.prices) {
+          prices[p.symbol] = p.priceUsd;
+        }
+        this.state.assetPrices = prices;
+        return;
+      } catch {
+        // Fall through to static fallback
+      }
+    }
+
+    // Fallback: static prices
     const pricesUsd: Record<string, number> = {
-      USDT: 1, USAT: 1, XAUT: 2400, BTC: 60000, ETH: 3000,
+      USDT: 1, USAT: 1, XAUT: 2650, BTC: 85000, ETH: 3200,
     };
     const decimals: Record<string, number> = {
       USDT: 6, USAT: 6, XAUT: 6, BTC: 8, ETH: 18,
@@ -217,6 +252,8 @@ export class AgentBrain {
       allocations[symbol] = totalUsd > 0 ? value / totalUsd : 0;
     }
     this.state.portfolioAllocations = allocations;
+    this.state.portfolioTotalUsd = totalUsd;
+    this.state.assetPrices = pricesUsd;
   }
 
   // -- Core Reasoning Loop --

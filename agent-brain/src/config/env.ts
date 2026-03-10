@@ -65,6 +65,14 @@ export interface BrainConfig {
   /** Path to persist the Ed25519 keypair */
   keypairPath: string;
 
+  // ── WDK Indexer API ──
+
+  /** WDK Indexer API key */
+  indexerApiKey: string;
+
+  /** WDK Indexer base URL */
+  indexerBaseUrl: string;
+
   // ── ERC-8004 Identity ──
 
   /** Enable ERC-8004 on-chain identity registration */
@@ -121,6 +129,10 @@ export function loadConfig(): BrainConfig {
     agentCapabilities: getEnv('AGENT_CAPABILITIES', 'portfolio-analyst,price-feed'),
     mockSwarm: getEnv('MOCK_SWARM', 'true') === 'true',
     keypairPath: getEnv('KEYPAIR_PATH', '.oikos-keypair.json'),
+
+    // WDK Indexer
+    indexerApiKey: getEnv('INDEXER_API_KEY', ''),
+    indexerBaseUrl: getEnv('INDEXER_BASE_URL', 'https://wdk-api.tether.io/api/v1'),
 
     // ERC-8004
     erc8004Enabled: getEnv('ERC8004_ENABLED', 'false') === 'true',

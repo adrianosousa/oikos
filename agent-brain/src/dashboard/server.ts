@@ -12,6 +12,7 @@ import { dirname, join } from 'path';
 import type { AgentBrain } from '../agent/brain.js';
 import type { WalletIPCClient } from '../ipc/client.js';
 import type { SwarmCoordinatorInterface } from '../swarm/types.js';
+import type { PricingService } from '../pricing/client.js';
 import { mountMCP } from '../mcp/server.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +23,7 @@ export function createDashboard(
   wallet: WalletIPCClient,
   port: number,
   swarm?: SwarmCoordinatorInterface,
+  pricing?: PricingService,
 ): void {
   const app = express();
 
@@ -142,6 +144,52 @@ export function createDashboard(
       res.json({ registered: true, ...rep });
     } catch {
       res.status(500).json({ error: 'Failed to query on-chain reputation' });
+    }
+  });
+
+  // ── Pricing & Portfolio Valuation ──
+
+  /** Current asset prices (live from Bitfinex or fallback) */
+  app.get('/api/prices', async (_req, res) => {
+    if (!pricing) {
+      res.json({ source: 'unavailable', prices: [] });
+      return;
+    }
+    try {
+      const prices = await pricing.getAllPrices();
+      res.json({ prices });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch prices' });
+    }
+  });
+
+  /** Portfolio valuation with USD totals and per-asset breakdown */
+  app.get('/api/valuation', async (_req, res) => {
+    try {
+      const balances = await wallet.queryBalanceAll();
+      if (pricing) {
+        const valuation = await pricing.valuatePortfolio(balances);
+        res.json(valuation);
+      } else {
+        res.json({ totalUsd: 0, assets: [], prices: [], updatedAt: Date.now() });
+      }
+    } catch {
+      res.status(500).json({ error: 'Failed to compute valuation' });
+    }
+  });
+
+  /** Historical price data for charts (max 100 data points) */
+  app.get('/api/prices/history/:symbol', async (req, res) => {
+    if (!pricing) {
+      res.json({ symbol: req.params['symbol'], history: [] });
+      return;
+    }
+    const symbol = (req.params['symbol'] ?? '').toUpperCase();
+    try {
+      const history = await pricing.getHistoricalPrices(symbol);
+      res.json({ symbol, history });
+    } catch {
+      res.status(500).json({ error: `Failed to fetch history for ${symbol}` });
     }
   });
 

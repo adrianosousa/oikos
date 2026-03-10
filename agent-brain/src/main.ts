@@ -19,6 +19,8 @@ import { WalletIPCClient } from './ipc/client.js';
 import { AgentBrain } from './agent/brain.js';
 import { createLLMClient } from './llm/client.js';
 import { MockEventSource } from './events/mock.js';
+import { IndexerEventSource } from './events/indexer.js';
+import { PricingService } from './pricing/client.js';
 import { getDemoCreators, getDefaultCreator } from './creators/registry.js';
 import { createDashboard } from './dashboard/server.js';
 import { resolve } from 'path';
@@ -75,14 +77,22 @@ async function main(): Promise<void> {
     console.error(`[oikos] Creator: ${defaultCreator.name} (${defaultCreator.addresses['ethereum'] ?? 'unknown'})`);
   }
 
+  // 4b. Initialize pricing service
+  const pricing = new PricingService();
+  await pricing.initialize();
+  brain.setPricing(pricing);
+
   // Initial wallet state refresh
   await brain.refreshWalletState();
   const state = brain.getState();
   if (state.balances.length > 0) {
     console.error(`[oikos] Balance: ${state.balances[0]?.formatted ?? 'unknown'}`);
+    // Show USD valuation
+    const valuation = await pricing.valuatePortfolio(state.balances);
+    console.error(`[oikos] Portfolio: $${valuation.totalUsd.toFixed(2)} USD (${valuation.assets.length} assets)`);
   }
 
-  // 4b. Bootstrap ERC-8004 identity (if enabled)
+  // 4c. Bootstrap ERC-8004 identity (if enabled)
   if (config.erc8004Enabled) {
     await brain.bootstrapIdentity(config.dashboardPort);
     console.error(`[oikos] ERC-8004: ${brain.getIdentityState().registered ? 'registered' : 'disabled'}`);
@@ -95,8 +105,26 @@ async function main(): Promise<void> {
       brain.handleEvents(events);
     });
     eventSource.start();
+  } else if (config.indexerApiKey) {
+    // Live blockchain events via WDK Indexer API
+    const ethAddress = await wallet.queryAddress('ethereum').then(r => r.address).catch(() => '');
+    const addresses: Record<string, string> = {};
+    if (ethAddress) addresses['ethereum'] = ethAddress;
+    if (ethAddress) addresses['sepolia'] = ethAddress;
+
+    const indexerSource = new IndexerEventSource({
+      apiKey: config.indexerApiKey,
+      baseUrl: config.indexerBaseUrl,
+      pollIntervalMs: config.eventPollIntervalMs,
+      addresses,
+    });
+    indexerSource.onEvents((events) => {
+      brain.handleEvents(events);
+    });
+    indexerSource.start();
+    console.error(`[oikos] Events: live (WDK Indexer, address: ${ethAddress.slice(0, 10)}...)`);
   } else {
-    console.error('[oikos] Live events not yet implemented — using idle mode');
+    console.error('[oikos] No event source configured (set MOCK_EVENTS=true or INDEXER_API_KEY)');
   }
 
   // 6. Start swarm (if enabled)
@@ -156,7 +184,7 @@ async function main(): Promise<void> {
   }
 
   // 8. Start dashboard
-  createDashboard(brain, wallet, config.dashboardPort, swarm ?? undefined);
+  createDashboard(brain, wallet, config.dashboardPort, swarm ?? undefined, pricing);
 
   console.error('[oikos] Agent Brain ready.');
   console.error(`[oikos] Dashboard: http://127.0.0.1:${config.dashboardPort}`);

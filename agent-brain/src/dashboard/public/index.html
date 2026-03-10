@@ -505,7 +505,6 @@
             + '</div>';
         }).join('');
       }
-    }
 
       // Swarm events from brain state
       if (state && state.swarmEvents && state.swarmEvents.length > 0) {
@@ -588,35 +587,35 @@
           susEl.className = 'econ-value ' + (sus >= 0.5 ? 'econ-positive' : 'econ-negative');
         }
       }
-    }
 
-    // ERC-8004 identity
-    var identity = await fetchJSON('/api/identity');
-    if (identity && identity.registered) {
-      document.getElementById('identity-section').classList.remove('swarm-hidden');
-      document.getElementById('id-registered').textContent = 'YES';
-      document.getElementById('id-registered').style.color = 'var(--green)';
-      var agentIdLink = identity.agentId
-        ? '<a href="https://sepolia.etherscan.io/token/0x8004A818BFB912233c491871b3d84c89A494BD9e#' + identity.agentId + '" target="_blank" style="color:var(--purple);text-decoration:none;">#' + identity.agentId + '</a>'
-        : '--';
-      document.getElementById('id-agent-id').innerHTML = agentIdLink;
-      document.getElementById('id-wallet-set').textContent = identity.walletSet ? 'YES' : 'NO';
-      document.getElementById('id-wallet-set').style.color = identity.walletSet ? 'var(--green)' : 'var(--red)';
-      document.getElementById('id-agent-card').innerHTML = identity.agentURI
-        ? '<a href="' + identity.agentURI + '" target="_blank" style="color:var(--cyan);text-decoration:none;">' + identity.agentURI + '</a>'
-        : '--';
-      document.getElementById('id-reg-tx').textContent = identity.registrationTxHash || '--';
+      // ERC-8004 identity
+      var identity = await fetchJSON('/api/identity');
+      if (identity && identity.registered) {
+        document.getElementById('identity-section').classList.remove('swarm-hidden');
+        document.getElementById('id-registered').textContent = 'YES';
+        document.getElementById('id-registered').style.color = 'var(--green)';
+        var agentIdLink = identity.agentId
+          ? '<a href="https://sepolia.etherscan.io/token/0x8004A818BFB912233c491871b3d84c89A494BD9e#' + identity.agentId + '" target="_blank" style="color:var(--purple);text-decoration:none;">#' + identity.agentId + '</a>'
+          : '--';
+        document.getElementById('id-agent-id').innerHTML = agentIdLink;
+        document.getElementById('id-wallet-set').textContent = identity.walletSet ? 'YES' : 'NO';
+        document.getElementById('id-wallet-set').style.color = identity.walletSet ? 'var(--green)' : 'var(--red)';
+        document.getElementById('id-agent-card').innerHTML = identity.agentURI
+          ? '<a href="' + identity.agentURI + '" target="_blank" style="color:var(--cyan);text-decoration:none;">' + identity.agentURI + '</a>'
+          : '--';
+        document.getElementById('id-reg-tx').textContent = identity.registrationTxHash || '--';
 
-      // On-chain reputation
-      var rep = await fetchJSON('/api/reputation/onchain');
-      if (rep && rep.registered) {
-        document.getElementById('rep-feedback-count').textContent = rep.feedbackCount || 0;
-        document.getElementById('rep-total-value').textContent = rep.totalValue || '0';
+        // On-chain reputation
+        var rep = await fetchJSON('/api/reputation/onchain');
+        if (rep && rep.registered) {
+          document.getElementById('rep-feedback-count').textContent = rep.feedbackCount || 0;
+          document.getElementById('rep-total-value').textContent = rep.totalValue || '0';
+        }
+      } else if (identity && !identity.registered) {
+        document.getElementById('identity-section').classList.remove('swarm-hidden');
+        document.getElementById('id-registered').textContent = 'NO';
+        document.getElementById('id-registered').style.color = 'var(--red)';
       }
-    } else if (identity && !identity.registered) {
-      document.getElementById('identity-section').classList.remove('swarm-hidden');
-      document.getElementById('id-registered').textContent = 'NO';
-      document.getElementById('id-registered').style.color = 'var(--red)';
     }
 
     // Poll every 2 seconds

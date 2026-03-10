@@ -18,7 +18,8 @@
     "@tetherto/wdk-wallet-evm": "2.0.0-rc.1",
     "@tetherto/wdk-protocol-swap-velora-evm": "1.0.0-beta.4",
     "@tetherto/wdk-protocol-bridge-usdt0-evm": "1.0.0-beta.2",
-    "@tetherto/wdk-protocol-lending-aave-evm": "1.0.0-beta.3"
+    "@tetherto/wdk-protocol-lending-aave-evm": "1.0.0-beta.3",
+    "@tetherto/wdk-secret-manager": "1.0.0-beta.3"
   },
   "devDependencies": {
     "typescript": "5.7.3",

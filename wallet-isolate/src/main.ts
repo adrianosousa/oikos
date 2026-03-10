@@ -42,6 +42,7 @@ import { TESTNET_CHAINS } from './wallet/chains.js';
 import { DEMO } from './policies/presets.js';
 import { readFileSync, appendFileSync } from './compat/fs.js';
 import { proc } from './compat/process.js';
+import { resolveSeed } from './secret/manager.js';
 
 // ── Configuration ──
 
@@ -266,7 +267,24 @@ async function main(): Promise<void> {
     await wallet.initialize('mock-seed-not-real', TESTNET_CHAINS);
   } else {
     console.error('[wallet-isolate] Initializing REAL WDK wallet');
-    const seed = getEnv('WALLET_SEED');
+
+    // Resolve seed: env var > encrypted file > generate new
+    const passphrase = getEnv('WALLET_PASSPHRASE', '');
+    const seedFilePath = getEnv('WALLET_SEED_FILE', '.oikos-seed.enc.json');
+    const existingSeed = proc.env['WALLET_SEED'] ?? '';
+
+    let seed: string;
+    if (existingSeed) {
+      seed = existingSeed;
+      console.error('[wallet-isolate] Using seed from WALLET_SEED env');
+    } else if (passphrase) {
+      const result = await resolveSeed({ passphrase, seedFilePath });
+      seed = result.seedPhrase;
+      console.error(`[wallet-isolate] Seed source: ${result.source}`);
+    } else {
+      throw new Error('REAL wallet requires WALLET_SEED or WALLET_PASSPHRASE');
+    }
+
     wallet = new WalletManager();
     await wallet.initialize(seed, TESTNET_CHAINS);
   }

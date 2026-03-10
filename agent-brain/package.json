@@ -14,18 +14,20 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "openai": "4.85.4",
-    "express": "4.21.2",
-    "hyperswarm": "4.16.0",
-    "protomux": "3.10.0",
+    "@tetherto/wdk-pricing-bitfinex-http": "1.0.0-beta.1",
+    "@tetherto/wdk-pricing-provider": "1.0.0-beta.1",
     "b4a": "1.8.0",
     "compact-encoding": "2.19.0",
+    "express": "4.21.2",
+    "hyperswarm": "4.16.0",
+    "openai": "4.85.4",
+    "protomux": "3.10.0",
     "sodium-universal": "5.0.1"
   },
   "devDependencies": {
-    "typescript": "5.7.3",
-    "@types/node": "22.13.5",
     "@types/express": "5.0.1",
-    "hyperdht": "6.29.1"
+    "@types/node": "22.13.5",
+    "hyperdht": "6.29.1",
+    "typescript": "5.7.3"
   }
 }
