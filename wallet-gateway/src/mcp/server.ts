@@ -13,17 +13,19 @@
  */
 
 import type { Request, Response } from 'express';
-import type { AgentBrain } from '../agent/brain.js';
 import type { WalletIPCClient } from '../ipc/client.js';
-import type { SwarmCoordinatorInterface } from '../swarm/types.js';
+import type { GatewayPlugin } from '../types.js';
 import type {
   PaymentProposal,
   SwapProposal,
   BridgeProposal,
   YieldProposal,
+  RGBIssueProposal,
+  RGBTransferProposal,
   TokenSymbol,
   Chain,
 } from '../ipc/types.js';
+import { toSmallestUnit } from '../amounts.js';
 
 // ── MCP Types ──
 
@@ -84,7 +86,7 @@ const TOOLS: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        amount: { type: 'string', description: 'Amount in smallest unit (1 USDT = "1000000")' },
+        amount: { type: 'string', description: 'Amount in human-readable units (e.g., "1.5" for 1.5 USDT, "0.01" for 0.01 BTC). Also accepts smallest-unit format for backwards compatibility.' },
         symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
         chain: { type: 'string', enum: ['ethereum', 'polygon', 'bitcoin', 'arbitrum'] },
         to: { type: 'string', description: 'Recipient address' },
@@ -100,7 +102,7 @@ const TOOLS: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        amount: { type: 'string', description: 'Amount to swap in smallest unit' },
+        amount: { type: 'string', description: 'Amount in human-readable units (e.g., "50" for 50 USDT)' },
         symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
         toSymbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
         chain: { type: 'string', enum: ['ethereum', 'polygon', 'bitcoin', 'arbitrum'] },
@@ -116,7 +118,7 @@ const TOOLS: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        amount: { type: 'string' },
+        amount: { type: 'string', description: 'Amount in human-readable units' },
         symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
         fromChain: { type: 'string', enum: ['ethereum', 'polygon', 'bitcoin', 'arbitrum'] },
         toChain: { type: 'string', enum: ['ethereum', 'polygon', 'bitcoin', 'arbitrum'] },
@@ -132,7 +134,7 @@ const TOOLS: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        amount: { type: 'string' },
+        amount: { type: 'string', description: 'Amount in human-readable units' },
         symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
         chain: { type: 'string', enum: ['ethereum', 'polygon', 'bitcoin', 'arbitrum'] },
         protocol: { type: 'string', description: 'DeFi protocol name (e.g., aave-v3)' },
@@ -201,13 +203,50 @@ const TOOLS: MCPTool[] = [
       required: ['agentId'],
     },
   },
+  // ── RGB Asset Tools ──
+  {
+    name: 'rgb_issue',
+    description: 'Issue a new RGB asset on Bitcoin. Creates a fungible token with specified supply.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ticker: { type: 'string', description: 'Asset ticker (e.g., "OTKN")' },
+        name: { type: 'string', description: 'Full asset name (e.g., "Oikos Token")' },
+        amount: { type: 'string', description: 'Total supply in human-readable units (e.g., "1000000")' },
+        precision: { type: 'number', description: 'Decimal places (e.g., 6 for 6 decimals)' },
+        reason: { type: 'string', description: 'Why this asset is being issued' },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+      },
+      required: ['ticker', 'name', 'amount', 'precision', 'reason', 'confidence'],
+    },
+  },
+  {
+    name: 'rgb_transfer',
+    description: 'Transfer an RGB asset to a recipient via their RGB invoice.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        invoice: { type: 'string', description: 'RGB invoice string from the receiver' },
+        amount: { type: 'string', description: 'Amount to transfer in human-readable units' },
+        symbol: { type: 'string', description: 'Asset ticker or ID for the RGB asset' },
+        reason: { type: 'string', description: 'Why this transfer is being made' },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+      },
+      required: ['invoice', 'amount', 'symbol', 'reason', 'confidence'],
+    },
+  },
+  {
+    name: 'rgb_assets',
+    description: 'List all RGB assets and their balances.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
 ];
 
 // ── Tool Handlers ──
 
 type ToolHandler = (
   params: Record<string, unknown>,
-  ctx: { brain: AgentBrain; wallet: WalletIPCClient; swarm?: SwarmCoordinatorInterface }
+  ctx: { wallet: WalletIPCClient; plugin?: GatewayPlugin }
 ) => Promise<unknown>;
 
 const handlers: Record<string, ToolHandler> = {
@@ -230,9 +269,10 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async propose_payment(params, { wallet }) {
+    const symbol = params['symbol'] as TokenSymbol;
     const proposal: PaymentProposal = {
-      amount: params['amount'] as string,
-      symbol: params['symbol'] as TokenSymbol,
+      amount: toSmallestUnit(params['amount'] as string, symbol),
+      symbol,
       chain: params['chain'] as Chain,
       to: params['to'] as string,
       reason: params['reason'] as string,
@@ -240,13 +280,14 @@ const handlers: Record<string, ToolHandler> = {
       strategy: 'mcp-tool',
       timestamp: Date.now(),
     };
-    return wallet.proposePayment(proposal);
+    return wallet.proposePayment(proposal, 'mcp');
   },
 
   async propose_swap(params, { wallet }) {
+    const symbol = params['symbol'] as TokenSymbol;
     const proposal: SwapProposal = {
-      amount: params['amount'] as string,
-      symbol: params['symbol'] as TokenSymbol,
+      amount: toSmallestUnit(params['amount'] as string, symbol),
+      symbol,
       toSymbol: params['toSymbol'] as TokenSymbol,
       chain: params['chain'] as Chain,
       reason: params['reason'] as string,
@@ -254,13 +295,14 @@ const handlers: Record<string, ToolHandler> = {
       strategy: 'mcp-tool',
       timestamp: Date.now(),
     };
-    return wallet.proposeSwap(proposal);
+    return wallet.proposeSwap(proposal, 'mcp');
   },
 
   async propose_bridge(params, { wallet }) {
+    const symbol = params['symbol'] as TokenSymbol;
     const proposal: BridgeProposal = {
-      amount: params['amount'] as string,
-      symbol: params['symbol'] as TokenSymbol,
+      amount: toSmallestUnit(params['amount'] as string, symbol),
+      symbol,
       chain: params['fromChain'] as Chain,
       fromChain: params['fromChain'] as Chain,
       toChain: params['toChain'] as Chain,
@@ -269,13 +311,14 @@ const handlers: Record<string, ToolHandler> = {
       strategy: 'mcp-tool',
       timestamp: Date.now(),
     };
-    return wallet.proposeBridge(proposal);
+    return wallet.proposeBridge(proposal, 'mcp');
   },
 
   async propose_yield(params, { wallet }) {
+    const symbol = params['symbol'] as TokenSymbol;
     const proposal: YieldProposal = {
-      amount: params['amount'] as string,
-      symbol: params['symbol'] as TokenSymbol,
+      amount: toSmallestUnit(params['amount'] as string, symbol),
+      symbol,
       chain: params['chain'] as Chain,
       protocol: params['protocol'] as string,
       action: params['action'] as 'deposit' | 'withdraw',
@@ -284,7 +327,7 @@ const handlers: Record<string, ToolHandler> = {
       strategy: 'mcp-tool',
       timestamp: Date.now(),
     };
-    return wallet.proposeYield(proposal);
+    return wallet.proposeYield(proposal, 'mcp');
   },
 
   async policy_status(_params, { wallet }) {
@@ -298,16 +341,19 @@ const handlers: Record<string, ToolHandler> = {
     return { entries };
   },
 
-  async agent_state(_params, { brain }) {
-    return brain.getState();
+  async agent_state(_params, { plugin }) {
+    if (!plugin?.getAgentState) return { status: 'no_agent_brain_connected' };
+    return plugin.getAgentState();
   },
 
-  async swarm_state(_params, { swarm }) {
+  async swarm_state(_params, { plugin }) {
+    const swarm = plugin?.getSwarm?.();
     if (!swarm) return { enabled: false };
     return { enabled: true, ...swarm.getState() };
   },
 
-  async swarm_announce(params, { swarm }) {
+  async swarm_announce(params, { plugin }) {
+    const swarm = plugin?.getSwarm?.();
     if (!swarm) return { error: 'Swarm not enabled' };
     const id = swarm.postAnnouncement({
       category: params['category'] as 'service' | 'auction' | 'request',
@@ -322,13 +368,51 @@ const handlers: Record<string, ToolHandler> = {
     return { announcementId: id };
   },
 
-  async identity_state(_params, { brain }) {
-    return brain.getIdentityState();
+  async identity_state(_params, { plugin }) {
+    if (!plugin?.getIdentityState) return { registered: false, status: 'no_agent_brain_connected' };
+    return plugin.getIdentityState();
   },
 
   async query_reputation(params, { wallet }) {
     const result = await wallet.queryReputation(params['agentId'] as string);
     return result;
+  },
+
+  // ── RGB Asset Handlers ──
+
+  async rgb_issue(params, { wallet }) {
+    const proposal: RGBIssueProposal = {
+      ticker: params['ticker'] as string,
+      name: params['name'] as string,
+      precision: params['precision'] as number,
+      amount: toSmallestUnit(params['amount'] as string, 'RGB' as TokenSymbol),
+      symbol: 'RGB' as TokenSymbol,
+      chain: 'rgb' as Chain,
+      reason: params['reason'] as string,
+      confidence: params['confidence'] as number,
+      strategy: 'mcp-tool',
+      timestamp: Date.now(),
+    };
+    return wallet.proposeRGBIssue(proposal, 'mcp');
+  },
+
+  async rgb_transfer(params, { wallet }) {
+    const proposal: RGBTransferProposal = {
+      invoice: params['invoice'] as string,
+      amount: toSmallestUnit(params['amount'] as string, 'RGB' as TokenSymbol),
+      symbol: (params['symbol'] ?? 'RGB') as TokenSymbol,
+      chain: 'rgb' as Chain,
+      reason: params['reason'] as string,
+      confidence: params['confidence'] as number,
+      strategy: 'mcp-tool',
+      timestamp: Date.now(),
+    };
+    return wallet.proposeRGBTransfer(proposal, 'mcp');
+  },
+
+  async rgb_assets(_params, { wallet }) {
+    const assets = await wallet.queryRGBAssets();
+    return { assets };
   },
 };
 
@@ -340,7 +424,7 @@ function makeError(id: string | number, code: number, message: string): MCPRespo
 
 async function handleRequest(
   req: MCPRequest,
-  ctx: { brain: AgentBrain; wallet: WalletIPCClient; swarm?: SwarmCoordinatorInterface }
+  ctx: { wallet: WalletIPCClient; plugin?: GatewayPlugin }
 ): Promise<MCPResponse> {
   const { id, method, params } = req;
 
@@ -382,7 +466,6 @@ async function handleRequest(
   }
 
   if (method === 'notifications/initialized') {
-    // Client notification — no response needed, but we return success for HTTP
     return { jsonrpc: '2.0', id, result: {} };
   }
 
@@ -397,9 +480,8 @@ async function handleRequest(
  */
 export function mountMCP(
   app: { post: (path: string, ...handlers: Array<(req: Request, res: Response) => void>) => void },
-  brain: AgentBrain,
   wallet: WalletIPCClient,
-  swarm?: SwarmCoordinatorInterface,
+  plugin?: GatewayPlugin,
 ): void {
   app.post('/mcp', async (req: Request, res: Response) => {
     const body = req.body as MCPRequest;
@@ -409,7 +491,7 @@ export function mountMCP(
       return;
     }
 
-    const response = await handleRequest(body, { brain, wallet, swarm });
+    const response = await handleRequest(body, { wallet, plugin });
     res.json(response);
   });
 

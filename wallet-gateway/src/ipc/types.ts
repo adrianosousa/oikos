@@ -1,20 +1,20 @@
 /**
- * IPC types — shared between Brain and Wallet Isolate.
+ * IPC types — shared contract between Gateway and Wallet Isolate.
  *
- * These types mirror the wallet-isolate types. In production,
- * these would be a shared package. For the hackathon, we
- * duplicate the minimal set needed.
+ * These types define the structured messages exchanged over
+ * stdin/stdout JSON-lines between the Gateway (or Brain) and
+ * the Wallet Isolate process.
  */
 
 // ── Symbols & Chains ──
 
-export type TokenSymbol = 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH';
-export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum';
+export type TokenSymbol = 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH' | 'RGB';
+export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum' | 'rgb';
 
 /** Source of a proposal — used for audit trail attribution */
-export type ProposalSource = 'llm' | 'x402' | 'companion' | 'swarm';
+export type ProposalSource = 'llm' | 'x402' | 'companion' | 'swarm' | 'mcp';
 
-// ── Proposal Types (Brain → Wallet) ──
+// ── Proposal Types (Gateway → Wallet) ──
 
 /** Common fields shared by all proposal types. */
 export interface ProposalCommon {
@@ -60,8 +60,29 @@ export interface FeedbackProposal extends ProposalCommon {
   feedbackHash: string;
 }
 
+/** Issue a new RGB asset on Bitcoin */
+export interface RGBIssueProposal extends ProposalCommon {
+  ticker: string;
+  name: string;
+  precision: number;
+}
+
+/** Transfer an RGB asset via invoice */
+export interface RGBTransferProposal extends ProposalCommon {
+  invoice: string;
+}
+
+/** RGB asset info returned by query_rgb_assets */
+export interface RGBAssetInfo {
+  assetId: string;
+  ticker: string;
+  name: string;
+  precision: number;
+  balance: string;
+}
+
 /** Discriminated union of all proposal types */
-export type AnyProposal = PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal;
+export type AnyProposal = PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal | RGBIssueProposal | RGBTransferProposal;
 
 // ── Query Types ──
 
@@ -111,7 +132,7 @@ export interface ReputationResult {
   valueDecimals: number;
 }
 
-// ── Response Types (Wallet → Brain) ──
+// ── Response Types (Wallet → Gateway) ──
 
 /** Execution result from the wallet */
 export interface ExecutionResult {
@@ -158,6 +179,8 @@ export type IPCRequestType =
   | 'propose_bridge'
   | 'propose_yield'
   | 'propose_feedback'
+  | 'propose_rgb_issue'
+  | 'propose_rgb_transfer'
   | 'query_balance'
   | 'query_balance_all'
   | 'query_address'
@@ -165,21 +188,23 @@ export type IPCRequestType =
   | 'query_audit'
   | 'identity_register'
   | 'identity_set_wallet'
-  | 'query_reputation';
+  | 'query_reputation'
+  | 'query_rgb_assets';
 
 export interface IPCRequest {
   id: string;
   type: IPCRequestType;
   source?: ProposalSource;
   payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal
+    | RGBIssueProposal | RGBTransferProposal
     | BalanceQuery | AddressQuery | Record<string, unknown> | AuditQuery
     | IdentityRegisterRequest | IdentitySetWalletRequest | ReputationQuery;
 }
 
 export interface IPCResponse {
   id: string;
-  type: 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'error';
+  type: 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'error';
   payload: ExecutionResult | BalanceResponse | BalanceResponse[]
     | AddressResponse | { policies: PolicyStatus[] } | { entries: unknown[] } | { message: string }
-    | IdentityResult | ReputationResult;
+    | IdentityResult | ReputationResult | RGBAssetInfo[];
 }

@@ -1,10 +1,10 @@
 /**
- * IPC Client — Brain's interface to the Wallet Isolate.
+ * IPC Client — Gateway's interface to the Wallet Isolate.
  *
  * Spawns the wallet-isolate as a child process (via Bare Runtime)
  * and communicates over stdin/stdout JSON-lines.
  *
- * @security The Brain NEVER sees seed phrases. It sends structured
+ * @security The Gateway NEVER sees seed phrases. It sends structured
  * requests and receives structured responses. Period.
  */
 
@@ -18,6 +18,9 @@ import type {
   BridgeProposal,
   YieldProposal,
   FeedbackProposal,
+  RGBIssueProposal,
+  RGBTransferProposal,
+  RGBAssetInfo,
   ProposalCommon,
   ProposalSource,
   BalanceQuery,
@@ -98,7 +101,7 @@ export class WalletIPCClient {
     this.child.on('exit', (code, signal) => {
       this.running = false;
       const reason = signal ? `signal ${signal}` : `code ${String(code)}`;
-      console.error(`[brain] Wallet isolate exited: ${reason}`);
+      console.error(`[gateway] Wallet isolate exited: ${reason}`);
 
       for (const [id, request] of this.pending) {
         clearTimeout(request.timeout);
@@ -112,7 +115,7 @@ export class WalletIPCClient {
     });
 
     this.child.on('error', (err) => {
-      console.error(`[brain] Wallet isolate spawn error: ${err.message}`);
+      console.error(`[gateway] Wallet isolate spawn error: ${err.message}`);
       this.running = false;
     });
   }
@@ -253,6 +256,26 @@ export class WalletIPCClient {
     return response.payload as ReputationResult;
   }
 
+  // ── RGB Asset Operations ──
+
+  /** Propose issuing a new RGB asset. */
+  async proposeRGBIssue(proposal: RGBIssueProposal, source?: ProposalSource): Promise<ExecutionResult> {
+    const response = await this.send('propose_rgb_issue', proposal, source);
+    return response.payload as ExecutionResult;
+  }
+
+  /** Propose transferring an RGB asset via invoice. */
+  async proposeRGBTransfer(proposal: RGBTransferProposal, source?: ProposalSource): Promise<ExecutionResult> {
+    const response = await this.send('propose_rgb_transfer', proposal, source);
+    return response.payload as ExecutionResult;
+  }
+
+  /** Query all RGB assets with balances. */
+  async queryRGBAssets(): Promise<RGBAssetInfo[]> {
+    const response = await this.send('query_rgb_assets', {});
+    return response.payload as RGBAssetInfo[];
+  }
+
   // ── Internal ──
 
   private send(type: IPCRequest['type'], payload: IPCRequest['payload'], source?: ProposalSource): Promise<IPCResponse> {
@@ -296,10 +319,10 @@ export class WalletIPCClient {
           this.pending.delete(response.id);
           pending.resolve(response);
         } else {
-          console.error(`[brain] Received response for unknown request: ${response.id}`);
+          console.error(`[gateway] Received response for unknown request: ${response.id}`);
         }
       } catch {
-        console.error(`[brain] Failed to parse wallet response: ${line.slice(0, 200)}`);
+        console.error(`[gateway] Failed to parse wallet response: ${line.slice(0, 200)}`);
       }
     }
   }

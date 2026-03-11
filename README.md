@@ -1,6 +1,10 @@
-# Oikos Protocol
+<p align="center">
+  <img src="assets/logo.png" alt="Oikos Protocol" width="400">
+</p>
 
-**Sovereign Agent Wallet Protocol**
+<h1 align="center">Oikos Protocol</h1>
+
+<p align="center"><strong>Sovereign Agent Wallet Protocol</strong></p>
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Tests: 140 passing](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](#testing)

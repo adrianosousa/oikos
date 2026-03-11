@@ -23,6 +23,7 @@
   },
   "workspaces": [
     "wallet-isolate",
+    "wallet-gateway",
     "agent-brain"
   ],
   "scripts": {
@@ -31,7 +32,9 @@
     "demo": "./scripts/start-demo.sh",
     "generate-seed": "node scripts/generate-seed.js",
     "pear:dev": "pear run -d .",
-    "start": "node agent-brain/dist/src/main.js"
+    "start": "node agent-brain/dist/src/main.js",
+    "start:gateway": "node wallet-gateway/dist/src/main.js",
+    "oikos": "node wallet-gateway/dist/src/cli.js"
   },
   "engines": {
     "node": ">=22.0.0"

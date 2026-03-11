@@ -10,7 +10,7 @@
  * Process isolation is preserved.
  */
 
-import type { BalanceResponse, ExecutionResult, PolicyStatus } from '../ipc/types.js';
+import type { BalanceResponse, ExecutionResult, PolicyStatus } from 'oikos-wallet-gateway';
 
 // ── Agent → Companion (Read-Only State) ──
 

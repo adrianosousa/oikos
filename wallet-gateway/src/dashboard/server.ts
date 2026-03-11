@@ -1,48 +1,49 @@
 /**
  * Dashboard Server — localhost-only monitoring UI.
  *
- * Serves a static HTML dashboard and REST API for agent state.
+ * Serves a static HTML dashboard and REST API for wallet state.
  * Displays multi-asset portfolio with allocation percentages.
  * NEVER exposed to the internet. Binds to 127.0.0.1 only.
+ *
+ * Works standalone (wallet-only) or with an agent brain plugin
+ * for additional state (LLM reasoning, swarm, pricing).
  */
 
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { AgentBrain } from '../agent/brain.js';
 import type { WalletIPCClient } from '../ipc/client.js';
-import type { SwarmCoordinatorInterface } from '../swarm/types.js';
-import type { PricingService } from '../pricing/client.js';
+import type { GatewayPlugin } from '../types.js';
 import { mountMCP } from '../mcp/server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function createDashboard(
-  brain: AgentBrain,
   wallet: WalletIPCClient,
   port: number,
-  swarm?: SwarmCoordinatorInterface,
-  pricing?: PricingService,
+  plugin?: GatewayPlugin,
 ): void {
   const app = express();
 
   // Serve static files
-  // In compiled output, __dirname is dist/src/dashboard — but public/ lives in src/dashboard/public.
-  // Resolve relative to the project root to work in both dev and compiled modes.
   const projectRoot = join(__dirname, '..', '..', '..');
   const publicDir = join(projectRoot, 'src', 'dashboard', 'public');
   app.use(express.static(publicDir));
   app.use(express.json());
 
   // -- MCP Endpoint --
-  mountMCP(app, brain, wallet, swarm);
+  mountMCP(app, wallet, plugin);
 
   // -- API Routes --
 
-  /** Agent brain state */
+  /** Agent brain state (requires plugin) */
   app.get('/api/state', (_req, res) => {
-    res.json(brain.getState());
+    if (!plugin?.getAgentState) {
+      res.json({ status: 'no_agent_brain_connected' });
+      return;
+    }
+    res.json(plugin.getAgentState());
   });
 
   /** Wallet balances — all assets across all chains */
@@ -86,8 +87,9 @@ export function createDashboard(
     }
   });
 
-  /** Swarm state — peers, announcements, rooms */
+  /** Swarm state — peers, announcements, rooms (requires plugin) */
   app.get('/api/swarm', (_req, res) => {
+    const swarm = plugin?.getSwarm?.();
     if (!swarm) {
       res.json({ enabled: false });
       return;
@@ -95,21 +97,22 @@ export function createDashboard(
     res.json({ enabled: true, ...swarm.getState() });
   });
 
-  /** Swarm economics — revenue, costs, sustainability */
+  /** Swarm economics — revenue, costs, sustainability (requires plugin) */
   app.get('/api/economics', (_req, res) => {
+    const swarm = plugin?.getSwarm?.();
     if (!swarm) {
       res.json({ enabled: false });
       return;
     }
     const state = swarm.getState();
-    res.json({ enabled: true, economics: state.economics });
+    res.json({ enabled: true, economics: (state as Record<string, unknown>)['economics'] });
   });
 
   // ── ERC-8004 Identity & Reputation ──
 
   /** ERC-8004 Agent Card (Registration File) — follows EIP-8004 schema */
   app.get('/agent-card.json', (_req, res) => {
-    const identity = brain.getIdentityState();
+    const identity = plugin?.getIdentityState?.() ?? { registered: false };
     res.json({
       type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
       name: 'Oikos Agent',
@@ -127,15 +130,19 @@ export function createDashboard(
     });
   });
 
-  /** ERC-8004 identity state */
+  /** ERC-8004 identity state (requires plugin) */
   app.get('/api/identity', (_req, res) => {
-    res.json(brain.getIdentityState());
+    if (!plugin?.getIdentityState) {
+      res.json({ registered: false, status: 'no_agent_brain_connected' });
+      return;
+    }
+    res.json(plugin.getIdentityState());
   });
 
   /** ERC-8004 on-chain reputation */
   app.get('/api/reputation/onchain', async (_req, res) => {
-    const identity = brain.getIdentityState();
-    if (!identity.registered || !identity.agentId) {
+    const identity = plugin?.getIdentityState?.();
+    if (!identity?.registered || !identity.agentId) {
       res.json({ registered: false });
       return;
     }
@@ -149,8 +156,9 @@ export function createDashboard(
 
   // ── Pricing & Portfolio Valuation ──
 
-  /** Current asset prices (live from Bitfinex or fallback) */
+  /** Current asset prices (requires plugin with pricing) */
   app.get('/api/prices', async (_req, res) => {
+    const pricing = plugin?.getPricing?.();
     if (!pricing) {
       res.json({ source: 'unavailable', prices: [] });
       return;
@@ -167,6 +175,7 @@ export function createDashboard(
   app.get('/api/valuation', async (_req, res) => {
     try {
       const balances = await wallet.queryBalanceAll();
+      const pricing = plugin?.getPricing?.();
       if (pricing) {
         const valuation = await pricing.valuatePortfolio(balances);
         res.json(valuation);
@@ -178,8 +187,9 @@ export function createDashboard(
     }
   });
 
-  /** Historical price data for charts (max 100 data points) */
+  /** Historical price data for charts (requires plugin with pricing) */
   app.get('/api/prices/history/:symbol', async (req, res) => {
+    const pricing = plugin?.getPricing?.();
     if (!pricing) {
       res.json({ symbol: req.params['symbol'], history: [] });
       return;
@@ -193,13 +203,25 @@ export function createDashboard(
     }
   });
 
+  // ── RGB Asset Endpoints ──
+
+  /** List all RGB assets with balances */
+  app.get('/api/rgb/assets', async (_req, res) => {
+    try {
+      const assets = await wallet.queryRGBAssets();
+      res.json({ assets });
+    } catch {
+      res.status(500).json({ error: 'Failed to query RGB assets' });
+    }
+  });
+
   /** Health check */
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       walletConnected: wallet.isRunning(),
-      brainStatus: brain.getState().status,
-      swarmEnabled: !!swarm,
+      brainConnected: !!plugin?.getAgentState,
+      swarmEnabled: !!plugin?.getSwarm?.(),
     });
   });
 

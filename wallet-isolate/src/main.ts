@@ -93,6 +93,8 @@ const PROPOSAL_TYPE_MAP: Record<string, string> = {
   'propose_bridge': 'bridge',
   'propose_yield': 'yield',
   'propose_feedback': 'feedback',
+  'propose_rgb_issue': 'rgb_issue',
+  'propose_rgb_transfer': 'rgb_transfer',
 };
 
 // ── Request Handler ──
@@ -218,6 +220,18 @@ async function handleRequest(
             id: request.id,
             type: 'reputation_result',
             payload: { agentId: req.agentId, feedbackCount: rep.feedbackCount, totalValue: rep.totalValue, valueDecimals: rep.valueDecimals }
+          };
+          break;
+        }
+
+        // ── RGB Asset Queries ──
+
+        case 'query_rgb_assets': {
+          const assets = await wallet.rgbListAssets();
+          response = {
+            id: request.id,
+            type: 'rgb_assets',
+            payload: assets,
           };
           break;
         }

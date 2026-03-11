@@ -17,7 +17,7 @@ import Protomux from 'protomux';
 import c from 'compact-encoding';
 import b4a from 'b4a';
 import sodium from 'sodium-universal';
-import type { WalletIPCClient } from '../ipc/client.js';
+import type { WalletIPCClient } from 'oikos-wallet-gateway';
 import type { AgentBrain } from '../agent/brain.js';
 import type { SwarmCoordinatorInterface } from '../swarm/types.js';
 import type {
@@ -132,7 +132,7 @@ export class CompanionCoordinator {
   }
 
   /** Notify companion of an execution result */
-  notifyExecution(result: import('../ipc/types.js').ExecutionResult): void {
+  notifyExecution(result: import('oikos-wallet-gateway').ExecutionResult): void {
     const msg: CompanionExecutionNotify = {
       type: 'execution_notify',
       result,

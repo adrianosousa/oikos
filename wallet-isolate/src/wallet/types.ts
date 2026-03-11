@@ -13,6 +13,9 @@ export interface ChainConfig {
   network?: string;      // 'testnet' | 'mainnet' for BTC
   host?: string;         // Electrum host for BTC
   port?: number;         // Electrum port for BTC
+  indexerUrl?: string;   // RGB indexer URL
+  transportEndpoint?: string; // RGB transport bridge endpoint
+  dataDir?: string;      // RGB data directory
 }
 
 export interface WalletBalance {
@@ -90,4 +93,18 @@ export interface WalletOperations {
 
   /** Query on-chain reputation from ERC-8004 ReputationRegistry. */
   getOnChainReputation(chain: Chain, agentId: string): Promise<OnChainReputation>;
+
+  // ── RGB Asset Operations ──
+
+  /** Issue a new RGB asset with given ticker, name, supply, and precision. */
+  rgbIssueAsset(ticker: string, name: string, supply: bigint, precision: number): Promise<TransactionResult & { assetId?: string }>;
+
+  /** Transfer an RGB asset to a receiver via invoice. */
+  rgbTransfer(invoice: string, amount: bigint, assetId: string): Promise<TransactionResult>;
+
+  /** Generate a receive invoice for incoming RGB transfers. */
+  rgbReceiveAsset(assetId?: string): Promise<{ invoice: string; recipientId: string }>;
+
+  /** List all RGB assets with balances. */
+  rgbListAssets(): Promise<Array<{ assetId: string; ticker: string; name: string; precision: number; balance: string }>>;
 }

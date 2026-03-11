@@ -10,8 +10,8 @@
 
 // ── Symbols & Chains ──
 
-export type TokenSymbol = 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH';
-export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum';
+export type TokenSymbol = 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH' | 'RGB';
+export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum' | 'rgb';
 
 /** Source of a proposal — used for audit trail attribution */
 export type ProposalSource = 'llm' | 'x402' | 'companion' | 'swarm';
@@ -65,8 +65,29 @@ export interface FeedbackProposal extends ProposalCommon {
   feedbackHash: string;   // bytes32 hex — keccak256 of off-chain details
 }
 
+/** Issue a new RGB asset on Bitcoin */
+export interface RGBIssueProposal extends ProposalCommon {
+  ticker: string;       // e.g., "OTKN"
+  name: string;         // e.g., "Oikos Token"
+  precision: number;    // decimal places (e.g., 6)
+}
+
+/** Transfer an RGB asset via invoice */
+export interface RGBTransferProposal extends ProposalCommon {
+  invoice: string;      // RGB invoice string from receiver
+}
+
+/** RGB asset info returned by query_rgb_assets */
+export interface RGBAssetInfo {
+  assetId: string;
+  ticker: string;
+  name: string;
+  precision: number;
+  balance: string;      // smallest-unit string
+}
+
 /** Discriminated union of all proposal types */
-export type AnyProposal = PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal;
+export type AnyProposal = PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal | RGBIssueProposal | RGBTransferProposal;
 
 // ── Query Types (Brain → Wallet) ──
 
@@ -121,6 +142,8 @@ export type IPCRequestType =
   | 'propose_bridge'
   | 'propose_yield'
   | 'propose_feedback'
+  | 'propose_rgb_issue'
+  | 'propose_rgb_transfer'
   | 'identity_register'
   | 'identity_set_wallet'
   | 'query_balance'
@@ -128,13 +151,15 @@ export type IPCRequestType =
   | 'query_address'
   | 'query_policy'
   | 'query_audit'
-  | 'query_reputation';
+  | 'query_reputation'
+  | 'query_rgb_assets';
 
 export interface IPCRequest {
   id: string;
   type: IPCRequestType;
   source?: ProposalSource; // Origin of the proposal (for audit trail)
   payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal
+    | RGBIssueProposal | RGBTransferProposal
     | IdentityRegisterRequest | IdentitySetWalletRequest
     | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery;
 }
@@ -200,6 +225,7 @@ export type IPCResponseType =
   | 'audit_entries'
   | 'identity_result'
   | 'reputation_result'
+  | 'rgb_assets'
   | 'error';
 
 export interface IPCResponse {
@@ -214,6 +240,7 @@ export interface IPCResponse {
     | AuditEntryResponse
     | IdentityResult
     | ReputationResult
+    | RGBAssetInfo[]
     | { message: string };
 }
 
@@ -233,12 +260,14 @@ export interface AuditEntry {
 
 // ── Validation ──
 
-const VALID_SYMBOLS: ReadonlySet<string> = new Set(['USDT', 'BTC', 'XAUT', 'USAT', 'ETH']);
-const VALID_CHAINS: ReadonlySet<string> = new Set(['ethereum', 'polygon', 'bitcoin', 'arbitrum']);
+const VALID_SYMBOLS: ReadonlySet<string> = new Set(['USDT', 'BTC', 'XAUT', 'USAT', 'ETH', 'RGB']);
+const VALID_CHAINS: ReadonlySet<string> = new Set(['ethereum', 'polygon', 'bitcoin', 'arbitrum', 'rgb']);
 const VALID_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'propose_payment', 'propose_swap', 'propose_bridge', 'propose_yield', 'propose_feedback',
+  'propose_rgb_issue', 'propose_rgb_transfer',
   'identity_register', 'identity_set_wallet',
-  'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation'
+  'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
+  'query_rgb_assets',
 ]);
 const VALID_YIELD_ACTIONS: ReadonlySet<string> = new Set(['deposit', 'withdraw']);
 
@@ -285,6 +314,14 @@ export function validateIPCRequest(raw: unknown): IPCRequest | null {
     case 'propose_feedback':
       if (!validateFeedbackProposal(payload)) return null;
       break;
+    case 'propose_rgb_issue':
+      if (!validateRGBIssueProposal(payload)) return null;
+      break;
+    case 'propose_rgb_transfer':
+      if (!validateRGBTransferProposal(payload)) return null;
+      break;
+    case 'query_rgb_assets':
+      break; // No payload validation needed
     case 'identity_register':
       if (!validateIdentityRegisterRequest(payload)) return null;
       break;
@@ -370,6 +407,18 @@ function validateFeedbackProposal(obj: Record<string, unknown>): boolean {
   if (typeof obj['endpoint'] !== 'string') return false;
   if (typeof obj['feedbackURI'] !== 'string') return false;
   if (typeof obj['feedbackHash'] !== 'string') return false;
+  return validateProposalCommon(obj);
+}
+
+function validateRGBIssueProposal(obj: Record<string, unknown>): boolean {
+  if (typeof obj['ticker'] !== 'string' || obj['ticker'].length === 0) return false;
+  if (typeof obj['name'] !== 'string' || obj['name'].length === 0) return false;
+  if (typeof obj['precision'] !== 'number' || obj['precision'] < 0 || obj['precision'] > 18) return false;
+  return validateProposalCommon(obj);
+}
+
+function validateRGBTransferProposal(obj: Record<string, unknown>): boolean {
+  if (typeof obj['invoice'] !== 'string' || obj['invoice'].length === 0) return false;
   return validateProposalCommon(obj);
 }
 

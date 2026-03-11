@@ -8,7 +8,7 @@
  * In production, prices would come from oracle feeds or x402 price services.
  */
 
-import type { BalanceResponse } from '../ipc/types.js';
+import type { BalanceResponse } from 'oikos-wallet-gateway';
 
 export interface PortfolioAnalysis {
   totalValueUsd: number;

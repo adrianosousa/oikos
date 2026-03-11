@@ -440,6 +440,26 @@ export class WalletManager implements WalletOperations {
     }
   }
 
+  // ── RGB Asset Operations ──
+  // Real WDK RGB integration via @utexo/wdk-wallet-rgb (Step 4).
+  // These stubs return errors until the RGB module is registered.
+
+  async rgbIssueAsset(_ticker: string, _name: string, _supply: bigint, _precision: number): Promise<TransactionResult & { assetId?: string }> {
+    return { success: false, error: 'RGB wallet module not configured. Set RGB_ENABLED=true.' };
+  }
+
+  async rgbTransfer(_invoice: string, _amount: bigint, _assetId: string): Promise<TransactionResult> {
+    return { success: false, error: 'RGB wallet module not configured. Set RGB_ENABLED=true.' };
+  }
+
+  async rgbReceiveAsset(_assetId?: string): Promise<{ invoice: string; recipientId: string }> {
+    throw new Error('RGB wallet module not configured. Set RGB_ENABLED=true.');
+  }
+
+  async rgbListAssets(): Promise<Array<{ assetId: string; ticker: string; name: string; precision: number; balance: string }>> {
+    return [];
+  }
+
   // ── Private Helpers ──
 
   /** Get the WDK account for a given chain. */
@@ -504,6 +524,8 @@ export class MockWalletManager implements WalletOperations {
   private initialized = false;
   private nextAgentId = 1;
   private feedbackStore: Array<{ targetAgentId: string; value: number; valueDecimals: number }> = [];
+  private mockRgbAssets: Map<string, { ticker: string; name: string; precision: number; balance: bigint }> = new Map();
+  private nextRgbAssetId = 1;
 
   async initialize(_seed: string, chains: ChainConfig[]): Promise<void> {
     // Seed up mock balances per chain
@@ -668,6 +690,53 @@ export class MockWalletManager implements WalletOperations {
       totalValue: String(totalValue),
       valueDecimals: entries[0]?.valueDecimals ?? 0,
     };
+  }
+
+  // ── RGB Asset Operations (Mock) ──
+
+  async rgbIssueAsset(ticker: string, name: string, supply: bigint, precision: number): Promise<TransactionResult & { assetId?: string }> {
+    this.ensureInit();
+    const assetId = `rgb:mock-${this.nextRgbAssetId++}-${ticker.toLowerCase()}`;
+    this.mockRgbAssets.set(assetId, { ticker, name, precision, balance: supply });
+    const mockHash = `0xrgbissue${Date.now().toString(16)}`;
+    return { success: true, txHash: mockHash, assetId };
+  }
+
+  async rgbTransfer(invoice: string, amount: bigint, assetId: string): Promise<TransactionResult> {
+    this.ensureInit();
+    const asset = this.mockRgbAssets.get(assetId);
+    if (!asset) return { success: false, error: `RGB asset not found: ${assetId}` };
+    if (amount > asset.balance) return { success: false, error: `Insufficient RGB balance for ${asset.ticker}` };
+    asset.balance -= amount;
+    const mockHash = `0xrgbtransfer${Date.now().toString(16)}`;
+    // Include invoice prefix in hash for traceability
+    void invoice;
+    return { success: true, txHash: mockHash };
+  }
+
+  async rgbReceiveAsset(assetId?: string): Promise<{ invoice: string; recipientId: string }> {
+    this.ensureInit();
+    const recipientId = `mock-recipient-${Date.now().toString(36)}`;
+    const invoiceAsset = assetId ? assetId.slice(0, 20) : 'any';
+    return {
+      invoice: `rgb:invoice:${invoiceAsset}:${recipientId}`,
+      recipientId,
+    };
+  }
+
+  async rgbListAssets(): Promise<Array<{ assetId: string; ticker: string; name: string; precision: number; balance: string }>> {
+    this.ensureInit();
+    const results: Array<{ assetId: string; ticker: string; name: string; precision: number; balance: string }> = [];
+    for (const [assetId, asset] of this.mockRgbAssets) {
+      results.push({
+        assetId,
+        ticker: asset.ticker,
+        name: asset.name,
+        precision: asset.precision,
+        balance: asset.balance.toString(),
+      });
+    }
+    return results;
   }
 
   private ensureInit(): void {

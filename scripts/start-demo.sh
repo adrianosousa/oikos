@@ -46,7 +46,7 @@ if [[ -z "$WALLET_RUNTIME" ]]; then
 fi
 
 # Build if needed
-if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/agent-brain/dist/src/main.js" ]]; then
+if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/wallet-gateway/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/agent-brain/dist/src/main.js" ]]; then
   echo "[oikos] Building project..."
   cd "$PROJECT_DIR"
   npm run build 2>&1 | tail -5
@@ -70,6 +70,7 @@ echo "  ║   LLM:       mock (8-decision deterministic cycle)        ║"
 echo "  ║   Swarm:     mock (2 peers: AlphaBot, BetaBot)            ║"
 echo "  ║   Events:    mock (3-min simulated stream)                ║"
 echo "  ║   Identity:  ERC-8004 (mock mode)                         ║"
+echo "  ║   RGB:       enabled (mock transport bridge)              ║"
 echo "  ║                                                           ║"
 echo "  ║   Dashboard: http://127.0.0.1:${DASHBOARD_PORT}                       ║"
 echo "  ║   MCP:       POST http://127.0.0.1:${DASHBOARD_PORT}/mcp              ║"
@@ -84,12 +85,10 @@ echo ""
 cd "$PROJECT_DIR"
 
 exec env \
-  MOCK_LLM=true \
-  MOCK_EVENTS=true \
-  MOCK_WALLET=true \
-  MOCK_SWARM=true \
+  OIKOS_MODE=mock \
   SWARM_ENABLED=true \
   ERC8004_ENABLED=true \
+  RGB_ENABLED=true \
   WALLET_RUNTIME="$WALLET_RUNTIME" \
   WALLET_ISOLATE_PATH="./wallet-isolate/dist/src/main.js" \
   DASHBOARD_PORT="$DASHBOARD_PORT" \

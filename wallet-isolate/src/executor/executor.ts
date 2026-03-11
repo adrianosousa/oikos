@@ -20,6 +20,8 @@ import type {
   BridgeProposal,
   YieldProposal,
   FeedbackProposal,
+  RGBIssueProposal,
+  RGBTransferProposal,
   ExecutionResult,
   ProposalSource,
 } from '../ipc/types.js';
@@ -135,6 +137,14 @@ export class ProposalExecutor {
           p.chain, p.targetAgentId, p.feedbackValue, 2,
           p.tag1, p.tag2, p.endpoint, p.feedbackURI, p.feedbackHash
         );
+      }
+      case 'rgb_issue': {
+        const p = proposal as RGBIssueProposal;
+        return this.wallet.rgbIssueAsset(p.ticker, p.name, BigInt(p.amount), p.precision);
+      }
+      case 'rgb_transfer': {
+        const p = proposal as RGBTransferProposal;
+        return this.wallet.rgbTransfer(p.invoice, BigInt(p.amount), p.symbol);
       }
       default:
         return { success: false, error: `Unknown proposal type: ${proposalType}` };

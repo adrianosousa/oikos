@@ -6,9 +6,8 @@
  * The brain NEVER signs transactions. It proposes, the wallet decides.
  */
 
-import type { WalletIPCClient } from '../ipc/client.js';
-import type { StreamEvent } from '../events/types.js';
 import type {
+  WalletIPCClient,
   PaymentProposal,
   SwapProposal,
   BridgeProposal,
@@ -21,7 +20,8 @@ import type {
   TokenSymbol,
   Chain,
   IdentityResult,
-} from '../ipc/types.js';
+} from 'oikos-wallet-gateway';
+import type { StreamEvent } from '../events/types.js';
 import type { BrainConfig } from '../config/env.js';
 import type OpenAI from 'openai';
 import type { LLMPaymentDecision } from '../llm/client.js';

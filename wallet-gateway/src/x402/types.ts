@@ -2,7 +2,6 @@
  * x402 Machine Payment Types.
  *
  * HTTP 402 protocol for commodity machine-to-machine payments.
- * Interfaces defined now; full implementation in Phase 5.
  *
  * x402 is the fourth payment model in Oikos:
  * 1. Direct payments — simple transfers via IPC

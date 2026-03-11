@@ -1,0 +1,29 @@
+{
+  "name": "oikos-wallet-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wallet Gateway — HTTP/MCP/REST interface to the Oikos Wallet Isolate",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/src/main.js",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "bin": {
+    "oikos": "./dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/main.js",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.1",
+    "@types/node": "22.13.5",
+    "typescript": "5.7.3"
+  }
+}

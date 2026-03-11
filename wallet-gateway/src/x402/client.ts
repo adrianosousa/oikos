@@ -18,7 +18,7 @@ import type {
   X402Service,
   X402Economics,
 } from './types.js';
-import type { TokenSymbol, Chain } from '../ipc/types.js';
+import type { TokenSymbol, Chain, PaymentProposal } from '../ipc/types.js';
 
 /** Map x402 network identifiers to our Chain type */
 const NETWORK_TO_CHAIN: Record<string, Chain> = {
@@ -62,11 +62,6 @@ export class X402Client {
    * 3. Creates PaymentProposal → sends to Wallet via IPC → PolicyEngine evaluates
    * 4. If approved, retries with X-PAYMENT header
    * 5. Returns the final response
-   *
-   * @param url Target URL
-   * @param init Standard fetch options
-   * @param maxPaymentUsd Maximum USD willing to pay (safety cap)
-   * @returns Response from the service
    */
   async fetch(
     url: string,
@@ -123,7 +118,7 @@ export class X402Client {
         confidence: 0.95,
         strategy: 'x402-auto-pay',
         timestamp: Date.now(),
-      } as import('../ipc/types.js').PaymentProposal);
+      } as PaymentProposal);
 
       if (result.status !== 'executed' || !result.txHash) {
         this.economics.requestsFailed++;
@@ -185,19 +180,14 @@ export class X402Client {
 
   /** Parse a 402 response to extract payment requirements */
   private _parse402(response: Response): X402PaymentRequired | null {
-    // Try X-PAYMENT-REQUIRED header (standard x402)
     const header = response.headers.get('x-payment-required');
     if (header) {
       try {
         return JSON.parse(header) as X402PaymentRequired;
       } catch {
-        // Fall through to body parsing
+        // Fall through
       }
     }
-
-    // Try response body (alternative format)
-    // We can't easily await here since this is called from sync context,
-    // but the body was already consumed. Return null for unparseable.
     return null;
   }
 

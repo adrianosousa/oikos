@@ -6,7 +6,7 @@
  * The user prompt provides current context for decision-making.
  */
 
-import type { BalanceResponse, PolicyStatus } from '../ipc/types.js';
+import type { BalanceResponse, PolicyStatus } from 'oikos-wallet-gateway';
 
 /** Compute portfolio allocation percentages from balances */
 function computeAllocations(balances: BalanceResponse[]): Array<{

@@ -8,7 +8,7 @@
  * For demo mode without networking, use MockSwarmCoordinator.
  */
 
-import type { WalletIPCClient } from '../ipc/client.js';
+import type { WalletIPCClient } from 'oikos-wallet-gateway';
 import type { AgentCapability } from './types.js';
 import type {
   AgentIdentity,
@@ -270,7 +270,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         strategy: 'swarm-settlement',
         timestamp: Date.now(),
         to: acceptedBid.bidderPubkey.slice(0, 42), // PaymentProposal field
-      } as unknown as import('../ipc/types.js').ProposalCommon);
+      } as unknown as import('oikos-wallet-gateway').ProposalCommon);
 
       if (result.status === 'executed') {
         // Send payment confirmation

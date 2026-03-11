@@ -15,7 +15,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { WalletIPCClient } from '../ipc/client.js';
+import type { WalletIPCClient } from 'oikos-wallet-gateway';
 import type {
   AgentIdentity,
   SwarmState,
@@ -290,7 +290,7 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
         strategy: 'swarm-settlement',
         timestamp: Date.now(),
         to: room.acceptedBid.bidderPubkey.slice(0, 42),
-      } as unknown as import('../ipc/types.js').ProposalCommon);
+      } as unknown as import('oikos-wallet-gateway').ProposalCommon);
 
       if (result.status === 'executed') {
         this.marketplace.settleRoom(announcementId, result.txHash ?? 'mock-tx');

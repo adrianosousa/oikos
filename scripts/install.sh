@@ -383,6 +383,28 @@ check_openclaw() {
 }
 
 # ────────────────────────────────────────────────────
+# Step 7: CLI symlink
+# ────────────────────────────────────────────────────
+
+install_cli() {
+  CLI_PATH="$(pwd)/wallet-gateway/dist/src/cli.js"
+  if [ -f "$CLI_PATH" ]; then
+    # Try to symlink into a PATH directory
+    LOCAL_BIN="${HOME}/.local/bin"
+    mkdir -p "$LOCAL_BIN"
+    if ln -sf "$CLI_PATH" "$LOCAL_BIN/oikos" 2>/dev/null; then
+      chmod +x "$CLI_PATH"
+      success "Installed 'oikos' CLI to $LOCAL_BIN/oikos"
+      if ! echo "$PATH" | grep -q "$LOCAL_BIN"; then
+        warn "Add $LOCAL_BIN to your PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
+      fi
+    else
+      warn "Could not install CLI globally. Use: npm run oikos -- balance"
+    fi
+  fi
+}
+
+# ────────────────────────────────────────────────────
 # Done!
 # ────────────────────────────────────────────────────
 
@@ -396,6 +418,11 @@ print_done() {
   echo ""
   echo -e "  ${BOLD}Dashboard:${NC}"
   echo -e "    ${CYAN}http://127.0.0.1:${DASHBOARD_PORT}${NC}"
+  echo ""
+  echo -e "  ${BOLD}CLI:${NC}"
+  echo -e "    ${CYAN}oikos balance${NC}       # Check balances"
+  echo -e "    ${CYAN}oikos health${NC}        # Gateway status"
+  echo -e "    ${CYAN}oikos help${NC}          # All commands"
   echo ""
   echo -e "  ${BOLD}MCP endpoint:${NC}"
   echo -e "    ${CYAN}POST http://127.0.0.1:${DASHBOARD_PORT}/mcp${NC}"
@@ -417,4 +444,5 @@ build_project
 configure
 generate_env
 check_openclaw
+install_cli
 print_done

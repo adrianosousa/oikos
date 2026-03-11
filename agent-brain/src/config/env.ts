@@ -1,9 +1,15 @@
 /**
- * Environment configuration for Agent Brain.
+ * Brain Configuration — environment variable loader.
  *
- * Loads and validates all configuration from environment variables.
- * The Brain process NEVER handles seed phrases or private keys.
+ * Brain-specific config: LLM, swarm, events, companion.
+ * Wallet/dashboard config lives in wallet-gateway.
+ *
+ * Supports OIKOS_MODE for simplified mock flags:
+ *   mock    → all mocks enabled
+ *   testnet → real services
  */
+
+import type { OikosMode } from 'oikos-wallet-gateway';
 
 export interface BrainConfig {
   /** LLM mode: 'local' (Ollama) or 'cloud' (remote API) */
@@ -23,21 +29,6 @@ export interface BrainConfig {
 
   /** Use mock events instead of real event source */
   mockEvents: boolean;
-
-  /** Dashboard port (localhost only) */
-  dashboardPort: number;
-
-  /** Path to the wallet-isolate entry script (for spawning) */
-  walletIsolatePath: string;
-
-  /** Whether wallet-isolate should use mock wallet */
-  mockWallet: boolean;
-
-  /** Path to policy config file for wallet-isolate */
-  policyFile: string;
-
-  /** Path to audit log file */
-  auditLogPath: string;
 
   /** Event source URL (for real events) */
   eventSourceUrl: string;
@@ -91,6 +82,14 @@ export interface BrainConfig {
 
   /** State push interval to companion (ms) */
   companionUpdateIntervalMs: number;
+
+  // ── RGB Configuration ──
+
+  /** Enable RGB transport bridge */
+  rgbEnabled: boolean;
+
+  /** Port for the RGB transport bridge HTTP server */
+  rgbTransportPort: number;
 }
 
 function getEnv(key: string, fallback?: string): string {
@@ -100,7 +99,15 @@ function getEnv(key: string, fallback?: string): string {
   throw new Error(`Missing required environment variable: ${key}`);
 }
 
-export function loadConfig(): BrainConfig {
+/** Resolve a mock flag considering OIKOS_MODE + individual override */
+function resolveMock(envKey: string, mode: OikosMode): boolean {
+  const explicit = process.env[envKey];
+  if (explicit !== undefined && explicit !== '') return explicit === 'true';
+  return mode === 'mock';
+}
+
+export function loadBrainConfig(): BrainConfig {
+  const mode = (getEnv('OIKOS_MODE', 'mock') as OikosMode);
   const llmMode = getEnv('LLM_MODE', 'local') as 'local' | 'cloud';
 
   return {
@@ -112,22 +119,17 @@ export function loadConfig(): BrainConfig {
       ? getEnv('LLM_API_KEY', 'ollama-local')
       : getEnv('LLM_API_KEY'),
     llmModel: getEnv('LLM_MODEL', llmMode === 'local' ? 'qwen3:8b' : 'gpt-4o-mini'),
-    mockLlm: getEnv('MOCK_LLM', 'false') === 'true',
-    mockEvents: getEnv('MOCK_EVENTS', 'true') === 'true',
-    dashboardPort: parseInt(getEnv('DASHBOARD_PORT', '3420'), 10),
-    walletIsolatePath: getEnv('WALLET_ISOLATE_PATH', '../wallet-isolate/dist/src/main.js'),
-    mockWallet: getEnv('MOCK_WALLET', 'true') === 'true',
-    policyFile: getEnv('POLICY_FILE', ''),
-    auditLogPath: getEnv('AUDIT_LOG_PATH', 'audit.jsonl'),
+    mockLlm: resolveMock('MOCK_LLM', mode),
+    mockEvents: resolveMock('MOCK_EVENTS', mode),
     eventSourceUrl: getEnv('EVENT_SOURCE_URL', ''),
     eventPollIntervalMs: parseInt(getEnv('EVENT_POLL_INTERVAL_MS', '5000'), 10),
 
     // Swarm
-    swarmEnabled: getEnv('SWARM_ENABLED', 'false') === 'true',
+    swarmEnabled: getEnv('SWARM_ENABLED', mode === 'mock' ? 'true' : 'false') === 'true',
     swarmId: getEnv('SWARM_ID', 'oikos-hackathon-v1'),
     agentName: getEnv('AGENT_NAME', 'Oikos-Agent-1'),
     agentCapabilities: getEnv('AGENT_CAPABILITIES', 'portfolio-analyst,price-feed'),
-    mockSwarm: getEnv('MOCK_SWARM', 'true') === 'true',
+    mockSwarm: resolveMock('MOCK_SWARM', mode),
     keypairPath: getEnv('KEYPAIR_PATH', '.oikos-keypair.json'),
 
     // WDK Indexer
@@ -142,5 +144,12 @@ export function loadConfig(): BrainConfig {
     companionOwnerPubkey: getEnv('COMPANION_OWNER_PUBKEY', ''),
     companionTopicSeed: getEnv('COMPANION_TOPIC_SEED', 'oikos-companion-default'),
     companionUpdateIntervalMs: parseInt(getEnv('COMPANION_UPDATE_INTERVAL_MS', '5000'), 10),
+
+    // RGB
+    rgbEnabled: getEnv('RGB_ENABLED', 'false') === 'true',
+    rgbTransportPort: parseInt(getEnv('RGB_TRANSPORT_PORT', '13100'), 10),
   };
 }
+
+/** @deprecated Use loadBrainConfig() instead */
+export const loadConfig = loadBrainConfig;
