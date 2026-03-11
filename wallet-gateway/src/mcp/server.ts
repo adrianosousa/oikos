@@ -22,6 +22,7 @@ import type {
   YieldProposal,
   RGBIssueProposal,
   RGBTransferProposal,
+  ProposalCommon,
   TokenSymbol,
   Chain,
 } from '../ipc/types.js';
@@ -240,6 +241,24 @@ const TOOLS: MCPTool[] = [
     description: 'List all RGB assets and their balances.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
+  // ── Dry-Run Policy Check ──
+  {
+    name: 'simulate_proposal',
+    description: 'Dry-run a proposal against the PolicyEngine without executing, recording, or burning cooldown. Returns { wouldApprove, violations[] }. Use this to check feasibility before committing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['payment', 'swap', 'bridge', 'yield'], description: 'Proposal type to simulate' },
+        amount: { type: 'string', description: 'Amount in human-readable units (e.g., "1.5" for 1.5 USDT)' },
+        symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH', 'RGB'] },
+        chain: { type: 'string', enum: ['ethereum', 'polygon', 'bitcoin', 'arbitrum', 'rgb'] },
+        to: { type: 'string', description: 'Recipient address (for payment type)' },
+        toSymbol: { type: 'string', description: 'Target symbol (for swap type)' },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+      },
+      required: ['type', 'amount', 'symbol', 'chain', 'confidence'],
+    },
+  },
 ];
 
 // ── Tool Handlers ──
@@ -413,6 +432,26 @@ const handlers: Record<string, ToolHandler> = {
   async rgb_assets(_params, { wallet }) {
     const assets = await wallet.queryRGBAssets();
     return { assets };
+  },
+
+  // ── Dry-Run Policy Check ──
+
+  async simulate_proposal(params, { wallet }) {
+    const symbol = params['symbol'] as TokenSymbol;
+    const proposal: ProposalCommon = {
+      amount: toSmallestUnit(params['amount'] as string, symbol),
+      symbol,
+      chain: params['chain'] as Chain,
+      reason: 'dry-run simulation',
+      confidence: params['confidence'] as number,
+      strategy: 'simulate',
+      timestamp: Date.now(),
+    };
+    // Add type-specific fields so the proposal looks realistic for policy eval
+    const p = proposal as unknown as Record<string, unknown>;
+    if (params['to']) p['to'] = params['to'];
+    if (params['toSymbol']) p['toSymbol'] = params['toSymbol'];
+    return wallet.simulateProposal(proposal);
   },
 };
 

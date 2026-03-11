@@ -152,7 +152,15 @@ export type IPCRequestType =
   | 'query_policy'
   | 'query_audit'
   | 'query_reputation'
-  | 'query_rgb_assets';
+  | 'query_rgb_assets'
+  | 'query_policy_check';
+
+/** Dry-run policy check result — evaluate without executing or recording */
+export interface PolicyCheckResult {
+  wouldApprove: boolean;
+  violations: string[];
+  policyId: string;
+}
 
 export interface IPCRequest {
   id: string;
@@ -226,6 +234,7 @@ export type IPCResponseType =
   | 'identity_result'
   | 'reputation_result'
   | 'rgb_assets'
+  | 'policy_check'
   | 'error';
 
 export interface IPCResponse {
@@ -241,6 +250,7 @@ export interface IPCResponse {
     | IdentityResult
     | ReputationResult
     | RGBAssetInfo[]
+    | PolicyCheckResult
     | { message: string };
 }
 
@@ -267,7 +277,7 @@ const VALID_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'propose_rgb_issue', 'propose_rgb_transfer',
   'identity_register', 'identity_set_wallet',
   'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
-  'query_rgb_assets',
+  'query_rgb_assets', 'query_policy_check',
 ]);
 const VALID_YIELD_ACTIONS: ReadonlySet<string> = new Set(['deposit', 'withdraw']);
 
@@ -322,6 +332,10 @@ export function validateIPCRequest(raw: unknown): IPCRequest | null {
       break;
     case 'query_rgb_assets':
       break; // No payload validation needed
+    case 'query_policy_check':
+      // Dry-run: validate that the payload is a valid proposal (any type)
+      if (!validateProposalCommon(payload)) return null;
+      break;
     case 'identity_register':
       if (!validateIdentityRegisterRequest(payload)) return null;
       break;

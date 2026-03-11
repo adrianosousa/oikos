@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { WalletIPCClient } from '../ipc/client.js';
 import type { GatewayPlugin } from '../types.js';
+import type { TokenSymbol, Chain } from '../ipc/types.js';
 import { mountMCP } from '../mcp/server.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -200,6 +201,30 @@ export function createDashboard(
       res.json({ symbol, history });
     } catch {
       res.status(500).json({ error: `Failed to fetch history for ${symbol}` });
+    }
+  });
+
+  // ── Dry-Run Policy Check ──
+
+  /** Simulate a proposal against the PolicyEngine without executing */
+  app.post('/api/simulate', async (req, res) => {
+    try {
+      const body = req.body as Record<string, unknown>;
+      const proposal = {
+        amount: String(body['amount'] ?? '0'),
+        symbol: String(body['symbol'] ?? 'USDT') as TokenSymbol,
+        chain: String(body['chain'] ?? 'ethereum') as Chain,
+        reason: String(body['reason'] ?? 'dry-run'),
+        confidence: Number(body['confidence'] ?? 0.85),
+        strategy: String(body['strategy'] ?? 'simulate'),
+        timestamp: Date.now(),
+        ...(body['to'] ? { to: String(body['to']) } : {}),
+        ...(body['toSymbol'] ? { toSymbol: String(body['toSymbol']) } : {}),
+      };
+      const result = await wallet.simulateProposal(proposal);
+      res.json(result);
+    } catch {
+      res.status(500).json({ error: 'Failed to simulate proposal' });
     }
   });
 

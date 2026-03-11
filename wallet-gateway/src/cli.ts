@@ -68,6 +68,16 @@ async function get(path: string): Promise<unknown> {
   return res.json();
 }
 
+async function post(path: string, body: Record<string, unknown>): Promise<unknown> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
 async function mcpCall(tool: string, args: Record<string, unknown>): Promise<unknown> {
   const res = await fetch(`${BASE}/mcp`, {
     method: 'POST',
@@ -380,6 +390,57 @@ async function cmdRgb(): Promise<void> {
   }
 }
 
+async function cmdSimulate(): Promise<void> {
+  // oikos simulate <type> <amount> <symbol> [--to addr] [--toSymbol SYM]
+  const simType = argv[1] ?? '';
+  const simAmount = argv[2] ?? '1';
+  const simSymbol = argv[3] ?? 'USDT';
+  const simChain = flag('--chain') ?? 'ethereum';
+  const simTo = flag('--to') ?? '';
+  const simToSymbol = flag('--toSymbol') ?? '';
+
+  if (!['payment', 'swap', 'bridge', 'yield'].includes(simType)) {
+    console.error(`${RED}Usage: oikos simulate <payment|swap|bridge|yield> <amount> <symbol>${RESET}`);
+    console.error(`  --chain ethereum   Chain (default: ethereum)`);
+    console.error(`  --to 0x...         Recipient (for payment)`);
+    console.error(`  --toSymbol XAUT    Target symbol (for swap)`);
+    process.exit(1);
+  }
+
+  const body: Record<string, unknown> = {
+    amount: simAmount,
+    symbol: simSymbol.toUpperCase(),
+    chain: simChain,
+    confidence,
+    reason: 'dry-run simulation',
+    strategy: 'cli-simulate',
+  };
+  if (simTo) body['to'] = simTo;
+  if (simToSymbol) body['toSymbol'] = simToSymbol.toUpperCase();
+
+  const result = await post('/api/simulate', body);
+
+  if (jsonOutput) {
+    out(result);
+  } else {
+    const r = result as { wouldApprove?: boolean; violations?: string[]; policyId?: string };
+    const approved = r.wouldApprove ?? false;
+    const icon = approved ? `${GREEN}✓ WOULD APPROVE${RESET}` : `${RED}✗ WOULD REJECT${RESET}`;
+    console.log(`\n${BOLD}Policy Dry-Run${RESET}  ${icon}`);
+    console.log(`  Type:       ${simType}`);
+    console.log(`  Amount:     ${simAmount} ${simSymbol.toUpperCase()}`);
+    console.log(`  Chain:      ${simChain}`);
+    console.log(`  Confidence: ${confidence}`);
+    if (r.violations && r.violations.length > 0) {
+      console.log(`\n${BOLD}Violations:${RESET}`);
+      for (const v of r.violations) {
+        console.log(`  ${RED}• ${v}${RESET}`);
+      }
+    }
+    console.log();
+  }
+}
+
 function showHelp(): void {
   console.log(`${BOLD}oikos${RESET} — Oikos Wallet CLI
 
@@ -398,6 +459,11 @@ ${BOLD}Write commands:${RESET}
   oikos swap <amount> <symbol> to <toSymbol>        Swap tokens
   oikos bridge <amount> <symbol> from <chain> to <chain>  Bridge cross-chain
   oikos yield deposit|withdraw <amount> <symbol>    Yield operations
+
+${BOLD}Simulation:${RESET}
+  oikos simulate <type> <amount> <symbol>           Dry-run policy check (no execution)
+    types: payment, swap, bridge, yield
+    flags: --to <addr>, --toSymbol <SYM>, --chain <chain>
 
 ${BOLD}RGB commands:${RESET}
   oikos rgb assets                                  List RGB assets
@@ -432,6 +498,7 @@ async function main(): Promise<void> {
       case 'identity': case 'id': await cmdIdentity(); break;
       case 'prices': await cmdPrices(); break;
       case 'rgb': await cmdRgb(); break;
+      case 'simulate': case 'sim': case 'dryrun': case 'dry-run': await cmdSimulate(); break;
       case 'help': case '--help': case '-h': showHelp(); break;
       case '': showHelp(); break;
       default:

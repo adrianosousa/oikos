@@ -30,6 +30,7 @@ import type {
   BalanceResponse,
   AddressResponse,
   PolicyStatus,
+  PolicyCheckResult,
   IdentityRegisterRequest,
   IdentitySetWalletRequest,
   ReputationQuery,
@@ -254,6 +255,14 @@ export class WalletIPCClient {
     const payload: ReputationQuery = { agentId, chain };
     const response = await this.send('query_reputation', payload);
     return response.payload as ReputationResult;
+  }
+
+  // ── Dry-Run Policy Check ──
+
+  /** Simulate a proposal against the policy engine without executing or burning cooldown. */
+  async simulateProposal(proposal: ProposalCommon): Promise<PolicyCheckResult> {
+    const response = await this.send('query_policy_check', proposal);
+    return response.payload as PolicyCheckResult;
   }
 
   // ── RGB Asset Operations ──

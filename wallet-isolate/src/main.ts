@@ -224,6 +224,24 @@ async function handleRequest(
           break;
         }
 
+        // ── Dry-Run Policy Check (no execution, no audit, no cooldown burn) ──
+
+        case 'query_policy_check': {
+          const proposal = request.payload as ProposalCommon;
+          const check = policy.evaluate(proposal);
+          // Do NOT call policy.recordExecution() — this is a dry run
+          response = {
+            id: request.id,
+            type: 'policy_check',
+            payload: {
+              wouldApprove: check.approved,
+              violations: check.violations,
+              policyId: check.policyId,
+            },
+          };
+          break;
+        }
+
         // ── RGB Asset Queries ──
 
         case 'query_rgb_assets': {

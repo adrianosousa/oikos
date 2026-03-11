@@ -189,7 +189,8 @@ export type IPCRequestType =
   | 'identity_register'
   | 'identity_set_wallet'
   | 'query_reputation'
-  | 'query_rgb_assets';
+  | 'query_rgb_assets'
+  | 'query_policy_check';
 
 export interface IPCRequest {
   id: string;
@@ -201,10 +202,17 @@ export interface IPCRequest {
     | IdentityRegisterRequest | IdentitySetWalletRequest | ReputationQuery;
 }
 
+/** Dry-run policy check result — evaluate without executing or recording */
+export interface PolicyCheckResult {
+  wouldApprove: boolean;
+  violations: string[];
+  policyId: string;
+}
+
 export interface IPCResponse {
   id: string;
-  type: 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'error';
+  type: 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'error';
   payload: ExecutionResult | BalanceResponse | BalanceResponse[]
     | AddressResponse | { policies: PolicyStatus[] } | { entries: unknown[] } | { message: string }
-    | IdentityResult | ReputationResult | RGBAssetInfo[];
+    | IdentityResult | ReputationResult | RGBAssetInfo[] | PolicyCheckResult;
 }
