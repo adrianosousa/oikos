@@ -45,9 +45,13 @@ const state = {
   executions: [],
   approvalRequests: [],
   instructions: [],
+  chatMessages: [],
   identity: {},
   lastUpdate: 0,
 }
+
+// Pending chat reply resolvers (instruction → wait for chat_reply)
+let chatReplyResolve = null
 
 let companionMessage = null
 let swarm = null
@@ -166,6 +170,25 @@ function handleAgentMessage (buf) {
       case 'identity_update':
         state.identity = msg.identity || {}
         break
+      case 'chat_reply': {
+        // Agent brain replied to our instruction via protomux
+        const agentMsg = {
+          id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          text: msg.text || '',
+          from: 'agent',
+          brainName: msg.brainName || 'unknown',
+          timestamp: msg.timestamp || Date.now()
+        }
+        state.chatMessages.push(agentMsg)
+        if (state.chatMessages.length > 100) state.chatMessages.shift()
+        console.log('[companion] Chat reply from ' + agentMsg.brainName + ': ' + agentMsg.text.slice(0, 60) + '...')
+        // Resolve any pending chat request
+        if (chatReplyResolve) {
+          chatReplyResolve(agentMsg)
+          chatReplyResolve = null
+        }
+        break
+      }
       default:
         console.log('[companion] Unknown message:', msg.type)
     }
@@ -377,7 +400,69 @@ const server = http.createServer(async (req, res) => {
     return json(res, { instructions: state.instructions.slice(-50) })
   }
 
+  // ── Chat endpoints (agent-agnostic bridge) ──
+
+  if (url.startsWith('/api/agent/chat/history')) {
+    return json(res, { messages: state.chatMessages })
+  }
+
   // ── POST endpoints ──
+
+  if (req.method === 'POST' && url === '/api/agent/chat') {
+    const body = await readBody(req)
+    const message = String(body.message || '').trim()
+    if (!message) return json(res, { error: 'message required' }, 400)
+    const from = body.from || 'companion'
+
+    // Store human message
+    const humanMsg = {
+      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      text: message,
+      from: 'human',
+      timestamp: Date.now()
+    }
+    state.chatMessages.push(humanMsg)
+    if (state.chatMessages.length > 100) state.chatMessages.shift()
+
+    // Send instruction via protomux and wait for chat_reply
+    const sent = sendToAgent({ type: 'instruction', text: message, timestamp: Date.now() })
+    if (!sent) {
+      const errMsg = {
+        id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        text: 'Agent not connected. Message queued as instruction.',
+        from: 'agent',
+        timestamp: Date.now()
+      }
+      state.chatMessages.push(errMsg)
+      state.instructions.push({ text: message, timestamp: Date.now() })
+      return json(res, { reply: errMsg.text, from: 'agent', brainName: 'offline' })
+    }
+
+    // Wait for chat_reply (timeout 30s)
+    try {
+      const reply = await new Promise((resolve, reject) => {
+        chatReplyResolve = resolve
+        setTimeout(() => {
+          if (chatReplyResolve === resolve) {
+            chatReplyResolve = null
+            reject(new Error('timeout'))
+          }
+        }, 30000)
+      })
+      return json(res, {
+        reply: reply.text,
+        from: 'agent',
+        brainName: reply.brainName || 'unknown',
+        messageId: reply.id
+      })
+    } catch {
+      return json(res, {
+        reply: 'Agent did not respond in time. The instruction was sent.',
+        from: 'agent',
+        brainName: 'timeout'
+      })
+    }
+  }
 
   if (req.method === 'POST' && url === '/api/companion/instruct') {
     const body = await readBody(req)
