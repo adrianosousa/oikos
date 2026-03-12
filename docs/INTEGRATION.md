@@ -1,6 +1,6 @@
 # Oikos Protocol -- Integration Guide
 
-Five integration surfaces for connecting any agent framework to the Oikos wallet.
+Six integration surfaces for connecting any agent framework to the Oikos wallet.
 
 ## 1. OpenClaw Skill
 
@@ -42,8 +42,8 @@ Compatible with the `tetherto/wdk-agent-skills` AgentSkills specification.
 
 ## 2. MCP Server
 
-Model Context Protocol server exposing 14 tools via JSON-RPC 2.0. Any MCP-compatible agent
-(Claude, etc.) can discover and use wallet capabilities.
+Model Context Protocol server exposing 21 tools via JSON-RPC 2.0. Any MCP-compatible agent
+(Claude, etc.) can discover and use wallet, swarm, and RGB capabilities.
 
 **Endpoint:** `POST /mcp` on the dashboard server (default `http://localhost:3420/mcp`).
 
@@ -60,7 +60,7 @@ curl -X POST http://localhost:3420/mcp -H "Content-Type: application/json" -d '{
 curl -X POST http://localhost:3420/mcp -H "Content-Type: application/json" -d '{
   "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}
 }'
-# Response: { tools: [...14 tool definitions...] }
+# Response: { tools: [...21 tool definitions...] }
 
 # 3. Call a tool
 curl -X POST http://localhost:3420/mcp -H "Content-Type: application/json" -d '{
@@ -80,16 +80,24 @@ curl -X POST http://localhost:3420/mcp -H "Content-Type: application/json" -d '{
 | `propose_swap` | Propose a token swap (e.g., USDT to XAUT) |
 | `propose_bridge` | Propose a cross-chain bridge |
 | `propose_yield` | Propose yield deposit/withdrawal |
+| `simulate_proposal` | Dry-run a proposal against PolicyEngine without executing |
 | `policy_status` | Current policy state: budgets, cooldowns |
 | `audit_log` | Query the audit trail |
-| `agent_state` | Agent brain status, reasoning, portfolio |
+| `get_events` | Subscribe to / retrieve EventBus events |
+| `agent_state` | Agent status, portfolio |
 | `swarm_state` | Connected peers, active rooms, economics |
 | `swarm_announce` | Post announcement to the swarm board |
 | `identity_state` | ERC-8004 on-chain identity status |
 | `query_reputation` | On-chain reputation from ERC-8004 registry |
+| `rgb_issue` | Issue a new RGB asset |
+| `rgb_transfer` | Transfer an RGB asset |
+| `rgb_assets` | List RGB assets held by the wallet |
+| `companion_state` | Companion connection status and paired devices |
+| `pricing_feed` | Live price data from Bitfinex |
 
 All proposal tools flow through the Wallet Isolate's PolicyEngine. The MCP server never signs
-transactions or handles keys.
+transactions or handles keys. `simulate_proposal` allows agents to dry-run proposals against the
+PolicyEngine without executing, useful for pre-flight checks.
 
 ## 3. Direct IPC
 
@@ -204,7 +212,7 @@ Agent-to-agent coordination over Hyperswarm DHT with Noise-encrypted channels.
 **Join the swarm:**
 
 ```javascript
-import { SwarmCoordinator } from './agent-brain/src/swarm/coordinator.js';
+import { SwarmCoordinator } from './oikos-app/src/swarm/coordinator.js';
 
 const swarm = new SwarmCoordinator(walletClient, {
   swarmId: 'oikos-mainnet',
@@ -252,5 +260,40 @@ swarm.onEvent((event) => {
 ```
 
 All swarm payments go through the PolicyEngine. The swarm coordinator sends payment proposals
-to the Brain, which forwards them to the Wallet via IPC. Negotiation happens over Hyperswarm.
+to the Oikos App, which forwards them to the Wallet via IPC. Negotiation happens over Hyperswarm.
 Signing happens in the Wallet Isolate. These two processes never overlap.
+
+## 6. CLI
+
+First-class command-line interface for driving the wallet from the shell. Any agent framework
+(or a human operator) can use standard CLI commands instead of programmatic integration.
+
+**Setup:**
+
+```bash
+npm link oikos-app    # or use npx
+```
+
+**Commands:**
+
+```bash
+oikos init                    # Initialize wallet + generate encrypted seed
+oikos balance                 # Show all balances across chains
+oikos pay <to> <amount> <sym> # Propose a payment (goes through PolicyEngine)
+oikos pair                    # Pair a companion device (shows QR code / invite)
+oikos wallet backup           # Export encrypted seed backup
+oikos swarm                   # Start swarm coordinator
+oikos status                  # Show running services, companion connections
+```
+
+**Example -- scripted agent interaction:**
+
+```bash
+# A shell-based agent can drive the wallet entirely via CLI
+BALANCE=$(oikos balance --json)
+oikos pay 0xRecipient 1000000 USDT --reason "Service payment" --confidence 0.9
+oikos status --json | jq '.companion.connected'
+```
+
+All CLI commands that move funds go through the same PolicyEngine as MCP and IPC.
+The CLI is implemented in `oikos-app/src/cli.ts`.

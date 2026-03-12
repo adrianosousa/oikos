@@ -23,39 +23,40 @@ Agents hold USDt, XAUt, and USAt. They reason about money, execute DeFi strategi
 
 ## Architecture
 
-Oikos separates the wallet from the agent at the process level. Even if the AI brain is fully compromised, the wallet remains safe.
+Oikos separates the wallet from the agent at the process level. The infrastructure is agent-agnostic -- any AI agent connects via MCP, REST, or CLI. Even if the agent is fully compromised, the wallet remains safe.
 
 ```
                          Oikos Protocol
   ┌─────────────────────────────────────────────────────────────┐
   │                                                             │
   │  ┌─────────────────────┐    IPC     ┌────────────────────┐  │
-  │  │    AGENT BRAIN       │ stdin/out │   WALLET ISOLATE    │  │
+  │  │    OIKOS APP         │ stdin/out │   WALLET ISOLATE    │  │
   │  │    (Node.js)         │◄────────►│   (Bare Runtime)    │  │
-  │  │                      │ JSON-lines│                     │  │
-  │  │  ┌───────────────┐   │           │  ┌──────────────┐   │  │
-  │  │  │ LLM Reasoning │   │           │  │ WDK Core     │   │  │
-  │  │  │ (Ollama/Cloud)│   │           │  │ Keys + Signer│   │  │
-  │  │  └───────────────┘   │           │  └──────────────┘   │  │
-  │  │  ┌───────────────┐   │           │  ┌──────────────┐   │  │
-  │  │  │ Hyperswarm    │   │           │  │ PolicyEngine │   │  │
-  │  │  │ P2P Swarm     │   │           │  │ 8 Rule Types │   │  │
-  │  │  └───────────────┘   │           │  └──────────────┘   │  │
-  │  │  ┌───────────────┐   │           │  ┌──────────────┐   │  │
-  │  │  │ Dashboard     │   │           │  │ Audit Log    │   │  │
-  │  │  │ MCP + x402    │   │           │  │ Append-Only  │   │  │
-  │  │  └───────────────┘   │           │  └──────────────┘   │  │
+  │  │  Agent-Agnostic Infra│ JSON-lines│                     │  │
+  │  │                      │           │  ┌──────────────┐   │  │
+  │  │  ┌───────────────┐   │           │  │ WDK Core     │   │  │
+  │  │  │ Hyperswarm    │   │           │  │ Keys + Signer│   │  │
+  │  │  │ P2P Swarm     │   │           │  └──────────────┘   │  │
+  │  │  └───────────────┘   │           │  ┌──────────────┐   │  │
+  │  │  ┌───────────────┐   │           │  │ PolicyEngine │   │  │
+  │  │  │ Dashboard     │   │           │  │ 8 Rule Types │   │  │
+  │  │  │ MCP (21 tools)│   │           │  └──────────────┘   │  │
+  │  │  └───────────────┘   │           │  ┌──────────────┐   │  │
+  │  │  ┌───────────────┐   │           │  │ Audit Log    │   │  │
+  │  │  │ CLI + x402    │   │           │  │ Append-Only  │   │  │
+  │  │  │ + RGB         │   │           │  └──────────────┘   │  │
+  │  │  └───────────────┘   │           │                     │  │
   │  └─────────────────────┘           └────────────────────┘  │
   │                                                             │
   │  ┌───────────────────────────────────────────────────────┐  │
   │  │                  INTEGRATION LAYER                     │  │
-  │  │  OpenClaw Skill │ MCP Server │ IPC │ Hyperswarm │ x402│  │
+  │  │  OpenClaw │ MCP │ CLI │ IPC │ Hyperswarm │ x402       │  │
   │  └───────────────────────────────────────────────────────┘  │
   └─────────────────────────────────────────────────────────────┘
          ▲                    ▲                    ▲
          │                    │                    │
-    Companion App       Other Agents          x402 Clients
-    (P2P Human-Agent)   (P2P Swarm)        (Machine Payments)
+    Companion App       Any Agent              x402 Clients
+    (P2P, Bare-native)  (MCP/REST/CLI)      (Machine Payments)
 ```
 
 **Four layers:**
@@ -63,9 +64,9 @@ Oikos separates the wallet from the agent at the process level. Even if the AI b
 | Layer | Description |
 |-------|-------------|
 | **Wallet Protocol** | Process-isolated, policy-enforced multi-chain wallet on Bare Runtime |
-| **Autonomous Agent** | LLM-powered brain that reasons about money, DeFi, and multi-asset strategy |
+| **Oikos App** | Agent-agnostic infrastructure: MCP, CLI, dashboard, swarm, x402, RGB (no LLM) |
 | **Agent Swarm** | Multi-agent trading swarm on Hyperswarm with Noise E2E encryption |
-| **Companion App** | P2P encrypted human-agent communication via Hyperswarm |
+| **Companion App** | Bare-native P2P encrypted human-agent communication via Hyperswarm |
 
 ## Features
 
@@ -111,12 +112,13 @@ npm run generate-seed
 
 ## Integration Surfaces
 
-Oikos exposes five ways for agents and systems to interact with the wallet:
+Oikos exposes six ways for agents and systems to interact with the wallet:
 
 | Surface | Protocol | Use Case |
 |---------|----------|----------|
 | **OpenClaw Skill** | `skills/wdk-wallet/SKILL.md` | Any OpenClaw agent gets wallet capabilities |
-| **MCP Server** | 14 tools via JSON-RPC 2.0 at `POST /mcp` | Any MCP-compatible agent framework |
+| **MCP Server** | 21 tools via JSON-RPC 2.0 at `POST /mcp` | Any MCP-compatible agent framework |
+| **CLI** | `oikos` commands (init, balance, pay, pair, etc.) | Shell-based agents, human operators, scripting |
 | **Direct IPC** | stdin/stdout JSON-lines | Embedded use in custom agent processes |
 | **Hyperswarm P2P** | Noise-encrypted protomux channels | Agent-to-agent discovery and negotiation |
 | **x402 Payments** | HTTP 402 + EIP-3009 | Machine-to-machine commodity payments |
@@ -125,9 +127,9 @@ Oikos exposes five ways for agents and systems to interact with the wallet:
 
 The security architecture enforces a strict boundary between reasoning and signing:
 
-- **Process isolation**: The Wallet Isolate runs in a separate Bare Runtime process. It holds keys, enforces policy, and signs transactions. The Brain process never sees seed material.
+- **Process isolation**: The Wallet Isolate runs in a separate Bare Runtime process. It holds keys, enforces policy, and signs transactions. The Oikos App process never sees seed material.
 - **Single code path**: There is exactly ONE path that moves funds: `PolicyEngine.evaluate()` -> `PaymentExecutor.execute()`. All proposal types (payments, swaps, bridges, yield) go through it.
-- **Immutable policy**: Policies load from JSON at startup and cannot be modified via IPC. The Brain can query policy state but never change it.
+- **Immutable policy**: Policies load from JSON at startup and cannot be modified via IPC. External agents can query policy state but never change it.
 - **Append-only audit**: Every proposal -- approved, rejected, or malformed -- is recorded. Entries never contain seeds, private keys, or LLM API keys.
 - **Encrypted seed persistence**: WDK SecretManager with PBKDF2-SHA256 key derivation and XSalsa20-Poly1305 encryption.
 - **140 tests prove**: Rejected proposals never result in signed transactions. Malformed IPC messages are dropped. Audit log is append-only.
@@ -149,7 +151,7 @@ The security architecture enforces a strict boundary between reasoning and signi
 
 ```
 oikos/
-├── wallet-isolate/            # Bare Runtime wallet process
+├── wallet-isolate/            # Bare Runtime wallet process (unchanged)
 │   └── src/
 │       ├── ipc/               # IPC message types, listener, responder
 │       ├── policies/          # PolicyEngine (8 rules) + presets
@@ -159,25 +161,31 @@ oikos/
 │       ├── erc8004/           # On-chain identity (ABI encoder + constants)
 │       ├── secret/            # Encrypted seed manager (WDK SecretManager)
 │       └── compat/            # Runtime compatibility (bare-fs / node:fs)
-├── agent-brain/               # Node.js agent process
+├── oikos-app/                 # Agent-agnostic infrastructure (Node.js)
 │   └── src/
-│       ├── agent/             # Brain core + system prompts
+│       ├── cli.ts             # CLI entry (oikos init, balance, pay, pair, etc.)
 │       ├── ipc/               # Wallet IPC client
-│       ├── llm/               # LLM client (Ollama/cloud) + mock
-│       ├── events/            # Event sources (mock + WDK indexer)
-│       ├── strategy/          # DeFi strategy module
+│       ├── mcp/               # MCP server (21 tools)
 │       ├── swarm/             # Hyperswarm P2P (discovery, channels, marketplace, reputation)
-│       ├── x402/              # x402 client (HTTP 402 machine payments)
 │       ├── companion/         # Companion channel (P2P human-agent)
-│       ├── mcp/               # MCP server (14 tools)
+│       ├── x402/              # x402 client (HTTP 402 machine payments)
+│       ├── rgb/               # RGB asset issuance + transfers
+│       ├── events/            # EventBus (pub/sub) + blockchain indexer
 │       ├── pricing/           # Live Bitfinex pricing service
 │       ├── dashboard/         # Express server + HTML UI
 │       └── config/            # Environment configuration
+├── examples/
+│   └── oikos-agent/           # Reference LLM agent (optional)
+│       └── src/
+│           ├── agent/         # Brain core + LLM prompts
+│           ├── llm/           # LLM client (Ollama/cloud) + mock
+│           └── strategy/      # DeFi strategy module
 ├── skills/                    # OpenClaw skill definition
 │   └── wdk-wallet/SKILL.md
 ├── scripts/                   # Demo + utility scripts
-├── index.js                   # Pear Runtime main process
-├── index.html                 # Pear Runtime renderer
+├── index.js                   # Pear companion entry (Bare-native P2P client)
+├── app.js                     # Companion frontend
+├── index.html                 # Companion GUI shell
 ├── policies.example.json      # Example policy configuration
 └── package.json               # Workspace root (npm workspaces)
 ```
@@ -196,17 +204,22 @@ oikos/
 | `@tetherto/wdk-protocol-lending-aave-evm` | 1.0.0-beta.3 | Yield via Aave lending |
 | `@tetherto/wdk-secret-manager` | 1.0.0-beta.3 | Encrypted seed persistence |
 
-### Agent Brain (Node.js)
+### Oikos App (Node.js -- Agent-Agnostic Infrastructure)
 
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `hyperswarm` | 4.16.0 | P2P DHT discovery + Noise encryption |
 | `protomux` | 3.10.0 | Multiplexed protocol channels |
 | `express` | 4.21.2 | Dashboard HTTP server (localhost-only) |
-| `openai` | 4.85.4 | LLM client (Ollama-compatible) |
 | `sodium-universal` | 5.0.1 | Cryptographic primitives |
 | `@tetherto/wdk-pricing-bitfinex-http` | 1.0.0-beta.1 | Live Bitfinex price feed |
 | `@tetherto/wdk-pricing-provider` | 1.0.0-beta.1 | Price aggregation |
+
+### Reference Agent (examples/oikos-agent -- Optional)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `openai` | 4.85.4 | LLM client (Ollama-compatible) |
 
 ## Testing
 
@@ -217,7 +230,7 @@ npm test    # Runs tests in both workspaces
 **140 tests, 0 failures** across two workspaces:
 
 - **wallet-isolate** (105 tests): PolicyEngine rule coverage, executor rejection proofs, IPC schema validation, audit append-only guarantees, encrypted seed manager, ERC-8004 encoding
-- **agent-brain** (35 tests): Swarm topic derivation, reputation scoring, companion authentication, x402 payment flows, MCP tool handlers
+- **oikos-app** (35 tests): Swarm topic derivation, reputation scoring, companion authentication, x402 payment flows, MCP tool handlers
 
 Critical invariants proven by tests:
 - A proposal rejected by PolicyEngine **never** results in a signed transaction

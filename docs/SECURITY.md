@@ -10,21 +10,23 @@ and no direct function calls:
 
 ```
 +-----------------------+          stdin/stdout          +-----------------------+
-|     Agent Brain       |  <---  JSON-lines IPC  --->   |   Wallet Isolate      |
+|     Oikos App         |  <---  JSON-lines IPC  --->   |   Wallet Isolate      |
 |     (Node.js)         |                               |   (Bare Runtime)      |
 |                       |                               |                       |
-| - LLM reasoning       |                               | - Holds private keys  |
-| - Hyperswarm P2P      |                               | - Signs transactions  |
-| - Dashboard server    |                               | - Enforces policy     |
-| - x402 payments       |                               | - Writes audit log    |
-| - Swarm negotiation   |                               | - Manages seed        |
+| - Hyperswarm P2P      |                               | - Holds private keys  |
+| - Dashboard server    |                               | - Signs transactions  |
+| - MCP server (21 tools)|                              | - Enforces policy     |
+| - CLI interface       |                               | - Writes audit log    |
+| - x402 payments       |                               | - Manages seed        |
+| - Swarm negotiation   |                               |                       |
+| - NO LLM (agnostic)   |                               |                       |
 +-----------------------+                               +-----------------------+
    CAN be compromised                                     CANNOT be reached
    without moving funds                                   except through IPC
 ```
 
-The Brain process has a large attack surface (LLM API, HTTP server, Hyperswarm network, x402 endpoints).
-If compromised, an attacker gains control of the reasoning layer but CANNOT:
+The Oikos App process has a large attack surface (HTTP server, MCP endpoint, Hyperswarm network, x402 endpoints).
+If compromised, an attacker gains control of the infrastructure layer but CANNOT:
 
 - Access the seed phrase or private keys (Wallet process memory only)
 - Sign transactions directly (WDK runs in the Wallet process)
@@ -32,7 +34,7 @@ If compromised, an attacker gains control of the reasoning layer but CANNOT:
 - Modify policies (immutable after startup)
 - Delete or edit audit entries (append-only)
 
-The worst an attacker can do through a compromised Brain is send proposals via IPC.
+The worst an attacker can do through a compromised Oikos App is send proposals via IPC.
 Every proposal is still subject to policy evaluation and creates an audit entry.
 
 ## Seed Phrase Handling
@@ -83,7 +85,7 @@ IPCRequest(proposal)
 
 Critical invariants:
 - A rejected proposal NEVER reaches the wallet operation call. This is the most critical test target.
-- The executor does NOT retry failed transactions. The Brain may submit a new proposal.
+- The executor does NOT retry failed transactions. The calling agent may submit a new proposal.
 - ALL proposal types (payment, swap, bridge, yield, feedback) traverse the same pipeline.
 - Schema validation failure silently drops the message and logs a `malformed_message` audit entry.
 
@@ -92,7 +94,7 @@ Critical invariants:
 - Policies are loaded from a JSON config file at Wallet Isolate startup.
 - The policy array is copied into the engine. The original config is not retained.
 - No IPC message type exists that can modify, add, or remove policies.
-- The Brain can QUERY policy status (remaining budgets, cooldown timers) but CANNOT change state.
+- External agents can QUERY policy status (remaining budgets, cooldown timers) but CANNOT change state.
 - Policy evaluation is deterministic: same proposal + same state = same decision.
 
 The only way to change policies is to restart the Wallet Isolate with a new config file.
@@ -123,12 +125,13 @@ The audit log is an append-only JSON-lines file with these guarantees:
 | Process | Connects to | Never connects to |
 |---------|-------------|-------------------|
 | Wallet Isolate | Blockchain RPC (Electrum, JSON-RPC), DeFi protocols (DEXs, lending, bridges) | HTTP servers, Hyperswarm, LLM APIs, external APIs |
-| Agent Brain | LLM endpoint, Hyperswarm DHT, x402 endpoints, localhost dashboard | Blockchain nodes (directly), wallet signing |
-| Companion App | Agent Brain (via Hyperswarm) | Wallet Isolate, blockchain nodes, LLM APIs |
+| Oikos App | Hyperswarm DHT, x402 endpoints, localhost dashboard + MCP, CLI | Blockchain nodes (directly), wallet signing, LLM APIs |
+| External Agent | Oikos App (via MCP / REST / CLI) | Wallet Isolate, blockchain nodes |
+| Companion App | Oikos App (via Hyperswarm) | Wallet Isolate, blockchain nodes, LLM APIs |
 
-The Brain negotiates with peers over Hyperswarm, handles x402 payment flows, receives companion
+The Oikos App negotiates with peers over Hyperswarm, handles x402 payment flows, receives companion
 instructions, then sends Proposals to the Wallet via IPC. The Wallet evaluates policy and signs.
-The Brain never sees the signing. The Companion never sees IPC.
+The Oikos App never sees the signing. The Companion never sees IPC.
 
 ## Dependency Hygiene
 
@@ -136,8 +139,9 @@ The Brain never sees the signing. The Companion never sees IPC.
 - **Wallet Isolate** has a minimal dependency tree: `@tetherto/wdk`, `@tetherto/wdk-wallet-btc`,
   `@tetherto/wdk-wallet-evm`, `@tetherto/wdk-secret-manager`. No additional crypto libraries.
   WDK bundles its own sodium-based cryptography.
-- **Agent Brain** has larger dependencies (LLM SDK, Express, Hyperswarm, Protomux, sodium-universal).
-  This is acceptable because the Brain cannot sign transactions.
+- **Oikos App** has larger dependencies (Express, Hyperswarm, Protomux, sodium-universal).
+  This is acceptable because the Oikos App cannot sign transactions. Note: no LLM SDK --
+  the app is agent-agnostic. LLM dependencies live in external agents (e.g., `examples/oikos-agent/`).
 - TypeScript strict mode everywhere: `strict: true`, `noImplicitAny: true`, `strictNullChecks: true`,
   `noUncheckedIndexedAccess: true`. No `any` types. `unknown` + type guards for uncertain types.
 
@@ -145,7 +149,7 @@ The Brain never sees the signing. The Companion never sees IPC.
 
 | Threat | Mitigation |
 |--------|------------|
-| Brain process compromised | Wallet enforces policy independently. Attacker can only submit proposals (rate-limited by cooldown, capped by budgets). Full audit trail of all attempts. |
+| Oikos App process compromised | Wallet enforces policy independently. Attacker can only submit proposals (rate-limited by cooldown, capped by budgets). Full audit trail of all attempts. |
 | Malicious IPC messages | Schema validation rejects malformed messages. Silently dropped, logged as `malformed_message`. |
 | Policy bypass attempt | No IPC message type modifies policies. PolicyEngine is immutable after construction. |
 | Seed phrase extraction | Seed exists only in Wallet process memory. Never in IPC, logs, or dashboard. Encrypted at rest with XSalsa20-Poly1305. |

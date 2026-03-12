@@ -219,7 +219,7 @@ Agent A                     Board (DHT)                 Agent B
   |-- CounterOffer{price} ---->|                           |
   |<-- Accept{payAddr} --------|                           |
   |                            |                           |
-  |  Brain A: proposePayment   |  Agent B: executes task   |
+  |  App A: proposePayment     |  Agent B: executes task   |
   |  -> Wallet A: evaluate     |                           |
   |  -> Wallet A: sign + send  |                           |
   |                            |                           |

@@ -8,7 +8,7 @@ Built on Tether's runtime stack: Bare/Pear Runtime + WDK.
 ```
 Layer 4: Companion App        Pear Runtime, Hyperswarm Noise, Ed25519 owner auth
 Layer 3: Agent Swarm           Hyperswarm DHT, Protomux, meta-marketplace, reputation
-Layer 2: Autonomous Agent      Node.js Brain, LLM reasoning, DeFi strategy
+Layer 2: Oikos App              Node.js agent-agnostic infra, CLI, MCP, dashboard
 Layer 1: Wallet Protocol       Bare Runtime, WDK, PolicyEngine, AuditLog
 ```
 
@@ -33,22 +33,47 @@ with the smallest possible dependency tree: `@tetherto/wdk`, chain-specific wall
 
 **Supported assets:** USDT, XAUT, USAT, BTC, ETH across Ethereum, Polygon, Arbitrum, and Bitcoin chains.
 
-### Layer 2 -- Autonomous Agent (Node.js)
+### Layer 2 -- Oikos App (Agent-Agnostic Infrastructure, Node.js)
 
-The Agent Brain is the reasoning layer. It runs on Node.js and decides when and how to move funds.
+The Oikos App is the infrastructure layer. It runs on Node.js and provides wallet access,
+networking, and tooling to any agent -- without containing an LLM or reasoning logic itself.
 
 **Components:**
 
+- **IPC Client:** Spawns the Wallet Isolate as a child process. Sends JSON-lines requests over stdin,
+  reads responses from stdout. Request-response correlation via UUID.
+- **CLI:** First-class command-line interface. `oikos init`, `oikos pair`, `oikos wallet backup`,
+  `oikos balance`, `oikos pay`, `oikos swarm`, and more. Any agent (or human) can drive the wallet
+  from the shell.
+- **MCP Server:** 21 tools via JSON-RPC 2.0 at `POST /mcp`. Any MCP-compatible agent framework
+  can discover and use wallet, swarm, and RGB capabilities.
+- **Dashboard:** Express server on `localhost:3420`. Real-time balances, audit trail, swarm state.
+  Localhost-only binding.
+- **EventBus:** Pub/sub event system replacing the old brain event loop. External agents subscribe
+  to wallet events (balance changes, proposal results, swarm activity) via MCP or REST.
+- **Swarm Coordinator:** Hyperswarm DHT discovery, Protomux channels, reputation, marketplace.
+- **Companion Channel:** P2P human-agent channel via Hyperswarm Noise.
+- **x402:** HTTP 402 machine payment client and server.
+- **RGB:** RGB asset issuance and transfer support.
+- **Pricing:** Live Bitfinex price feeds via WDK pricing modules.
+
+**Key type:** `OikosServices` (formerly `GatewayPlugin`) -- the service container that wires all
+infrastructure components together.
+
+### Optional: Reference Agent (examples/oikos-agent/)
+
+The LLM reasoning layer has been extracted to `examples/oikos-agent/` as a reference implementation.
+It demonstrates how any agent can connect to the Oikos App via MCP, REST, or CLI.
+
+**Components:**
+
+- **Brain:** LLM-powered reasoning that decides when and how to move funds.
 - **LLM Client:** Sovereign-first. Primary: Ollama at `localhost:11434/v1` with Qwen 3 8B.
   Fallback: any OpenAI-compatible endpoint. Mock mode for testing with deterministic fixtures.
 - **DeFi Strategy:** Portfolio analysis, yield optimization, swap decisions, bridge gas optimization.
-  Produces structured `ProposalCommon` objects sent to the Wallet via IPC.
-- **IPC Client:** Spawns the Wallet Isolate as a child process. Sends JSON-lines requests over stdin,
-  reads responses from stdout. Request-response correlation via UUID.
-- **Dashboard:** Express server on `localhost:3420`. Real-time balances, audit trail, swarm state,
-  agent reasoning. Localhost-only binding.
-- **Event Processing:** Platform-agnostic event source. Processes events, reasons about them with LLM,
-  produces proposals when financial action is appropriate.
+- **OikosClient:** Connects to the Oikos App's MCP/REST API to submit proposals.
+
+This is NOT a required component. Any agent framework (OpenClaw, LangChain, custom) can replace it.
 
 ### Layer 3 -- Agent Swarm (Hyperswarm)
 
@@ -82,14 +107,14 @@ against the authorized owner pubkey. Only one owner -- cryptographic identity, n
 **Capabilities:**
 - **Read:** Balances, agent reasoning, swarm status, policy state, execution notifications
 - **Write:** Send instructions, approve/reject high-value proposals, ping for state refresh
-- **Constraint:** Companion NEVER talks to the Wallet Isolate. Brain translates instructions into IPC proposals.
+- **Constraint:** Companion NEVER talks to the Wallet Isolate. The Oikos App translates instructions into IPC proposals.
 
 ## IPC Protocol
 
-Communication between Brain and Wallet via newline-delimited JSON over stdin/stdout.
+Communication between the Oikos App and Wallet via newline-delimited JSON over stdin/stdout.
 
 ```
-Brain (Node.js)                                  Wallet Isolate (Bare Runtime)
+Oikos App (Node.js)                              Wallet Isolate (Bare Runtime)
      |                                                  |
      |--- IPCRequest{id, type, payload} --stdin-->      |
      |                                                  |--- validate schema
@@ -100,7 +125,7 @@ Brain (Node.js)                                  Wallet Isolate (Bare Runtime)
      |                                                  |
 ```
 
-**Request types (Brain to Wallet):**
+**Request types (Oikos App to Wallet):**
 
 | Type | Payload | Description |
 |------|---------|-------------|
@@ -118,7 +143,7 @@ Brain (Node.js)                                  Wallet Isolate (Bare Runtime)
 | `query_audit` | AuditQuery | Audit log entries |
 | `query_reputation` | ReputationQuery | On-chain reputation for an agent |
 
-**Response types (Wallet to Brain):**
+**Response types (Wallet to Oikos App):**
 
 | Type | Payload | Description |
 |------|---------|-------------|
@@ -139,29 +164,36 @@ Messages that fail schema validation are silently dropped and logged to the audi
 ```
                     Internet                    localhost IPC
                        |                            |
-   Wallet Isolate:  Blockchain RPC only  <----stdin/stdout---->  Agent Brain
+   Wallet Isolate:  Blockchain RPC only  <----stdin/stdout---->  Oikos App
                     (Electrum, JSON-RPC,                         |
-                     DeFi protocols)                             |--> LLM (Ollama / cloud API)
-                                                                 |--> Hyperswarm DHT (swarm + companion)
+                     DeFi protocols)                             |--> Hyperswarm DHT (swarm + companion)
                                                                  |--> Dashboard (localhost:3420)
+                                                                 |--> MCP Server (localhost:3420/mcp)
+                                                                 |--> CLI (oikos commands)
                                                                  |--> x402 endpoints
+                                                                 |--> RGB operations
                                                                  |
                                                             Companion App
                                                             (via Hyperswarm only)
+                                                                 |
+                                                            External Agent (optional)
+                                                            (via MCP / REST / CLI)
 ```
 
 - **Wallet Isolate:** Connects ONLY to blockchain RPC nodes and DeFi protocol endpoints.
   No HTTP servers, no WebSockets, no Hyperswarm, no LLM access.
-- **Agent Brain:** Connects to LLM, Hyperswarm DHT, x402 endpoints, and serves the localhost dashboard.
-  Never connects to blockchain nodes. Never signs transactions.
-- **Companion App:** Connects to Agent Brain via Hyperswarm only. Never connects to Wallet Isolate.
-  Never has key access.
+- **Oikos App:** Connects to Hyperswarm DHT, x402 endpoints, and serves the localhost dashboard +
+  MCP server + CLI. No LLM access -- agent-agnostic. Never connects to blockchain nodes. Never signs transactions.
+- **External Agent (optional):** Connects to Oikos App via MCP, REST, or CLI. Contains LLM reasoning.
+  The reference implementation is in `examples/oikos-agent/`.
+- **Companion App:** Connects to the Oikos App via Hyperswarm only. Bare-native P2P client (no sidecar).
+  Auth via Ed25519 keypair. Never connects to Wallet Isolate. Never has key access.
 
 ## Directory Structure
 
 ```
 oikos/
-  wallet-isolate/          Bare Runtime wallet process
+  wallet-isolate/          Bare Runtime wallet process (UNCHANGED)
     src/
       main.ts              Entry point, IPC listener, lifecycle
       ipc/                 Message types, validation, listener, responder
@@ -172,22 +204,33 @@ oikos/
       secret/              Encrypted seed persistence (WDK SecretManager)
       erc8004/             ERC-8004 ABI encoding, contract constants
       compat/              Bare/Node.js compatibility (fs, process)
-  agent-brain/             Node.js reasoning process
+  oikos-app/               Agent-agnostic infrastructure (Node.js)
     src/
-      main.ts              Entry point, orchestration
-      agent/               Brain logic, LLM prompts
+      main.ts              Entry point, service wiring
+      cli.ts               CLI entry point (oikos init, pair, balance, pay, etc.)
+      types.ts             OikosServices, EventBus, CompanionStateProvider
       ipc/                 IPC client (spawns wallet, sends requests)
-      llm/                 LLM client (Ollama / cloud / mock)
       swarm/               Hyperswarm coordinator, topics, channels, reputation, identity
       companion/           P2P human-agent channel coordinator
-      mcp/                 MCP server (JSON-RPC 2.0 tools)
+      mcp/                 MCP server (21 tools via JSON-RPC 2.0)
       x402/                HTTP 402 machine payments
-      strategy/            DeFi strategy engine
+      rgb/                 RGB asset issuance and transfers
       dashboard/           Express + static HTML dashboard
       pricing/             Live price feeds
-      events/              Event source, blockchain indexer
+      events/              EventBus (pub/sub), blockchain indexer
+      creators/            Service factory functions
+      config/              Environment configuration
+  examples/
+    oikos-agent/           Reference agent implementation (optional)
+      src/
+        main.ts            Agent entry point
+        oikos-client.ts    MCP/REST client to connect to Oikos App
+        agent/             Brain logic, LLM prompts
+        llm/               LLM client (Ollama / cloud / mock)
+        strategy/          DeFi strategy engine
   skills/wdk-wallet/       OpenClaw skill definition (SKILL.md)
   policies.example.json    Example policy config
-  index.js                 Pear Runtime entry point
-  index.html               Pear Runtime GUI shell
+  index.js                 Pear companion entry point (Bare-native P2P client)
+  app.js                   Companion frontend
+  index.html               Companion GUI shell
 ```
