@@ -271,4 +271,8 @@ export interface SwarmCoordinatorInterface {
   acceptBestBid(announcementId: string): Promise<RoomAccept | undefined>;
   submitPayment(announcementId: string): Promise<void>;
   confirmPayment(announcementId: string, txHash: string): void;
+  /** Explicitly connect to a peer by Noise public key (bypasses topic discovery) */
+  joinPeer?(pubkeyHex: string): void;
+  /** Stop explicitly connecting to a peer */
+  leavePeer?(pubkeyHex: string): void;
 }

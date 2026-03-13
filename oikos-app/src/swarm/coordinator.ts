@@ -42,6 +42,10 @@ export interface SwarmConfig {
   heartbeatIntervalMs: number;
   /** Injected HyperDHT for testnet */
   dht?: unknown;
+  /** Relay peer pubkey (hex) for holepunch fallback */
+  relayPubkey?: string;
+  /** Explicit peer pubkeys (hex) to connect to via joinPeer */
+  bootstrapPeers?: string[];
 }
 
 export class SwarmCoordinator implements SwarmCoordinatorInterface {
@@ -93,11 +97,12 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       auditHash
     );
 
-    // 4. Initialize discovery
+    // 4. Initialize discovery (with relay + bootstrap peers)
     this.discovery = new SwarmDiscovery({
       swarmId: this.config.swarmId,
       keypair: this.keypair,
       dht: this.config.dht,
+      relayPubkey: this.config.relayPubkey,
     });
 
     // 5. Initialize channel manager
@@ -122,6 +127,15 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
 
     // 7. Join board
     await this.discovery.joinBoard();
+
+    // 7b. Explicitly connect to bootstrap peers (bypasses topic discovery)
+    if (this.config.bootstrapPeers?.length) {
+      for (const peerHex of this.config.bootstrapPeers) {
+        if (peerHex.length === 64) {
+          this.discovery.joinPeer(peerHex);
+        }
+      }
+    }
 
     // 8. Start heartbeat
     this.heartbeatInterval = setInterval(() => {
@@ -298,6 +312,18 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
   /** Confirm payment (called when we receive payment_confirm as bidder) */
   confirmPayment(announcementId: string, txHash: string): void {
     this.marketplace.settleRoom(announcementId, txHash);
+  }
+
+  /** Explicitly connect to a peer by Noise public key */
+  joinPeer(pubkeyHex: string): void {
+    if (!this.discovery) throw new Error('Swarm not started');
+    this.discovery.joinPeer(pubkeyHex);
+  }
+
+  /** Stop explicitly connecting to a peer */
+  leavePeer(pubkeyHex: string): void {
+    if (!this.discovery) throw new Error('Swarm not started');
+    this.discovery.leavePeer(pubkeyHex);
   }
 
   /** Get current swarm state (for dashboard) */

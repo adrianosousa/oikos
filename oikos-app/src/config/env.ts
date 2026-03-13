@@ -71,6 +71,21 @@ export interface OikosConfig {
   /** Path to persist the Ed25519 keypair */
   keypairPath: string;
 
+  /**
+   * Noise public key (hex) of a relay peer for holepunch fallback.
+   * When set, Hyperswarm relays through this peer if direct holepunching fails.
+   * Required for: Docker containers, restrictive NATs, double-randomized NATs.
+   * Without this, failed holepunches silently die with no fallback.
+   */
+  swarmRelayPubkey: string;
+
+  /**
+   * Comma-separated list of peer pubkeys (hex) to explicitly connect to.
+   * Uses Hyperswarm's joinPeer() — bypasses topic discovery, connects by Noise key.
+   * Auto-reconnects on failure. Useful for bootstrap peers or known partners.
+   */
+  swarmBootstrapPeers: string;
+
   // ── WDK Indexer ──
 
   /** WDK Indexer API key */
@@ -160,6 +175,8 @@ export function loadOikosConfig(): OikosConfig {
     agentCapabilities: getEnv('AGENT_CAPABILITIES', 'portfolio-analyst,price-feed'),
     mockSwarm: resolveMock('MOCK_SWARM', mode),
     keypairPath: getEnv('KEYPAIR_PATH', '.oikos-keypair.json'),
+    swarmRelayPubkey: getEnv('SWARM_RELAY_PUBKEY', ''),
+    swarmBootstrapPeers: getEnv('SWARM_BOOTSTRAP_PEERS', ''),
 
     // WDK Indexer
     indexerApiKey: getEnv('INDEXER_API_KEY', ''),

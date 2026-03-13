@@ -114,6 +114,9 @@ async function main(): Promise<void> {
       });
     } else {
       const { SwarmCoordinator } = await import('./swarm/coordinator.js');
+      const bootstrapPeers = config.swarmBootstrapPeers
+        ? config.swarmBootstrapPeers.split(',').map(s => s.trim()).filter(s => s.length === 64)
+        : [];
       swarm = new SwarmCoordinator(wallet, {
         swarmId: config.swarmId,
         agentName: config.agentName,
@@ -121,6 +124,8 @@ async function main(): Promise<void> {
         keypairPath: config.keypairPath,
         roomTimeoutMs: 60000,
         heartbeatIntervalMs: 15000,
+        relayPubkey: config.swarmRelayPubkey || undefined,
+        bootstrapPeers: bootstrapPeers.length > 0 ? bootstrapPeers : undefined,
       });
     }
 

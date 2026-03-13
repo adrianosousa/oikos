@@ -24,6 +24,13 @@ export interface DiscoveryConfig {
   keypair: AgentKeypair;
   /** Injected HyperDHT instance for testnet (optional) */
   dht?: unknown;
+  /**
+   * Relay peer public key (hex) for connections that can't holepunch.
+   * When holepunching fails (Docker containers, restrictive NATs, double-randomized NATs),
+   * Hyperswarm automatically relays through this peer.
+   * Without this, failed holepunches have NO fallback — connections silently die.
+   */
+  relayPubkey?: string;
 }
 
 export interface PeerConnection {
@@ -60,6 +67,18 @@ export class SwarmDiscovery {
     // Inject DHT for testnet (rgb-wallet-pear pattern: hyperdht/testnet)
     if (config.dht) {
       swarmOpts['dht'] = config.dht;
+    }
+
+    // Relay support: when holepunching fails (Docker, restrictive NAT, etc.),
+    // Hyperswarm automatically relays through this peer.
+    // The relayThrough function is called with (force, swarm):
+    //   - force=false on first attempt: only relay if NAT is randomized
+    //   - force=true on retry after HOLEPUNCH_ABORTED/DOUBLE_RANDOMIZED_NATS: always relay
+    // Without this, failed holepunches have NO fallback.
+    if (config.relayPubkey) {
+      const relayBuf = b4a.from(config.relayPubkey, 'hex');
+      swarmOpts['relayThrough'] = relayBuf;
+      console.error(`[swarm] Relay configured: ${config.relayPubkey.slice(0, 12)}...`);
     }
 
     this.swarm = new Hyperswarm(swarmOpts);
@@ -118,6 +137,29 @@ export class SwarmDiscovery {
   /** Register disconnect handler */
   onDisconnect(handler: DisconnectHandler): void {
     this.disconnectHandlers.push(handler);
+  }
+
+  /**
+   * Explicitly connect to a peer by Noise public key.
+   * Bypasses topic-based DHT discovery — uses DHT routing to find a direct path.
+   * Auto-reconnects on failure. Use leavePeer() to stop.
+   *
+   * Use case: when you learn a peer's pubkey (from a board announcement, config, etc.)
+   * and want a guaranteed connection attempt regardless of topic membership.
+   */
+  joinPeer(pubkeyHex: string): void {
+    if (this.destroyed) return;
+    const pubkeyBuf = b4a.from(pubkeyHex, 'hex');
+    // Don't join ourselves
+    if (b4a.equals(pubkeyBuf, this.config.keypair.publicKey)) return;
+    this.swarm.joinPeer(pubkeyBuf);
+    console.error(`[swarm] joinPeer: ${pubkeyHex.slice(0, 12)}...`);
+  }
+
+  /** Stop explicitly connecting to a peer. Does NOT close existing connection. */
+  leavePeer(pubkeyHex: string): void {
+    if (this.destroyed) return;
+    this.swarm.leavePeer(b4a.from(pubkeyHex, 'hex'));
   }
 
   /** Get all connected peer pubkeys */
