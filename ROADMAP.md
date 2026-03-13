@@ -1,7 +1,7 @@
 # ROADMAP.md — Oikos Protocol
 
 > This is a living document. Updated as decisions are made and scope evolves.
-> Last updated: 2026-03-12 (P2P two-way chat verified: Companion ↔ OpenClaw via protomux + bridge)
+> Last updated: 2026-03-13 (Swarm relay + joinPeer for Docker/NAT discovery fix)
 
 ## Project Identity
 
@@ -294,6 +294,9 @@ Design decisions made NOW to avoid retrofitting in Phase 4-6:
 - [x] Join/leave board topic, create/join/leave room topics
 - [x] Peer event handling: `onconnection`, `ondisconnect` (board + rooms)
 - [x] DHT testnet support for local testing (discovery.ts accepts Hyperswarm options)
+- [x] **Relay support** (`SWARM_RELAY_PUBKEY`): `relayThrough` on Hyperswarm constructor. Auto-relays when holepunching fails (Docker, restrictive NAT). Without this, failed holepunches silently die. (2026-03-13)
+- [x] **Bootstrap peers** (`SWARM_BOOTSTRAP_PEERS`): `joinPeer(pubkey)` on startup. Explicit peer connections by Noise key, bypasses topic discovery. Auto-reconnects. (2026-03-13)
+- [x] `joinPeer()`/`leavePeer()` exposed on SwarmCoordinator for dynamic peer management via MCP/REST (2026-03-13)
 
 ### 4.2 Peer Authentication + Identity
 - [x] `agent-brain/src/swarm/identity.ts` — Keypair generation + agent identity (merged auth into identity)
@@ -1282,3 +1285,5 @@ Implemented features:
 | 2026-03-12 | **`oikos wallet backup` escape hatch** | Seed phrase export command. Gap identified by Ludwig: mnemonic never shown to user in current flow. For hackathon: testnet, doesn't matter. For demo narrative: "Self-custody without seed phrase anxiety. Companion IS the control plane. Backup exists for power users." |
 | 2026-03-12 | **Companion is optional premium, not dependency** | Ludwig confirmed: wallet + CLI + skill is the core product. Any human can interact via their existing channel (Telegram, Discord, etc.) — agent runs `oikos` CLI commands. Companion brings real-time P2P dashboard, emergency controls, direct instructions. Adoption funnel: (1) install wallet → zero friction, (2) use via chat → already familiar, (3) want more control? → install companion. Reduces hackathon scope pressure: core demo stands alone, companion is "and look what else it can do." |
 | 2026-03-12 | **Wallet-isolate path fix** | Default `walletIsolatePath` was `./wallet-isolate/...` (relative to oikos-app CWD), but workspace is a sibling at `../wallet-isolate/`. Fixed to `../wallet-isolate/dist/src/main.js`. Same fix for CLI policy copy path. |
+| 2026-03-12 | **Agent-agnostic chat bridge** | Brain adapter interface (Ollama/HTTP/Mock) with `buildWalletContext()`. Any agent framework plugs in via `BRAIN_TYPE=http BRAIN_CHAT_URL=...`. Chat bridge verified E2E: Pear companion ↔ VPS agent ↔ OpenClaw brain. Ludwig wrote `skills/openclaw-bridge/bridge.js`. |
+| 2026-03-13 | **Swarm relay for Docker/NAT** | Hyperswarm has built-in relay (`relayThrough`) but we never configured it. Without it, failed holepunches silently die — no fallback. Added `SWARM_RELAY_PUBKEY` (auto-relay on holepunch failure) and `SWARM_BOOTSTRAP_PEERS` (explicit `joinPeer()` by Noise key). Discovered during Ludwig↔Baruch debugging: both on same VPS in separate Docker containers, both on DHT, but couldn't find each other. |

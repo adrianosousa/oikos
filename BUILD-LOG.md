@@ -2156,3 +2156,91 @@ pear run --dev . → connects to Ludwig's VPS, chat working ✓
 - `ba433e1` — P2P companion chat + OpenClaw bridge (E2E verified with Ludwig)
 
 ---
+
+## 2026-03-13 — Swarm Relay + joinPeer (Docker/NAT Fix)
+
+### Session: Multi-Agent Swarm Discovery Debugging
+
+**Duration**: ~1 hour
+**Participants**: Adriano (human), Claude Opus 4.6 (AI), Ludwig (OpenClaw agent), Baruch (OpenClaw agent)
+
+#### Context
+
+Adriano set up two OpenClaw agents (Ludwig and Baruch) on the same Hostinger VPS in separate Docker containers. Both agents ran oikos-app with real Hyperswarm (not mock), same `SWARM_ID`, same board topic derivation. Ludwig announced on the board. Baruch never saw it.
+
+Diagnosis: both agents had UDP sockets open (Hyperswarm was binding), but `boardPeers` and `announcements` were empty on both sides. The agents could reach public DHT bootstrap nodes but couldn't establish direct UDP connections between containers.
+
+#### Root Cause
+
+**Hyperswarm has built-in relay support, but we never configured it.**
+
+When holepunching fails between Docker containers (both have private Docker IPs behind the same VPS public IP), Hyperswarm checks for a `relayThrough` option. If configured, it automatically relays the connection through a third DHT node. Without `relayThrough`, the connection silently dies — **no fallback, no error, just nothing happens.**
+
+This is why the companion P2P chat with Ludwig worked (Adriano's Mac has a real public IP → VPS public IP = holepunching succeeds), but container-to-container failed (both behind Docker NAT = holepunching fails = no relay = dead).
+
+Source: deep dive into HyperDHT `lib/connect.js` and Hyperswarm source. The relay logic triggers on error codes `HOLEPUNCH_ABORTED`, `DOUBLE_RANDOMIZED_NATS`, `REMOTE_NOT_HOLEPUNCHABLE` — but ONLY when `relayThrough` is set.
+
+#### What Was Built
+
+1. **`relayThrough` support** (`SWARM_RELAY_PUBKEY` env var)
+   - Passes relay peer pubkey to Hyperswarm constructor
+   - When holepunching fails, auto-relays through this peer
+   - Zero application-level code changes needed — Hyperswarm handles everything
+   - The relay peer can be any Hyperswarm node willing to proxy connections
+
+2. **`joinPeer()` support** (`SWARM_BOOTSTRAP_PEERS` env var)
+   - Comma-separated list of peer pubkeys to explicitly connect to on startup
+   - Uses Hyperswarm's `joinPeer(pubkey)` — bypasses topic-based DHT discovery
+   - Connects directly by Noise public key through DHT routing
+   - Auto-reconnects on failure
+   - Belt-and-suspenders: topic discovery AND explicit peering
+
+3. **`joinPeer()`/`leavePeer()` on coordinator**
+   - Exposed on `SwarmCoordinatorInterface` (optional methods)
+   - MCP/REST can dynamically connect to discovered peers
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `oikos-app/src/swarm/discovery.ts` | Added `relayPubkey` to config, `relayThrough` in Hyperswarm opts, `joinPeer()`/`leavePeer()` methods |
+| `oikos-app/src/swarm/coordinator.ts` | Added `relayPubkey`/`bootstrapPeers` to SwarmConfig, wire through to discovery, expose `joinPeer()`/`leavePeer()` |
+| `oikos-app/src/swarm/types.ts` | Added optional `joinPeer()`/`leavePeer()` to SwarmCoordinatorInterface |
+| `oikos-app/src/swarm/modules.d.ts` | Added `joinPeer()`, `leavePeer()`, `dht` to Hyperswarm type declarations |
+| `oikos-app/src/config/env.ts` | Added `swarmRelayPubkey`, `swarmBootstrapPeers` to OikosConfig |
+| `oikos-app/src/main.ts` | Wire relay/bootstrap config through to SwarmCoordinator constructor |
+
+#### Deployment Instructions
+
+**Quick fix (bootstrap peers):**
+```bash
+# On Ludwig: add Baruch's pubkey
+SWARM_BOOTSTRAP_PEERS=7bea8598f0152c2b67ffd38f7dab03aa785a692683ef71fc2c7aa860ab881ed4
+
+# On Baruch: add Ludwig's pubkey
+SWARM_BOOTSTRAP_PEERS=<ludwig-pubkey>
+```
+
+**Proper fix (relay node):**
+```js
+// Run on VPS host (not in Docker), 5 lines:
+import DHT from 'hyperdht'
+const node = new DHT({ ephemeral: false })
+await node.ready()
+console.log('Relay pubkey:', node.defaultKeyPair.publicKey.toString('hex'))
+```
+Then both agents set `SWARM_RELAY_PUBKEY=<relay pubkey>`.
+
+#### Build Verification
+
+```
+npx tsc --noEmit → clean ✓
+npm run build → clean ✓
+105/105 tests passing ✓
+```
+
+#### Commits
+
+- `6e1d7c4` — Swarm relay + joinPeer: fix Docker/NAT peer discovery
+
+---
