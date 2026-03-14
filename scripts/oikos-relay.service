@@ -1,0 +1,23 @@
+[Unit]
+Description=Oikos DHT Relay Node
+Documentation=https://github.com/adrianosousa/oikos
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/oikos
+ExecStart=/usr/bin/node /opt/oikos/scripts/relay-node.mjs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/root/.oikos
+
+[Install]
+WantedBy=multi-user.target
