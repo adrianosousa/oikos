@@ -175,7 +175,9 @@ export function loadOikosConfig(): OikosConfig {
     agentCapabilities: getEnv('AGENT_CAPABILITIES', 'portfolio-analyst,price-feed'),
     mockSwarm: resolveMock('MOCK_SWARM', mode),
     keypairPath: getEnv('KEYPAIR_PATH', '.oikos-keypair.json'),
-    swarmRelayPubkey: getEnv('SWARM_RELAY_PUBKEY', ''),
+    // Oikos ecosystem relay node (Hostinger VPS, always-on via systemd)
+    // Agents can override with their own relay via SWARM_RELAY_PUBKEY env var
+    swarmRelayPubkey: getEnv('SWARM_RELAY_PUBKEY', 'e7ab6adb1a18e7d22649691dc65f5789f6fdd25422b0770ab068ee9bbe0a3003'),
     swarmBootstrapPeers: getEnv('SWARM_BOOTSTRAP_PEERS', ''),
 
     // WDK Indexer
