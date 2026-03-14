@@ -137,6 +137,14 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       }
     }
 
+    // 7c. Maintain persistent connection to the relay node.
+    // Critical for Docker/NAT: the relay can only pipe two peers together
+    // if it has active connections to BOTH. joinPeer creates an outbound
+    // connection (works through NAT), keeping the relay path alive.
+    if (this.config.relayPubkey && this.config.relayPubkey.length === 64) {
+      this.discovery.joinPeer(this.config.relayPubkey);
+    }
+
     // 8. Start heartbeat
     this.heartbeatInterval = setInterval(() => {
       this._sendHeartbeat();

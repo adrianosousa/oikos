@@ -70,15 +70,18 @@ export class SwarmDiscovery {
     }
 
     // Relay support: when holepunching fails (Docker, restrictive NAT, etc.),
-    // Hyperswarm automatically relays through this peer.
-    // The relayThrough function is called with (force, swarm):
-    //   - force=false on first attempt: only relay if NAT is randomized
-    //   - force=true on retry after HOLEPUNCH_ABORTED/DOUBLE_RANDOMIZED_NATS: always relay
-    // Without this, failed holepunches have NO fallback.
+    // Hyperswarm relays through this peer.
+    //
+    // IMPORTANT: We pass a FUNCTION that always returns the relay, not a raw buffer.
+    // Default Hyperswarm behavior with a buffer: relayThrough only activates when
+    // force=true (retry) OR dht.randomized=true. Docker bridge NAT often doesn't
+    // trigger either condition — connections silently hang instead of failing with
+    // a retryable error code. By returning the relay unconditionally, every connection
+    // attempt includes the relay as an immediate fallback.
     if (config.relayPubkey) {
       const relayBuf = b4a.from(config.relayPubkey, 'hex');
-      swarmOpts['relayThrough'] = relayBuf;
-      console.error(`[swarm] Relay configured: ${config.relayPubkey.slice(0, 12)}...`);
+      swarmOpts['relayThrough'] = () => relayBuf;
+      console.error(`[swarm] Relay configured (forced): ${config.relayPubkey.slice(0, 12)}...`);
     }
 
     this.swarm = new Hyperswarm(swarmOpts);
