@@ -22,8 +22,11 @@ export interface OikosConfig {
   /** High-level mode: mock, testnet, mainnet */
   mode: OikosMode;
 
-  /** Dashboard port (localhost only) */
+  /** Dashboard port */
   dashboardPort: number;
+
+  /** Dashboard host — '127.0.0.1' (default) or '0.0.0.0' (public board access) */
+  dashboardHost: string;
 
   /** Path to the wallet-isolate entry script (for spawning) */
   walletIsolatePath: string;
@@ -157,6 +160,7 @@ export function loadOikosConfig(): OikosConfig {
     // Core
     mode,
     dashboardPort: parseInt(getEnv('DASHBOARD_PORT', '3420'), 10),
+    dashboardHost: getEnv('DASHBOARD_HOST', '127.0.0.1'),
     walletIsolatePath: getEnv('WALLET_ISOLATE_PATH', '../wallet-isolate/dist/src/main.js'),
     mockWallet: resolveMock('MOCK_WALLET', mode),
     policyFile: getEnv('POLICY_FILE', ''),

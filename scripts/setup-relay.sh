@@ -34,11 +34,21 @@ fi
 npm install hyperdht --save-exact --silent 2>/dev/null
 echo "[setup] hyperdht installed."
 
-# 4. Copy relay script
-cp "$(dirname "$0")/relay-node.mjs" "$INSTALL_DIR/relay-node.mjs" 2>/dev/null || {
-  # If running via curl, download it
-  curl -sSL https://raw.githubusercontent.com/adrianosousa/oikos/main/scripts/relay-node.mjs -o "$INSTALL_DIR/relay-node.mjs"
-}
+# 4. Install relay script
+# If this is a git clone, use the repo copy directly (git pull updates it).
+# Otherwise, download or copy to the flat install dir.
+if [ -f "$INSTALL_DIR/scripts/relay-node.mjs" ]; then
+  # Git clone detected — point systemd at the repo path
+  RELAY_SCRIPT="$INSTALL_DIR/scripts/relay-node.mjs"
+  echo "[setup] Using repo script at $RELAY_SCRIPT"
+else
+  RELAY_SCRIPT="$INSTALL_DIR/relay-node.mjs"
+  cp "$(dirname "$0")/relay-node.mjs" "$RELAY_SCRIPT" 2>/dev/null || {
+    # If running via curl, download it
+    curl -sSL https://raw.githubusercontent.com/adrianosousa/oikos/main/scripts/relay-node.mjs -o "$RELAY_SCRIPT"
+  }
+  echo "[setup] Copied relay script to $RELAY_SCRIPT"
+fi
 
 # 5. Install systemd service
 cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
@@ -50,7 +60,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=/usr/bin/node ${INSTALL_DIR}/relay-node.mjs
+ExecStart=/usr/bin/node ${RELAY_SCRIPT}
 Restart=always
 RestartSec=5
 StandardOutput=journal

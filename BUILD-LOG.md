@@ -2244,3 +2244,68 @@ npm run build → clean ✓
 - `6e1d7c4` — Swarm relay + joinPeer: fix Docker/NAT peer discovery
 
 ---
+
+## 2026-03-14 — Relay Fix: Force Relay + Persistent Relay Connection
+
+### Session: Multi-Agent Docker Discovery (Continued)
+
+**Duration**: ~2 hours
+**Participants**: Adriano (human), Claude Opus 4.6 (AI), Ludwig (OpenClaw agent), Baruch (OpenClaw agent)
+**Result**: ✅ Ludwig and Baruch successfully connected on the Hyperswarm board through forced relay
+
+#### Context
+
+Continuing from 2026-03-13. Relay node deployed on VPS host, both agents configured with relay pubkey and bootstrap peers. But agents still couldn't connect — `PEER_NOT_FOUND` for relay, then `joinPeer` initiated but no connection events.
+
+#### Root Causes (Three Bugs)
+
+1. **`relay-node.mjs` missing `createServer()`** — The relay node called `node.ready()` + `node.listen()`, which only binds the UDP socket. To be **findable by pubkey** on the DHT, a node needs `node.createServer()` + `server.listen(keyPair)`. Without the server, `dht.connect(relayPubkey)` → `PEER_NOT_FOUND`.
+
+2. **Stale file in systemd service** — `setup-relay.sh` copies `relay-node.mjs` to `/opt/oikos-relay/relay-node.mjs` (flat path). `git pull` updates `scripts/relay-node.mjs` (repo path). systemd ExecStart points to the flat copy → **running old code without createServer fix**. Confirmed with `grep "createServer"` — flat file had no match, scripts file had the fix.
+
+3. **`relayThrough` not triggering** — Default Hyperswarm behavior: `relayThrough` only activates when `force=true` (retry after holepunch failure) OR `dht.randomized=true` (detected randomized NAT). Docker bridge NAT triggers **neither condition** — connections silently hang instead of failing with a retryable error code. Both agents had `joinPeer` initiated but zero connection events, zero errors.
+
+#### What Was Fixed
+
+1. **`relay-node.mjs`**: Added `createServer()` + `server.listen(keyPair)` — relay now properly announces on DHT. Verified with `dht.connect(relayPubkey)` → `CONNECTED!`
+
+2. **Stale file**: `cp scripts/relay-node.mjs relay-node.mjs` in `/opt/oikos-relay/`. Systemd now runs the fixed code.
+
+3. **Force relay** (`discovery.ts`): Changed `relayThrough` from raw buffer to a function that **always** returns the relay pubkey:
+   ```typescript
+   // BEFORE: only relays when force=true or dht.randomized=true
+   swarmOpts['relayThrough'] = relayBuf;
+
+   // AFTER: always offers relay as fallback
+   swarmOpts['relayThrough'] = () => relayBuf;
+   ```
+
+4. **Persistent relay connection** (`coordinator.ts`): Added `joinPeer(relayPubkey)` on startup. Both agents maintain outbound connections to the relay, ensuring the relay has active paths to both peers.
+
+#### Diagnostic Steps That Helped
+
+- `grep "createServer" /opt/oikos-relay/relay-node.mjs` → empty (stale file!)
+- `grep "createServer" /opt/oikos-relay/scripts/relay-node.mjs` → found (fixed file)
+- `cat /etc/systemd/system/oikos-relay.service | grep ExecStart` → points to flat file
+- `dht.connect(relayPubkey)` from host → `CONNECTED!` (relay works)
+- `dht.connect(ludwigPubkey)` from host → `CONNECTED!` (Docker agents ARE on DHT)
+- Docker network inspect → Ludwig on 172.18.0.x, Baruch on 172.19.0.x (different networks!)
+
+#### Key Insight
+
+Docker containers CAN announce on the public DHT (peers are findable). The issue isn't DHT visibility — it's the connection handshake. Direct connections between containers on different Docker networks silently hang. Hyperswarm's default relay logic waits for specific error codes that never come. Forcing relay on every attempt gives an immediate working fallback.
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `scripts/relay-node.mjs` | Added `createServer()` + `server.listen(keyPair)` for DHT announce |
+| `oikos-app/src/swarm/discovery.ts` | `relayThrough` → forced function (always returns relay) |
+| `oikos-app/src/swarm/coordinator.ts` | Added `joinPeer(relayPubkey)` for persistent relay connection |
+
+#### Commits
+
+- `99bde29` — fix(relay): use createServer + server.listen for DHT peer announcement
+- `d58a820` — fix(swarm): force relay for all connections + joinPeer relay node
+
+---

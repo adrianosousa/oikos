@@ -1,12 +1,18 @@
 /**
- * Dashboard Server — localhost-only monitoring UI + REST API.
+ * Dashboard Server — monitoring UI + REST API + public board.
  *
  * Serves a static HTML dashboard and REST API for wallet state.
  * Uses OikosServices for direct access to all infrastructure.
- * NEVER exposed to the internet. Binds to 127.0.0.1 only.
+ *
+ * Bind modes:
+ * - DASHBOARD_HOST=127.0.0.1 (default) — localhost only, private dashboard
+ * - DASHBOARD_HOST=0.0.0.0 — public access. /board and /api/board are
+ *   unauthenticated (public discovery data). All other /api/* endpoints
+ *   still require Bearer token when SESSION_TOKEN is set.
  *
  * Auth: Optional Bearer token (SESSION_TOKEN env). If set,
- * all /api/* endpoints require Authorization header (except /api/health and /api/token).
+ * all /api/* endpoints require Authorization header
+ * (except /api/health, /api/token, and /api/board).
  * Pattern from rgb-wallet-pear.
  *
  * @security All proposals flow through the Wallet Isolate's PolicyEngine.
@@ -17,6 +23,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { OikosServices } from '../types.js';
 import type { TokenSymbol, Chain } from '../ipc/types.js';
+import type { SwarmState, SwarmPeerInfo, BoardAnnouncement } from '../swarm/types.js';
 import { mountMCP } from '../mcp/server.js';
 import { buildWalletContext } from '../brain/adapter.js';
 import type { ChatMessage } from '../brain/adapter.js';
@@ -27,6 +34,7 @@ const __dirname = dirname(__filename);
 export function createDashboard(
   services: OikosServices,
   port: number,
+  host = '127.0.0.1',
 ): void {
   const app = express();
   const { wallet } = services;
@@ -49,10 +57,10 @@ export function createDashboard(
     res.json({ token: sessionToken });
   });
 
-  /** Auth middleware — skip for health, token, and static files */
+  /** Auth middleware — skip for health, token, board, and static files */
   app.use('/api', (req, res, next) => {
-    // Skip auth for health check and token endpoints
-    if (req.path === '/health' || req.path === '/token') {
+    // Skip auth for public endpoints (health, token, board)
+    if (req.path === '/health' || req.path === '/token' || req.path === '/board') {
       next();
       return;
     }
@@ -486,8 +494,63 @@ export function createDashboard(
     });
   });
 
-  // Bind to localhost only — never expose to network
-  app.listen(port, '127.0.0.1', () => {
-    console.error(`[dashboard] Listening on http://127.0.0.1:${port}`);
+  // ── Public Board (unauthenticated — discovery data is public by design) ──
+
+  /** Public board JSON — peers, announcements, identity. No wallet data. */
+  app.get('/api/board', (_req, res) => {
+    if (!services.swarm) {
+      res.json({ enabled: false, boardPeers: [], announcements: [] });
+      return;
+    }
+    const state = services.swarm.getState() as unknown as SwarmState;
+    // Only expose public discovery data — no wallet state, no room details
+    const peers = (state.boardPeers ?? []) as SwarmPeerInfo[];
+    const anns = (state.announcements ?? []) as BoardAnnouncement[];
+    res.json({
+      enabled: true,
+      identity: {
+        pubkey: state.identity.pubkey,
+        name: state.identity.name,
+        reputation: state.identity.reputation,
+        capabilities: state.identity.capabilities,
+      },
+      boardPeers: peers.map((p: SwarmPeerInfo) => ({
+        pubkey: p.pubkey,
+        name: p.name,
+        reputation: p.reputation,
+        capabilities: p.capabilities,
+        lastSeen: p.lastSeen,
+      })),
+      announcements: anns.map((a: BoardAnnouncement) => ({
+        id: a.id,
+        agentPubkey: a.agentPubkey,
+        agentName: a.agentName,
+        reputation: a.reputation,
+        category: a.category,
+        title: a.title,
+        description: a.description,
+        priceRange: a.priceRange,
+        capabilities: a.capabilities,
+        expiresAt: a.expiresAt,
+        timestamp: a.timestamp,
+      })),
+      economics: state.economics,
+      timestamp: Date.now(),
+    });
+  });
+
+  /** Public board HTML page */
+  app.get('/board', (_req, res) => {
+    const boardHtml = join(publicDir, 'board.html');
+    res.sendFile(boardHtml, (err) => {
+      if (err) res.status(404).send('Board page not found');
+    });
+  });
+
+  app.listen(port, host, () => {
+    console.error(`[dashboard] Listening on http://${host}:${port}`);
+    if (host === '0.0.0.0') {
+      console.error(`[dashboard] Public board: http://<your-ip>:${port}/board`);
+    }
   });
 }

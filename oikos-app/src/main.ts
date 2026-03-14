@@ -282,12 +282,15 @@ async function main(): Promise<void> {
     }, 1000);
   }
 
-  // 12. Start dashboard (Express: REST + MCP + static UI)
-  createDashboard(services, config.dashboardPort);
+  // 12. Start dashboard (Express: REST + MCP + static UI + public board)
+  createDashboard(services, config.dashboardPort, config.dashboardHost);
 
   console.error('[oikos] Oikos App ready.');
-  console.error(`[oikos] Dashboard: http://127.0.0.1:${config.dashboardPort}`);
-  console.error(`[oikos] MCP: POST http://127.0.0.1:${config.dashboardPort}/mcp`);
+  console.error(`[oikos] Dashboard: http://${config.dashboardHost}:${config.dashboardPort}`);
+  console.error(`[oikos] MCP: POST http://${config.dashboardHost}:${config.dashboardPort}/mcp`);
+  if (config.dashboardHost === '0.0.0.0') {
+    console.error(`[oikos] Public board: http://<your-ip>:${config.dashboardPort}/board`);
+  }
   console.error(`[oikos] CLI: oikos --port ${config.dashboardPort} <command>`);
   if (config.swarmEnabled) console.error(`[oikos] Swarm: enabled (${config.agentName})`);
   if (config.companionEnabled) console.error(`[oikos] Companion: enabled`);

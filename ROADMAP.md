@@ -1,7 +1,7 @@
 # ROADMAP.md — Oikos Protocol
 
 > This is a living document. Updated as decisions are made and scope evolves.
-> Last updated: 2026-03-13 (Swarm relay + joinPeer for Docker/NAT discovery fix)
+> Last updated: 2026-03-14 (Force relay fix — Ludwig↔Baruch connected through relay)
 
 ## Project Identity
 
@@ -294,7 +294,7 @@ Design decisions made NOW to avoid retrofitting in Phase 4-6:
 - [x] Join/leave board topic, create/join/leave room topics
 - [x] Peer event handling: `onconnection`, `ondisconnect` (board + rooms)
 - [x] DHT testnet support for local testing (discovery.ts accepts Hyperswarm options)
-- [x] **Relay support** (`SWARM_RELAY_PUBKEY`): `relayThrough` on Hyperswarm constructor. Auto-relays when holepunching fails (Docker, restrictive NAT). Without this, failed holepunches silently die. (2026-03-13)
+- [x] **Relay support** (`SWARM_RELAY_PUBKEY`): `relayThrough` on Hyperswarm constructor. Force-relays all connections (function, not buffer). Persistent `joinPeer(relayPubkey)` for active relay path. Verified: Ludwig↔Baruch connected through relay across separate Docker networks. (2026-03-13, fixed 2026-03-14)
 - [x] **Bootstrap peers** (`SWARM_BOOTSTRAP_PEERS`): `joinPeer(pubkey)` on startup. Explicit peer connections by Noise key, bypasses topic discovery. Auto-reconnects. (2026-03-13)
 - [x] `joinPeer()`/`leavePeer()` exposed on SwarmCoordinator for dynamic peer management via MCP/REST (2026-03-13)
 
@@ -1287,3 +1287,4 @@ Implemented features:
 | 2026-03-12 | **Wallet-isolate path fix** | Default `walletIsolatePath` was `./wallet-isolate/...` (relative to oikos-app CWD), but workspace is a sibling at `../wallet-isolate/`. Fixed to `../wallet-isolate/dist/src/main.js`. Same fix for CLI policy copy path. |
 | 2026-03-12 | **Agent-agnostic chat bridge** | Brain adapter interface (Ollama/HTTP/Mock) with `buildWalletContext()`. Any agent framework plugs in via `BRAIN_TYPE=http BRAIN_CHAT_URL=...`. Chat bridge verified E2E: Pear companion ↔ VPS agent ↔ OpenClaw brain. Ludwig wrote `skills/openclaw-bridge/bridge.js`. |
 | 2026-03-13 | **Swarm relay for Docker/NAT** | Hyperswarm has built-in relay (`relayThrough`) but we never configured it. Without it, failed holepunches silently die — no fallback. Added `SWARM_RELAY_PUBKEY` (auto-relay on holepunch failure) and `SWARM_BOOTSTRAP_PEERS` (explicit `joinPeer()` by Noise key). Discovered during Ludwig↔Baruch debugging: both on same VPS in separate Docker containers, both on DHT, but couldn't find each other. |
+| 2026-03-14 | **Force relay + persistent relay connection** | Three bugs found: (1) relay-node.mjs needed `createServer()+server.listen()` (not just `node.listen()`) to be findable on DHT; (2) systemd was running stale file (flat copy, not git-updated scripts/); (3) `relayThrough` as buffer only activates on `force=true` or `dht.randomized=true` — Docker NAT triggers neither, connections silently hang. Fix: pass function `() => relayBuf` to force relay on every attempt + `joinPeer(relayPubkey)` for persistent connection. Ludwig↔Baruch connected successfully through relay despite being on separate Docker bridge networks (172.18 vs 172.19). |
