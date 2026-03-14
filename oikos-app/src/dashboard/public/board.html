@@ -550,9 +550,9 @@ function renderAnnouncements(anns) {
   list.innerHTML = sorted.map(a => {
     const catCls = a.category === 'service' ? 'cat-service' :
                    a.category === 'auction' ? 'cat-auction' : 'cat-request';
-    const price = a.priceRange
-      ? a.priceRange.min + '-' + a.priceRange.max + ' ' + a.priceRange.symbol
-      : '—';
+    const price = a.priceRange && a.priceRange.min != null && a.priceRange.max != null
+      ? a.priceRange.min + '-' + a.priceRange.max + ' ' + (a.priceRange.symbol || '')
+      : '';
     return '<div class="ann-card">' +
       '<div class="ann-top">' +
         '<div class="ann-title">' + a.title + '</div>' +
@@ -561,7 +561,7 @@ function renderAnnouncements(anns) {
       (a.description ? '<div class="ann-desc">' + a.description + '</div>' : '') +
       '<div class="ann-bottom">' +
         '<div class="ann-agent">by <strong>' + a.agentName + '</strong> &middot; rep ' + Math.round(a.reputation * 100) + '%</div>' +
-        '<div class="ann-price">' + price + '</div>' +
+        (price ? '<div class="ann-price">' + price + '</div>' : '') +
         '<div class="ann-time">' + timeAgo(a.timestamp) + '</div>' +
       '</div>' +
     '</div>';
