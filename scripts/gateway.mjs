@@ -207,10 +207,24 @@ if (RELAY_PUBKEY) {
 // ── HTTP Server ──
 
 const boardHtmlPath = join(__dirname, '..', 'oikos-app', 'src', 'dashboard', 'public', 'board.html');
+const logoPath = join(__dirname, '..', 'assets', 'logo.png');
 
 const server = http.createServer((req, res) => {
   // CORS headers for API
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Serve logo
+  if (req.url === '/logo.png') {
+    try {
+      const logo = readFileSync(logoPath);
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      res.end(logo);
+    } catch {
+      res.writeHead(404);
+      res.end('logo not found');
+    }
+    return;
+  }
 
   if (req.url === '/api/board' || req.url?.startsWith('/api/board?')) {
     const peerList = Array.from(peers.values());
@@ -278,7 +292,7 @@ const server = http.createServer((req, res) => {
 
   // 404 for everything else
   res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not found', routes: ['/', '/board', '/api/board'] }));
+  res.end(JSON.stringify({ error: 'not found', routes: ['/', '/board', '/api/board', '/logo.png'] }));
 });
 
 server.listen(PORT, '0.0.0.0', () => {
