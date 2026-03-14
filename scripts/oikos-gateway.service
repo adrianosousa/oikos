@@ -1,0 +1,19 @@
+[Unit]
+Description=Oikos Board Gateway
+After=network-online.target oikos-relay.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/oikos-relay
+ExecStart=/usr/bin/node /opt/oikos-relay/scripts/gateway.mjs --port 8080
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+Environment=SWARM_ID=oikos-hackathon-v1
+Environment=SWARM_RELAY_PUBKEY=e7ab6adb1a18e7d22649691dc65f5789f6fdd25422b0770ab068ee9bbe0a3003
+
+[Install]
+WantedBy=multi-user.target
