@@ -70,9 +70,12 @@ const node = new DHT({
 
 await node.ready()
 
-// CRITICAL: listen() makes this node addressable by pubkey on the DHT.
-// Without it, ready() only initializes the DHT client — peers can't find us.
-await node.listen()
+// CRITICAL: To be findable by pubkey on the DHT, we need a SERVER listening
+// on the keypair. Just node.ready() or node.listen() only binds the UDP socket
+// but doesn't announce the keypair to the DHT. createServer() + server.listen()
+// registers the pubkey so peers can do dht.connect(pubkey) and find us.
+const server = node.createServer()
+await server.listen(keyPair)
 
 const pubkey = keyPair.publicKey.toString('hex')
 const addr = node.address()
@@ -89,6 +92,7 @@ console.log(`  SWARM_RELAY_PUBKEY=${pubkey}`)
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     console.log(`\n[oikos-relay] ${sig} received, shutting down...`)
+    await server.close()
     await node.destroy()
     process.exit(0)
   })
