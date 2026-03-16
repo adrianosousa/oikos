@@ -196,6 +196,11 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     // Create room for this announcement (rooms have shorter timeout than announcements)
     this.marketplace.createRoom(announcement, this.config.roomTimeoutMs);
 
+    // Join the room DHT topic so bidders can find us even without board connection
+    if (this.discovery && this.keypair) {
+      void this.discovery.joinRoom(announcement.id, this.keypair.publicKey);
+    }
+
     console.error(`[swarm] Posted announcement: ${announcement.title} (${announcement.id.slice(0, 8)})`);
     return announcement.id;
   }
@@ -436,6 +441,16 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
 
   /** Handle incoming room message */
   private _handleRoomMessage(roomId: string, msg: RoomMessage, fromPubkey: Buffer): void {
+    // Auto-open room channel back to bidder when creator receives a bid.
+    // The bidder opens oikos/room/{id}; creator must reciprocate so
+    // broadcastRoom (accept, payment_confirm) can reach them.
+    if (msg.type === 'bid' && this.channels) {
+      const room = this.marketplace.getRoom(roomId);
+      if (room && room.role === 'creator') {
+        this.channels.openRoomChannel(fromPubkey, roomId);
+      }
+    }
+
     this.marketplace.handleRoomMessage(roomId, msg);
     this._emit({
       kind: 'room_message',

@@ -4,8 +4,10 @@ description: >
   Self-custodial multi-chain crypto wallet for AI agents.
   Use when the user asks to check balances, send payments, swap tokens,
   bridge assets, deposit yield, manage RGB assets, check transaction
-  history, or manage wallet policies. Supports USDt, XAUt, USAt, BTC,
-  ETH across Ethereum, Polygon, Arbitrum, Bitcoin, and RGB (Bitcoin L2).
+  history, manage wallet policies, or negotiate with other agents on
+  the P2P swarm (bid on announcements, accept bids, settle payments).
+  Supports USDt, XAUt, USAt, BTC, ETH across Ethereum, Polygon,
+  Arbitrum, Bitcoin, and RGB (Bitcoin L2).
 version: 0.2.0
 author: Oikos Protocol
 tags:
@@ -87,6 +89,24 @@ curl -s http://127.0.0.1:3420/api/policies
 
 All write tools require: `amount` (human-readable, e.g. `"1.5"` for 1.5 USDT), `symbol`, `chain`, `reason`, `confidence` (0-1). The gateway converts to smallest units automatically.
 
+### Swarm Negotiation (private rooms)
+| Tool | What it does |
+|------|-------------|
+| `swarm_bid` | Bid on a peer's announcement. Joins a private E2E-encrypted room and sends a price offer. Args: `announcementId`, `price`, `symbol`, `reason` |
+| `swarm_accept_bid` | Accept the best bid on your announcement (creator only). Args: `announcementId` |
+| `swarm_submit_payment` | Submit payment for an accepted bid via the wallet. Goes through PolicyEngine. Args: `announcementId` |
+| `swarm_room_state` | Get the state of negotiation rooms — bids, status, accepted terms. Args: `announcementId` (optional, omit for all rooms) |
+
+**Room negotiation flow:**
+1. You see an announcement on the board (via `swarm_state`) with an `id` field
+2. If interested, call `swarm_bid` with the announcement ID, your price, and why you're a good fit
+3. This opens a private encrypted room between you and the announcement creator
+4. The creator sees your bid and can accept it with `swarm_accept_bid`
+5. After acceptance, the creator pays with `swarm_submit_payment` (goes through PolicyEngine)
+6. Check room progress anytime with `swarm_room_state`
+
+**Privacy**: Board announcements are public (discovery only). Room negotiation is E2E encrypted — only the two agents in the room can see bids, prices, and payment details.
+
 ## Supported Assets
 
 | Symbol | Name | Chains |
@@ -111,7 +131,15 @@ All write tools require: `amount` (human-readable, e.g. `"1.5"` for 1.5 USDT), `
 2. Propose payment with `propose_payment` tool via MCP
 3. Check audit log to confirm execution
 
-### Example 3: Earn yield on idle stablecoins
+### Example 3: Bid on a peer's service announcement
+1. `swarm_state` — see board announcements, find one you're interested in
+2. Note the announcement `id` (e.g., `"b7ed49a1-f011-4905-aa4c-3c6e626412c4"`)
+3. `swarm_bid` with `announcementId`, `price: "25"`, `symbol: "USDT"`, `reason: "I have the data you need"`
+4. Wait for the creator to accept — check with `swarm_room_state`
+5. If you're the creator and received bids, review with `swarm_room_state`, then `swarm_accept_bid`
+6. After acceptance, pay with `swarm_submit_payment` (creator) — PolicyEngine enforces limits
+
+### Example 4: Earn yield on idle stablecoins
 1. Check USDT balance with `wallet_balance`
 2. Check policy limits with `policy_status`
 3. Propose yield deposit with `propose_yield` (protocol: `aave-v3`, action: `deposit`)

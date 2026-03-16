@@ -186,6 +186,54 @@ const TOOLS: MCPTool[] = [
       required: ['category', 'title', 'description', 'minPrice', 'maxPrice', 'symbol'],
     },
   },
+  // ── Room Negotiation Tools ──
+  {
+    name: 'swarm_bid',
+    description: 'Bid on a peer announcement. Joins the private negotiation room and submits a price offer. The announcement creator will see the bid and can accept it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: { type: 'string', description: 'The announcement ID to bid on' },
+        price: { type: 'string', description: 'Bid price (e.g., "50")' },
+        symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
+        reason: { type: 'string', description: 'Why this agent is a good fit for the task' },
+      },
+      required: ['announcementId', 'price', 'symbol', 'reason'],
+    },
+  },
+  {
+    name: 'swarm_accept_bid',
+    description: 'Accept the best bid on your announcement (creator only). Sends acceptance to the private room and exchanges payment details.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: { type: 'string', description: 'The announcement ID whose best bid to accept' },
+      },
+      required: ['announcementId'],
+    },
+  },
+  {
+    name: 'swarm_submit_payment',
+    description: 'Submit payment for an accepted bid via the wallet (creator only). Goes through PolicyEngine for approval, then signs and executes on-chain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: { type: 'string', description: 'The announcement ID to pay for' },
+      },
+      required: ['announcementId'],
+    },
+  },
+  {
+    name: 'swarm_room_state',
+    description: 'Get the state of negotiation rooms. Shows bids, status, accepted terms, and payment state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: { type: 'string', description: 'Optional: specific room ID. Omit to get all rooms.' },
+      },
+      required: [],
+    },
+  },
   {
     name: 'identity_state',
     description: 'Get ERC-8004 on-chain identity status (registration, agentId, wallet link).',
@@ -360,6 +408,39 @@ const handlers: Record<string, ToolHandler> = {
       priceRange: { min: params['minPrice'] as string, max: params['maxPrice'] as string, symbol: params['symbol'] as string },
     });
     return { announcementId: id };
+  },
+  // ── Room Negotiation Handlers ──
+  async swarm_bid(params, svc) {
+    if (!svc.swarm) return { error: 'Swarm not enabled' };
+    await svc.swarm.bidOnAnnouncement(
+      params['announcementId'] as string,
+      params['price'] as string,
+      params['symbol'] as string,
+      params['reason'] as string,
+    );
+    return { bid: true, announcementId: params['announcementId'] };
+  },
+  async swarm_accept_bid(params, svc) {
+    if (!svc.swarm) return { error: 'Swarm not enabled' };
+    const result = await svc.swarm.acceptBestBid(params['announcementId'] as string);
+    if (!result) return { accepted: false, reason: 'No bids found or not the creator' };
+    return { accepted: true, ...(result as Record<string, unknown>) };
+  },
+  async swarm_submit_payment(params, svc) {
+    if (!svc.swarm) return { error: 'Swarm not enabled' };
+    await svc.swarm.submitPayment(params['announcementId'] as string);
+    return { submitted: true, announcementId: params['announcementId'] };
+  },
+  async swarm_room_state(params, svc) {
+    if (!svc.swarm) return { enabled: false };
+    const state = svc.swarm.getState() as { activeRooms?: Array<{ announcementId: string }> };
+    const rooms = state.activeRooms ?? [];
+    const id = params['announcementId'] as string | undefined;
+    if (id) {
+      const room = rooms.find((r) => r.announcementId === id);
+      return room ?? { error: 'Room not found' };
+    }
+    return { rooms };
   },
   async identity_state(_params, svc) {
     return svc.identity;

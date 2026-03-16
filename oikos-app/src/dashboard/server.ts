@@ -185,6 +185,77 @@ export function createDashboard(
     res.json({ enabled: true, economics: (state as Record<string, unknown>)['economics'] });
   });
 
+  // ── Room Negotiation Endpoints ──
+
+  /** List all negotiation rooms */
+  app.get('/api/rooms', (_req, res) => {
+    if (!services.swarm) {
+      res.json({ enabled: false, rooms: [] });
+      return;
+    }
+    const state = services.swarm.getState() as { activeRooms?: unknown[] };
+    res.json({ enabled: true, rooms: state.activeRooms ?? [] });
+  });
+
+  /** Get specific room by announcement ID */
+  app.get('/api/rooms/:id', (req, res) => {
+    if (!services.swarm) {
+      res.json({ enabled: false });
+      return;
+    }
+    const state = services.swarm.getState() as { activeRooms?: Array<{ announcementId: string }> };
+    const rooms = state.activeRooms ?? [];
+    const room = rooms.find((r) => r.announcementId === req.params['id']);
+    if (!room) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+    res.json(room);
+  });
+
+  /** Bid on an announcement — joins private room and sends price offer */
+  app.post('/api/rooms/:id/bid', async (req, res) => {
+    if (!services.swarm) { res.status(503).json({ error: 'Swarm not enabled' }); return; }
+    try {
+      const body = req.body as Record<string, unknown>;
+      await services.swarm.bidOnAnnouncement(
+        req.params['id'] as string,
+        String(body['price'] ?? ''),
+        String(body['symbol'] ?? 'USDT'),
+        String(body['reason'] ?? 'CLI bid'),
+      );
+      res.json({ bid: true, announcementId: req.params['id'] });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** Accept best bid on an announcement (creator only) */
+  app.post('/api/rooms/:id/accept', async (req, res) => {
+    if (!services.swarm) { res.status(503).json({ error: 'Swarm not enabled' }); return; }
+    try {
+      const result = await services.swarm.acceptBestBid(req.params['id'] as string);
+      if (!result) {
+        res.status(404).json({ accepted: false, reason: 'No bids found or not the creator' });
+        return;
+      }
+      res.json({ accepted: true, ...(result as Record<string, unknown>) });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** Submit payment for accepted bid (creator only) */
+  app.post('/api/rooms/:id/pay', async (req, res) => {
+    if (!services.swarm) { res.status(503).json({ error: 'Swarm not enabled' }); return; }
+    try {
+      await services.swarm.submitPayment(req.params['id'] as string);
+      res.json({ submitted: true, announcementId: req.params['id'] });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // ── ERC-8004 Identity & Reputation ──
 
   app.get('/agent-card.json', (_req, res) => {

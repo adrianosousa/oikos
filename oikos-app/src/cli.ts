@@ -14,6 +14,12 @@
  *   oikos audit [--limit N]                Transaction history
  *   oikos health                           Gateway health
  *   oikos swarm                            Swarm peers
+ *   oikos board                            Announcement board
+ *   oikos rooms                            Active negotiation rooms
+ *   oikos announce <c> <t> <d>             Post announcement
+ *   oikos bid <id> <price> [sym]           Bid on announcement
+ *   oikos accept <id>                      Accept best bid (creator)
+ *   oikos settle <id>                      Submit payment (creator)
  *   oikos identity                         ERC-8004 identity
  *   oikos prices                           Asset prices
  *   oikos rgb assets                       RGB assets
@@ -481,6 +487,163 @@ async function cmdSwarm(): Promise<void> {
   out(data);
 }
 
+async function cmdBoard(): Promise<void> {
+  const data = await get('/api/swarm') as {
+    announcements?: Array<{
+      id: string; agentName: string; category: string;
+      title: string; description: string;
+      priceRange?: { min: string; max: string; symbol: string };
+      reputation: number; timestamp: number;
+    }>;
+  };
+  const anns = data.announcements ?? [];
+
+  if (jsonOutput) { out(anns); return; }
+
+  if (anns.length === 0) {
+    console.log(`${DIM}No announcements on the board.${RESET}`);
+    return;
+  }
+
+  console.log(`${BOLD}Announcement Board${RESET}  (${anns.length} listing${anns.length !== 1 ? 's' : ''})\n`);
+  for (const a of anns) {
+    const price = a.priceRange
+      ? `${a.priceRange.min}-${a.priceRange.max} ${a.priceRange.symbol}`
+      : 'N/A';
+    const ago = Math.round((Date.now() - a.timestamp) / 1000);
+    console.log(`  ${CYAN}${a.id.slice(0, 8)}${RESET}  ${BOLD}${a.title}${RESET}`);
+    console.log(`           ${DIM}${a.category}${RESET}  ${price}  by ${a.agentName} (rep ${a.reputation})  ${DIM}${ago}s ago${RESET}`);
+    console.log(`           ${a.description.slice(0, 100)}`);
+    console.log();
+  }
+}
+
+async function cmdRooms(): Promise<void> {
+  const data = await get('/api/rooms') as {
+    rooms?: Array<{
+      announcementId: string; role: string; status: string;
+      announcement: { title: string; agentName: string };
+      bids: Array<{ bidderName: string; price: string; symbol: string }>;
+      agreedPrice?: string; agreedSymbol?: string;
+      paymentTxHash?: string;
+    }>;
+  };
+  const rooms = data.rooms ?? [];
+
+  if (jsonOutput) { out(rooms); return; }
+
+  if (rooms.length === 0) {
+    console.log(`${DIM}No active rooms.${RESET}`);
+    return;
+  }
+
+  console.log(`${BOLD}Negotiation Rooms${RESET}  (${rooms.length} room${rooms.length !== 1 ? 's' : ''})\n`);
+  for (const r of rooms) {
+    const statusColor = r.status === 'settled' ? GREEN : r.status === 'accepted' ? YELLOW : CYAN;
+    console.log(`  ${CYAN}${r.announcementId.slice(0, 8)}${RESET}  ${BOLD}${r.announcement.title}${RESET}`);
+    console.log(`           Role: ${r.role}  Status: ${statusColor}${r.status}${RESET}  Bids: ${r.bids.length}`);
+    if (r.agreedPrice) {
+      console.log(`           Agreed: ${GREEN}${r.agreedPrice} ${r.agreedSymbol}${RESET}`);
+    }
+    if (r.paymentTxHash) {
+      console.log(`           TxHash: ${DIM}${r.paymentTxHash}${RESET}`);
+    }
+    if (r.bids.length > 0) {
+      for (const b of r.bids) {
+        console.log(`           ${DIM}bid: ${b.bidderName} ${b.price} ${b.symbol}${RESET}`);
+      }
+    }
+    console.log();
+  }
+}
+
+async function cmdAnnounce(): Promise<void> {
+  // oikos announce service "My Title" "Description text" --min 5 --max 100 --symbol USDT
+  const category = argv[1];
+  const title = argv[2];
+  const desc = argv[3];
+  const minPrice = flag('min') ?? '0';
+  const maxPrice = flag('max') ?? '100';
+  const sym = flag('symbol') ?? 'USDT';
+
+  if (!category || !title || !desc || !['service', 'auction', 'request'].includes(category)) {
+    console.error(`${RED}Usage: oikos announce <service|auction|request> "<title>" "<description>" [--min 5 --max 100 --symbol USDT]${RESET}`);
+    process.exit(1);
+  }
+
+  const result = await mcpCall('swarm_announce', {
+    category, title, description: desc, minPrice, maxPrice, symbol: sym,
+  });
+  if (jsonOutput) { out(result); return; }
+
+  const r = result as { announcementId?: string };
+  if (r.announcementId) {
+    console.log(`${GREEN}Announced${RESET}: ${BOLD}${title}${RESET}`);
+    console.log(`  ID: ${CYAN}${r.announcementId}${RESET}`);
+  } else {
+    out(result);
+  }
+}
+
+async function cmdBid(): Promise<void> {
+  // oikos bid <announcementId> <price> <symbol> --reason "..."
+  const announcementId = argv[1];
+  const price = argv[2];
+  const sym = argv[3]?.toUpperCase() ?? 'USDT';
+
+  if (!announcementId || !price) {
+    console.error(`${RED}Usage: oikos bid <announcementId> <price> [symbol] [--reason "..."]${RESET}`);
+    process.exit(1);
+  }
+
+  const result = await mcpCall('swarm_bid', {
+    announcementId, price, symbol: sym, reason,
+  });
+  if (jsonOutput) { out(result); return; }
+
+  console.log(`${GREEN}Bid placed${RESET}: ${price} ${sym} on ${CYAN}${announcementId.slice(0, 8)}${RESET}`);
+}
+
+async function cmdAccept(): Promise<void> {
+  // oikos accept <announcementId>
+  const announcementId = argv[1];
+  if (!announcementId) {
+    console.error(`${RED}Usage: oikos accept <announcementId>${RESET}`);
+    process.exit(1);
+  }
+
+  const result = await mcpCall('swarm_accept_bid', { announcementId });
+  if (jsonOutput) { out(result); return; }
+
+  const r = result as { accepted?: boolean; agreedPrice?: string; agreedSymbol?: string; reason?: string };
+  if (r.accepted) {
+    console.log(`${GREEN}Accepted${RESET}: best bid on ${CYAN}${announcementId.slice(0, 8)}${RESET}`);
+    if (r.agreedPrice) console.log(`  Price: ${r.agreedPrice} ${r.agreedSymbol ?? ''}`);
+  } else {
+    console.log(`${YELLOW}Not accepted${RESET}: ${r.reason ?? 'unknown reason'}`);
+  }
+}
+
+async function cmdSettle(): Promise<void> {
+  // oikos settle <announcementId>
+  const announcementId = argv[1];
+  if (!announcementId) {
+    console.error(`${RED}Usage: oikos settle <announcementId>${RESET}`);
+    process.exit(1);
+  }
+
+  const result = await mcpCall('swarm_submit_payment', { announcementId });
+  if (jsonOutput) { out(result); return; }
+
+  const r = result as { submitted?: boolean };
+  if (r.submitted) {
+    console.log(`${GREEN}Payment submitted${RESET} for ${CYAN}${announcementId.slice(0, 8)}${RESET}`);
+    console.log(`  ${DIM}(Goes through PolicyEngine -> Wallet Isolate -> on-chain)${RESET}`);
+  } else {
+    out(result);
+  }
+}
+
 async function cmdIdentity(): Promise<void> {
   const data = await get('/api/identity') as Record<string, unknown>;
   out(data);
@@ -651,6 +814,14 @@ ${BOLD}Write:${RESET}
   oikos bridge <amt> <sym> from <c> to <c>  Bridge cross-chain
   oikos yield deposit|withdraw <amt> <sym>  Yield ops
 
+${BOLD}Swarm:${RESET}
+  oikos board                              Announcement board
+  oikos rooms                             Active negotiation rooms
+  oikos announce <cat> "<t>" "<d>"        Post announcement
+  oikos bid <id> <price> [sym]            Bid on announcement
+  oikos accept <id>                       Accept best bid (creator)
+  oikos settle <id>                       Submit payment (creator)
+
 ${BOLD}Simulate:${RESET}
   oikos simulate <type> <amt> <sym>      Dry-run policy check
 
@@ -683,6 +854,12 @@ async function main(): Promise<void> {
       case 'audit': case 'log': await cmdAudit(); break;
       case 'health': await cmdHealth(); break;
       case 'swarm': await cmdSwarm(); break;
+      case 'board': await cmdBoard(); break;
+      case 'rooms': await cmdRooms(); break;
+      case 'announce': await cmdAnnounce(); break;
+      case 'bid': await cmdBid(); break;
+      case 'accept': await cmdAccept(); break;
+      case 'settle': await cmdSettle(); break;
       case 'identity': case 'id': await cmdIdentity(); break;
       case 'prices': await cmdPrices(); break;
       case 'rgb': await cmdRgb(); break;

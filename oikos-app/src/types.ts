@@ -22,6 +22,9 @@ export interface SwarmAnnounceOpts {
 export interface SwarmInterface {
   getState(): Record<string, unknown>;
   postAnnouncement(opts: SwarmAnnounceOpts): string;
+  bidOnAnnouncement(announcementId: string, price: string, symbol: string, reason: string): Promise<void>;
+  acceptBestBid(announcementId: string): Promise<unknown>;
+  submitPayment(announcementId: string): Promise<void>;
 }
 
 /** ERC-8004 identity state */
