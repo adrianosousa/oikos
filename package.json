@@ -27,6 +27,7 @@
     "oikos-app"
   ],
   "scripts": {
+    "update": "./scripts/update.sh",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "demo": "./scripts/start-demo.sh",
