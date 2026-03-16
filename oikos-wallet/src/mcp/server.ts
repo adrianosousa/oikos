@@ -182,6 +182,7 @@ const TOOLS: MCPTool[] = [
         minPrice: { type: 'string' },
         maxPrice: { type: 'string' },
         symbol: { type: 'string', enum: ['USDT', 'XAUT', 'USAT', 'BTC', 'ETH'] },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags for discovery (e.g. ["defi", "yield", "portfolio"])' },
       },
       required: ['category', 'title', 'description', 'minPrice', 'maxPrice', 'symbol'],
     },
@@ -417,6 +418,7 @@ const handlers: Record<string, ToolHandler> = {
       title: params['title'] as string,
       description: params['description'] as string,
       priceRange: { min: params['minPrice'] as string, max: params['maxPrice'] as string, symbol: params['symbol'] as string },
+      tags: (params['tags'] as string[] | undefined) || [],
     });
     return { announcementId: id };
   },

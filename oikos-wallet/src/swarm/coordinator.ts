@@ -173,6 +173,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     title: string;
     description: string;
     priceRange: { min: string; max: string; symbol: string };
+    tags?: string[];
   }): string {
     if (!this.identity || !this.channels) {
       throw new Error('Swarm not started');
@@ -189,6 +190,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       description: opts.description,
       priceRange: opts.priceRange,
       capabilities: this.identity.capabilities,
+      tags: opts.tags || [],
       expiresAt: Date.now() + this.config.announcementTtlMs,
       timestamp: Date.now(),
     };

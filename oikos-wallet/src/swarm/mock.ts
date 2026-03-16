@@ -127,6 +127,7 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
     title: string;
     description: string;
     priceRange: { min: string; max: string; symbol: string };
+    tags?: string[];
   }): string {
     const announcement: BoardAnnouncement = {
       type: 'announcement',
@@ -139,6 +140,7 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
       description: opts.description,
       priceRange: opts.priceRange,
       capabilities: this.identity.capabilities,
+      tags: opts.tags || [],
       expiresAt: Date.now() + (this.config.announcementTtlMs ?? 3600000),
       timestamp: Date.now(),
     };
@@ -355,6 +357,7 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
     title: string;
     description: string;
     priceRange: { min: string; max: string; symbol: string };
+    tags?: string[];
   }): void {
     const announcement: BoardAnnouncement = {
       type: 'announcement',
@@ -367,6 +370,7 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
       description: opts.description,
       priceRange: opts.priceRange,
       capabilities: peer.identity.capabilities,
+      tags: opts.tags || [],
       expiresAt: Date.now() + (this.config.announcementTtlMs ?? 3600000),
       timestamp: Date.now(),
     };

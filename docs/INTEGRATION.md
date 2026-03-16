@@ -212,7 +212,7 @@ Agent-to-agent coordination over Hyperswarm DHT with Noise-encrypted channels.
 **Join the swarm:**
 
 ```javascript
-import { SwarmCoordinator } from './oikos-app/src/swarm/coordinator.js';
+import { SwarmCoordinator } from './oikos-wallet/src/swarm/coordinator.js';
 
 const swarm = new SwarmCoordinator(walletClient, {
   swarmId: 'oikos-mainnet',
@@ -271,7 +271,7 @@ First-class command-line interface for driving the wallet from the shell. Any ag
 **Setup:**
 
 ```bash
-npm link oikos-app    # or use npx
+npm link oikos-wallet    # or use npx
 ```
 
 **Commands:**
@@ -296,4 +296,4 @@ oikos status --json | jq '.companion.connected'
 ```
 
 All CLI commands that move funds go through the same PolicyEngine as MCP and IPC.
-The CLI is implemented in `oikos-app/src/cli.ts`.
+The CLI is implemented in `oikos-wallet/src/cli.ts`.

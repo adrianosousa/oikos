@@ -2,7 +2,7 @@
 /**
  * Oikos Companion — Pear Runtime P2P Client
  *
- * Lightweight companion app that connects to a running oikos-app
+ * Lightweight companion app that connects to a running oikos-wallet
  * over Hyperswarm. No sidecar, no Node.js, no Express.
  *
  * The Bare main process:
@@ -13,7 +13,7 @@
  * 5. Caches incoming state, serves internal HTTP API for renderer
  *
  * Architecture:
- *   Agent (oikos-app) <== Hyperswarm Noise E2E ==> This (Bare main)
+ *   Agent (oikos-wallet) <== Hyperswarm Noise E2E ==> This (Bare main)
  *                                                      |
  *                                                  bare-http1 :13421
  *                                                      |

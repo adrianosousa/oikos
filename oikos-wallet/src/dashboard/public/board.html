@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oikos Board</title>
+<style>
+  :root {
+    --bg: #f5f2ec;
+    --bg2: #edeae4;
+    --card: #faf8f4;
+    --card-hover: #f0ede7;
+    --border: #c8c0b0;
+    --text: #1a1a1a;
+    --muted: #6b6358;
+    --dim: #9a9184;
+    --green: #2d8a4e;
+    --red: #c0392b;
+    --yellow: #d4a017;
+    --blue: #2874a6;
+    --purple: #6c3483;
+    --orange: #d35400;
+    --gold: #b8860b;
+    --cyan: #148f77;
+    --brand-yellow: #ebb743;
+    --brand-black: #1a1a1a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ═══ TOPBAR ═══ */
+  .topbar {
+    background: var(--bg2);
+    border-bottom: 2px solid var(--brand-black);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 72px;
+    flex-shrink: 0;
+  }
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+  .topbar-title {
+    padding: 0 1.5rem;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid currentColor;
+  }
+  .status-live { color: var(--green); }
+  .status-offline { color: var(--red); }
+  .status-dot { width: 6px; height: 6px; display: inline-block; }
+  .status-dot.on { background: var(--green); animation: pulse 2s ease infinite; }
+  .status-dot.off { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  .topbar-right { display: flex; align-items: center; height: 100%; }
+  .topbar-meta {
+    padding: 0 1rem;
+    font-size: 10px;
+    color: var(--dim);
+  }
+  .logo-block {
+    background: var(--brand-yellow);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 1.5rem;
+    border-left: 2px solid var(--brand-black);
+    overflow: hidden;
+  }
+  .logo-block svg {
+    height: 48px;
+    width: auto;
+  }
+
+  /* ═══ SCROLLABLE CONTENT ═══ */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem;
+    width: 100%;
+    flex: 1;
+  }
+
+  /* ═══ KPI STRIP ═══ */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+  .kpi {
+    background: var(--card);
+    border: 2px solid var(--brand-black);
+    padding: 0.75rem 0.85rem;
+  }
+  .kpi-label {
+    font-size: 10px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  .kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin-top: 0.1rem;
+  }
+  .green { color: var(--green); }
+  .blue { color: var(--blue); }
+  .purple { color: var(--purple); }
+  .gold { color: var(--gold); }
+  .red { color: var(--red); }
+
+  /* ═══ SEARCH ═══ */
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+  .search-icon { font-size: 14px; color: var(--dim); flex-shrink: 0; }
+  .search-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .search-input::placeholder { color: var(--dim); }
+  .search-clear {
+    background: none; border: none; cursor: pointer;
+    font-size: 14px; color: var(--dim); padding: 0 4px; display: none;
+  }
+  .search-clear:hover { color: var(--text); }
+
+  /* ═══ SECTION ═══ */
+  .section {
+    margin-top: 1.25rem;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .section-title {
+    font-size: 11px; font-weight: 800; color: var(--text);
+    text-transform: uppercase; letter-spacing: 0.12em; white-space: nowrap;
+  }
+  .section-line { flex: 1; height: 2px; background: var(--brand-black); }
+  .section-count {
+    font-size: 10px; font-weight: 700; padding: 0.1rem 0.4rem;
+    border: 1px solid var(--brand-black); background: var(--brand-yellow); color: var(--brand-black);
+  }
+
+  /* ═══ TAG CLOUD ═══ */
+  .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; padding: 0.6rem 0; }
+  .tag-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 0.2rem 0.6rem; background: var(--card);
+    border: 1px solid var(--brand-black); font-size: 11px; font-weight: 600;
+    color: var(--text); cursor: pointer; transition: background 0.15s;
+    text-transform: lowercase;
+  }
+  .tag-pill:hover { background: var(--card-hover); }
+  .tag-pill.active { background: var(--brand-yellow); color: var(--brand-black); }
+  .tag-count { font-size: 9px; color: var(--dim); font-weight: 700; }
+  .tag-pill.active .tag-count { color: var(--brand-black); }
+
+  /* ═══ CARDS ═══ */
+  .card {
+    background: var(--card);
+    border: 2px solid var(--brand-black);
+    padding: 0.85rem 1rem;
+  }
+
+  /* ═══ ANNOUNCEMENTS ═══ */
+  .ann-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .ann-item:last-child { border-bottom: none; }
+  .ann-top {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.5rem; margin-bottom: 0.25rem;
+  }
+  .ann-title-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; }
+  .ann-title { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ann-id {
+    font-size: 9px; color: var(--dim); cursor: pointer;
+    padding: 0.05rem 0.3rem; border: 1px solid var(--border);
+    background: var(--bg); white-space: nowrap; position: relative; flex-shrink: 0;
+  }
+  .ann-id:hover { border-color: var(--brand-black); }
+  .ann-id .copied {
+    position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+    background: var(--brand-black); color: var(--brand-yellow);
+    font-size: 9px; padding: 1px 6px; white-space: nowrap;
+    pointer-events: none; opacity: 0; transition: opacity 0.2s;
+  }
+  .ann-id .copied.show { opacity: 1; }
+  .ann-cat {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    padding: 0.05rem 0.35rem; border: 1px solid currentColor; flex-shrink: 0;
+  }
+  .cat-offer { color: var(--blue); }
+  .cat-request { color: var(--purple); }
+  .cat-auction { color: var(--gold); }
+  .ann-desc { font-size: 11px; color: var(--muted); line-height: 1.4; margin-bottom: 0.3rem; }
+  .ann-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 0.3rem; }
+  .ann-tag {
+    font-size: 9px; padding: 0.05rem 0.3rem; background: var(--bg);
+    border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  }
+  .ann-tag:hover { border-color: var(--brand-black); }
+  .ann-bottom {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.3rem; font-size: 11px;
+  }
+  .ann-agent { color: var(--muted); }
+  .ann-agent strong { color: var(--text); }
+  .ann-price { font-weight: 700; color: var(--green); }
+  .ann-time { color: var(--dim); font-size: 10px; }
+
+  .empty { color: var(--dim); font-size: 12px; padding: 0.75rem 0; text-align: center; }
+
+  /* ═══ STICKY FOOTER ═══ */
+  .sticky-footer {
+    flex-shrink: 0;
+    border-top: 2px solid var(--brand-black);
+    background: var(--bg2);
+    padding: 0.6rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; font-size: 10px; color: var(--dim);
+  }
+  .footer-left { display: flex; align-items: center; gap: 0.5rem; }
+  .footer-left svg { height: 20px; width: auto; color: var(--dim); }
+  .footer-cta { font-size: 11px; color: var(--muted); }
+  .footer-cta a { color: var(--blue); text-decoration: none; font-weight: 700; }
+  .footer-cta a:hover { text-decoration: underline; }
+
+  /* ═══ DARK MODE ═══ */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c20; --bg2: #242428; --card: #2a2a2f; --card-hover: #323237;
+      --border: #48484e; --text: #e4e0d8; --muted: #a09a90; --dim: #6e6a62;
+      --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #60a5fa;
+      --purple: #a78bfa; --orange: #fb923c; --gold: #fbbf24; --cyan: #2dd4bf;
+      --brand-black: #6a6a70;
+    }
+    ::-webkit-scrollbar-thumb { background: #48484e; }
+  }
+
+  @media (max-width: 900px) {
+    .kpi-strip { grid-template-columns: 1fr; }
+    .main { padding: 0.75rem 1rem; }
+    .topbar-title { padding: 0 0.75rem; font-size: 12px; }
+    .sticky-footer { flex-direction: column; text-align: center; }
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="topbar-title">
+      OIKOS BOARD
+      <div id="status" class="status-pill status-offline">
+        <span class="status-dot off"></span>
+        <span>loading</span>
+      </div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="topbar-meta" id="refresh-info">auto-refresh: 3s</div>
+    <div class="logo-block">
+      <svg viewBox="0 0 165.48256 54.091259" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Oikos">
+        <g transform="translate(-19.482719,-175.4493)">
+          <circle fill="currentColor" cx="51.843533" cy="203.35382" r="17.687586"/>
+          <circle fill="currentColor" cx="120.92068" cy="203.36241" r="17.733706"/>
+          <path fill="currentColor" d="m 84.047666,185.65206 h 24.409814 l -15.713526,18.13847 17.129966,17.24293 H 84.153249 Z"/>
+          <rect fill="currentColor" width="8.4932919" height="35.399162" x="72.367882" y="185.64366"/>
+          <path fill="currentColor" d="m 141.36924,185.61145 v 29.03005 l 25.43894,-29.05908 z"/>
+          <path fill="currentColor" d="m 166.74075,220.99018 v -28.94175 l -25.43894,28.97078 z"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- SCROLLABLE CONTENT -->
+<div class="content">
+<div class="main">
+
+  <!-- KPI STRIP -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Search</div>
+      <div class="search-box">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" class="search-input" id="search-input" placeholder="Search announcements, agents, tags...">
+        <button class="search-clear" id="search-clear">&times;</button>
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Peers</div>
+      <div class="kpi-value blue" id="id-peers">0</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Listings</div>
+      <div class="kpi-value gold" id="id-listings">0</div>
+    </div>
+  </div>
+
+  <!-- TAGS -->
+  <div class="section" id="tags-section" style="display:none">
+    <span class="section-title">Tags</span>
+    <span class="section-line"></span>
+    <span class="section-count" id="tags-count">0</span>
+  </div>
+  <div id="tag-cloud" class="tag-cloud"></div>
+
+  <!-- ANNOUNCEMENTS -->
+  <div class="section">
+    <span class="section-title">Announcement Board</span>
+    <span class="section-line"></span>
+    <span class="section-count" id="ann-count">0</span>
+  </div>
+  <div class="card">
+    <div id="ann-list">
+      <div class="empty">No announcements on the board yet.</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- STICKY FOOTER -->
+<div class="sticky-footer">
+  <div class="footer-left">
+    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="24" viewBox="0 0 249 60" role="img" aria-label="Reshimu Labs">
+      <style>.rl-ink{fill:currentColor}.rl-labs{fill:currentColor;opacity:0.55}</style>
+      <rect class="rl-ink" x="6" y="10" width="10" height="10" rx="1"/><rect class="rl-ink" x="17" y="10" width="10" height="10" rx="1"/><rect class="rl-ink" x="28" y="10" width="10" height="10" rx="1"/><rect class="rl-ink" x="6" y="21" width="10" height="10" rx="1"/><rect class="rl-ink" x="28" y="21" width="10" height="10" rx="1"/><rect class="rl-ink" x="6" y="32" width="10" height="10" rx="1"/><rect class="rl-ink" x="17" y="32" width="10" height="10" rx="1"/><rect class="rl-ink" x="28" y="32" width="10" height="10" rx="1"/>
+      <path class="rl-ink" d="M140 0V1080H380V816L354 850Q375 906 410.0 952.0Q445 998 496 1028Q535 1052 581.0 1065.5Q627 1079 676.0 1082.5Q725 1086 774 1080V826Q729 840 669.5 835.5Q610 831 562 808Q514 786 481.0 749.5Q448 713 431.0 663.5Q414 614 414 552V0Z" transform="translate(50.00,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-ink" d="M642 -30Q476 -30 349.5 41.5Q223 113 151.5 238.5Q80 364 80 526Q80 703 150.0 834.0Q220 965 343.0 1037.5Q466 1110 626 1110Q796 1110 915.0 1030.0Q1034 950 1091.0 805.0Q1148 660 1131 464H862V564Q862 729 809.5 801.5Q757 874 638 874Q499 874 433.5 789.5Q368 705 368 540Q368 389 433.5 306.5Q499 224 626 224Q706 224 763.0 259.0Q820 294 850 360L1122 282Q1061 134 929.5 52.0Q798 -30 642 -30ZM284 464V666H1000V464Z" transform="translate(63.50,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-ink" d="M562 -30Q358 -30 232.5 62.5Q107 155 80 324L358 366Q375 290 433.5 247.0Q492 204 582 204Q656 204 696.0 232.5Q736 261 736 312Q736 344 720.0 363.5Q704 383 648.5 402.0Q593 421 476 452Q344 486 265.0 528.0Q186 570 151.0 628.5Q116 687 116 770Q116 874 169.0 950.5Q222 1027 318.5 1068.5Q415 1110 546 1110Q673 1110 771.0 1071.0Q869 1032 929.5 960.0Q990 888 1004 790L726 740Q719 800 674.0 835.0Q629 870 552 876Q477 881 431.5 856.0Q386 831 386 784Q386 756 405.5 737.0Q425 718 486.5 698.0Q548 678 674 646Q797 614 871.5 571.5Q946 529 980.0 469.5Q1014 410 1014 326Q1014 160 894.0 65.0Q774 -30 562 -30Z" transform="translate(83.28,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-ink" d="M876 0V510Q876 547 872.0 604.5Q868 662 847.0 720.0Q826 778 778.5 817.0Q731 856 644 856Q609 856 569.0 845.0Q529 834 494.0 802.5Q459 771 436.5 710.0Q414 649 414 548L258 622Q258 750 310.0 862.0Q362 974 466.5 1043.0Q571 1112 730 1112Q857 1112 937.0 1069.0Q1017 1026 1061.5 960.0Q1106 894 1125.0 822.5Q1144 751 1148.0 692.0Q1152 633 1152 606V0ZM138 0V1440H380V700H414V0Z" transform="translate(101.10,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-ink" d="M160 1230V1470H432V1230ZM160 0V1080H432V0Z" transform="translate(121.78,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-ink" d="M1440 0V638Q1440 745 1389.5 804.5Q1339 864 1250 864Q1193 864 1151.0 837.5Q1109 811 1085.5 763.5Q1062 716 1062 654L948 730Q948 841 1000.5 926.0Q1053 1011 1141.5 1058.5Q1230 1106 1338 1106Q1523 1106 1617.5 996.5Q1712 887 1712 710V0ZM138 0V1080H378V722H412V0ZM790 0V638Q790 745 739.5 804.5Q689 864 600 864Q515 864 463.5 805.5Q412 747 412 654L298 734Q298 840 351.0 924.0Q404 1008 493.5 1057.0Q583 1106 694 1106Q821 1106 902.5 1052.0Q984 998 1023.0 908.0Q1062 818 1062 710V0Z" transform="translate(131.57,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-ink" d="M542 -32Q415 -32 335.0 11.0Q255 54 210.5 120.0Q166 186 147.0 257.5Q128 329 124.0 388.0Q120 447 120 474V1080H396V570Q396 533 400.0 475.5Q404 418 425.0 360.0Q446 302 493.5 263.0Q541 224 628 224Q663 224 703.0 235.0Q743 246 778.0 277.5Q813 309 835.5 370.5Q858 432 858 532L1014 458Q1014 330 962.0 218.0Q910 106 805.5 37.0Q701 -32 542 -32ZM892 0V358H858V1080H1132V0Z" transform="translate(161.20,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-labs" d="M160 0V1470H307V0Z" transform="translate(180.91,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-labs" d="M449 -30Q327 -30 244.5 14.0Q162 58 121.0 131.0Q80 204 80 290Q80 378 115.5 440.5Q151 503 212.5 543.0Q274 583 355 604Q437 624 536.5 639.5Q636 655 731.5 666.5Q827 678 899 689L847 657Q850 817 785.0 894.0Q720 971 559 971Q448 971 371.5 921.0Q295 871 264 763L121 805Q158 950 270.0 1030.0Q382 1110 561 1110Q709 1110 812.5 1054.5Q916 999 959 894Q979 847 985.0 789.0Q991 731 991 671V0H860V271L898 255Q843 116 727.0 43.0Q611 -30 449 -30ZM466 97Q569 97 646.0 134.0Q723 171 770.0 235.5Q817 300 831 381Q843 433 844.0 495.5Q845 558 845 589L901 560Q826 550 738.5 540.0Q651 530 566.5 517.0Q482 504 414 486Q368 473 325.0 449.5Q282 426 254.5 387.0Q227 348 227 290Q227 243 250.5 199.0Q274 155 326.5 126.0Q379 97 466 97Z" transform="translate(188.70,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-labs" d="M625 -30Q476 -30 373.0 45.5Q270 121 217.0 250.5Q164 380 164 541Q164 705 217.5 833.5Q271 962 375.0 1036.0Q479 1110 631 1110Q779 1110 885.0 1035.0Q991 960 1047.5 831.0Q1104 702 1104 541Q1104 379 1047.0 250.0Q990 121 883.0 45.5Q776 -30 625 -30ZM139 0V1440H287V813H271V0ZM610 107Q723 107 798.0 164.0Q873 221 910.5 319.5Q948 418 948 541Q948 663 911.0 761.0Q874 859 798.5 916.0Q723 973 607 973Q494 973 419.5 918.0Q345 863 308.0 765.5Q271 668 271 541Q271 416 308.0 317.5Q345 219 420.0 163.0Q495 107 610 107Z" transform="translate(206.80,39.00) scale(0.01600,-0.01600)"/>
+      <path class="rl-labs" d="M543 -29Q353 -29 230.5 53.0Q108 135 80 281L230 306Q254 214 339.5 159.5Q425 105 551 105Q674 105 745.0 156.5Q816 208 816 297Q816 347 793.5 378.5Q771 410 702.0 437.0Q633 464 496 501Q349 541 266.0 581.0Q183 621 148.0 673.5Q113 726 113 802Q113 894 165.0 963.5Q217 1033 309.0 1071.5Q401 1110 523 1110Q645 1110 741.5 1070.5Q838 1031 897.0 960.0Q956 889 967 795L817 768Q802 863 722.5 918.5Q643 974 521 976Q406 979 334.0 932.5Q262 886 262 809Q262 766 288.0 735.5Q314 705 382.5 678.0Q451 651 578 619Q727 581 812.0 539.0Q897 497 933.0 440.0Q969 383 969 299Q969 146 855.5 58.5Q742 -29 543 -29Z" transform="translate(226.06,39.00) scale(0.01600,-0.01600)"/>
+    </svg>
+    <span>built by</span>
+  </div>
+  <div class="footer-cta">
+    Trade peer-to-peer &mdash; install <a href="https://github.com/adrianosousa/oikos" target="_blank">Oikos Protocol</a>
+  </div>
+</div>
+
+<script>
+const REFRESH_MS = 3000;
+let activeTag = null;
+let searchQuery = '';
+let lastData = null;
+
+const searchInput = document.getElementById('search-input');
+const searchClear = document.getElementById('search-clear');
+
+searchInput.addEventListener('input', () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  searchClear.style.display = searchQuery ? 'block' : 'none';
+  if (lastData) renderAnnouncements(lastData.announcements || []);
+});
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchQuery = '';
+  searchClear.style.display = 'none';
+  if (lastData) renderAnnouncements(lastData.announcements || []);
+});
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function copyId(el, fullId) {
+  navigator.clipboard.writeText(fullId).then(() => {
+    const tip = el.querySelector('.copied');
+    tip.classList.add('show');
+    setTimeout(() => tip.classList.remove('show'), 1200);
+  });
+}
+
+function setActiveTag(tag) {
+  activeTag = activeTag === tag ? null : tag;
+  if (lastData) {
+    renderTags(lastData.tags || []);
+    renderAnnouncements(lastData.announcements || []);
+  }
+}
+
+function filterAnn(a) {
+  if (activeTag) {
+    const tags = (a.tags || []).map(t => t.toLowerCase());
+    if (!tags.includes(activeTag.toLowerCase())) return false;
+  }
+  if (searchQuery) {
+    const hay = [a.title, a.description, a.agentName, ...(a.tags || [])].join(' ').toLowerCase();
+    if (!hay.includes(searchQuery)) return false;
+  }
+  return true;
+}
+
+function renderTags(tags) {
+  const section = document.getElementById('tags-section');
+  const cloud = document.getElementById('tag-cloud');
+  document.getElementById('tags-count').textContent = tags.length;
+
+  if (!tags.length) {
+    section.style.display = 'none';
+    cloud.innerHTML = '';
+    return;
+  }
+
+  section.style.display = 'flex';
+  cloud.innerHTML = tags.map(t => {
+    const isActive = activeTag && activeTag.toLowerCase() === t.tag.toLowerCase();
+    return '<span class="tag-pill' + (isActive ? ' active' : '') + '" onclick="setActiveTag(\'' + esc(t.tag) + '\')">' +
+      esc(t.tag) + '<span class="tag-count">' + t.count + '</span></span>';
+  }).join('');
+}
+
+function renderAnnouncements(anns) {
+  const list = document.getElementById('ann-list');
+  const filtered = anns.filter(filterAnn);
+  document.getElementById('ann-count').textContent = filtered.length;
+
+  if (!filtered.length) {
+    const msg = (activeTag || searchQuery)
+      ? 'No announcements match your filter.'
+      : 'No announcements on the board yet.';
+    list.innerHTML = '<div class="empty">' + msg + '</div>';
+    return;
+  }
+
+  const sorted = [...filtered].sort((a, b) => b.timestamp - a.timestamp);
+
+  list.innerHTML = sorted.map(a => {
+    const cat = (a.category === 'service' || a.category === 'offer') ? 'offer' :
+                a.category === 'auction' ? 'auction' : 'request';
+    const catLabel = cat.toUpperCase();
+    const catCls = 'cat-' + cat;
+    const price = a.priceRange && a.priceRange.min != null && a.priceRange.max != null
+      ? a.priceRange.min + '-' + a.priceRange.max + ' ' + (a.priceRange.symbol || '')
+      : '';
+    const tags = (a.tags || []).map(t =>
+      '<span class="ann-tag" onclick="setActiveTag(\'' + esc(t) + '\')">' + esc(t) + '</span>'
+    ).join('');
+
+    return '<div class="ann-item">' +
+      '<div class="ann-top">' +
+        '<div class="ann-title-row">' +
+          '<div class="ann-title">' + esc(a.title) + '</div>' +
+          '<span class="ann-id" onclick="copyId(this, \'' + a.id + '\')">' + a.id.slice(0, 8) + '... <span class="copied">Copied!</span></span>' +
+        '</div>' +
+        '<span class="ann-cat ' + catCls + '">' + catLabel + '</span>' +
+      '</div>' +
+      (a.description ? '<div class="ann-desc">' + esc(a.description) + '</div>' : '') +
+      (tags ? '<div class="ann-tags">' + tags + '</div>' : '') +
+      '<div class="ann-bottom">' +
+        '<span class="ann-agent">by <strong>' + esc(a.agentName) + '</strong> · rep ' + Math.round(a.reputation * 100) + '%</span>' +
+        (price ? '<span class="ann-price">' + price + '</span>' : '') +
+        '<span class="ann-time">' + timeAgo(a.timestamp) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/board');
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    lastData = data;
+
+    const status = document.getElementById('status');
+    if (data.enabled) {
+      status.className = 'status-pill status-live';
+      status.innerHTML = '<span class="status-dot on"></span><span>live</span>';
+    } else {
+      status.className = 'status-pill status-offline';
+      status.innerHTML = '<span class="status-dot off"></span><span>disabled</span>';
+    }
+
+    document.getElementById('id-peers').textContent = (data.boardPeers || []).length;
+    document.getElementById('id-listings').textContent = (data.announcements || []).length;
+
+    renderTags(data.tags || []);
+    renderAnnouncements(data.announcements || []);
+  } catch {
+    const status = document.getElementById('status');
+    status.className = 'status-pill status-offline';
+    status.innerHTML = '<span class="status-dot off"></span><span>offline</span>';
+  }
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

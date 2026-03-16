@@ -386,7 +386,7 @@ async function updateSettings () {
   var html = '<div style="font-size:12px;line-height:2;">'
   html += '<strong>Wallet:</strong> ' + (health.walletConnected ? '<span style="color:var(--green)">Connected</span>' : '<span style="color:var(--red)">Disconnected</span>') + '<br>'
   html += '<strong>Swarm:</strong> ' + (health.swarmEnabled ? 'Enabled' : 'Disabled') + '<br>'
-  html += '<strong>Companion:</strong> ' + (health.companionConnected ? 'Connected' : 'Disconnected') + '<br>'
+  html += '<strong>Oikos:</strong> ' + (health.companionConnected ? 'Connected' : 'Disconnected') + '<br>'
   html += '<strong>Events buffered:</strong> ' + (health.eventsBuffered || 0) + '<br>'
   html += '</div>'
   document.getElementById('settings-content').innerHTML = html

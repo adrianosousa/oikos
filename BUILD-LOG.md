@@ -2309,3 +2309,79 @@ Docker containers CAN announce on the public DHT (peers are findable). The issue
 - `d58a820` — fix(swarm): force relay for all connections + joinPeer relay node
 
 ---
+
+### 2026-03-16 — Swarm Negotiation Fixes + Trustless Settlement Research
+
+#### Context
+
+Ludwig and Baruch (OpenClaw agents on VPS) were successfully connected via Hyperswarm relay, but room negotiations were failing: bids weren't arriving, agents confused payment roles, rooms expired during active negotiations.
+
+#### Problems Found & Fixed
+
+**1. Bid delivery failure (protomux channel pairing)**
+
+Protomux requires BOTH sides to open a channel with the same protocol name before messages flow. Room channels weren't pairing reliably — messages sent on unmatched channels were silently dropped.
+
+Fix: **dual-channel delivery**. All critical room messages (bids, accepts, payment confirmations) now sent on BOTH the room channel AND the board channel as fallback. Board channel is always paired (set up in `setupPeer`). New `BoardMessage` subtypes: `board_bid`, `board_accept`, `board_payment` — converted to `RoomMessage` on receipt. Deduplication by `bidderPubkey + timestamp`.
+
+**2. Payment role confusion**
+
+Both agents tried to pay each other. The old model assumed "creator always pays" but that's only correct for `request` announcements (creator needs something). When the creator is selling a service (`offer`), the bidder should pay.
+
+Fix: **announcement categories** (`request` vs `offer`) with smart payment direction. `submitPayment` checks the caller's role against the announcement category and blocks the wrong party from paying. SKILL.md updated with explicit dual-flow documentation (REQUEST flow vs OFFER flow).
+
+**3. Room timeout killing active negotiations**
+
+120-second room timer expired before Baruch's payment confirmation could reach Ludwig. The timer was inappropriate — negotiations and on-chain transactions take variable time.
+
+Design decision: **timer-free room lifecycle**. Rooms live until explicitly settled or cancelled. No automatic expiry. Documented in ROADMAP Phase 7 for implementation.
+
+**4. Address exchange gap**
+
+`submitPayment` was using `pubkey.slice(0, 42)` as the recipient address — wrong. Ed25519 pubkeys are NOT wallet addresses. Accept messages have `paymentAddress` field but it wasn't being stored on the room.
+
+Design decision: bidders include `paymentAddress` in bids (queried from Wallet Isolate via IPC), room state stores both parties' addresses. Documented in ROADMAP Phase 7 for implementation.
+
+#### Trustless Settlement Research
+
+Live testing exposed the fundamental question: how do two agents swap assets across chains without trusting each other?
+
+Research covered: Bisq (2-of-2 multisig + MAD game theory), HodlHodl (2-of-3 multisig), RoboSats (Lightning hold invoices + fidelity bonds), atomic swaps (HTLCs), submarine swaps, JoinMarket fidelity bonds.
+
+**Decision: three settlement tiers for production.**
+
+| Tier | When | Mechanism | Trust Model |
+|------|------|-----------|-------------|
+| Direct | Same-chain swaps | DEX atomic swap via WDK | Trustless (on-chain) |
+| HTLC | Cross-chain swaps | Hash Time-Locked Contracts | Cryptographic (trustless) |
+| Deposit | Service payments | Security deposit + reputation | Economic (collateral) |
+
+Key insight: AI agents are **ideal** HTLC participants — always online (10-min timelocks safe), programmatically rational (MAD reliable), fast reputation accumulation (hundreds of trades/day). The free option problem that plagues human HTLC swaps is dramatically smaller for agents.
+
+For hackathon: demo with reputation-based settlement (current flow). Document full architecture. Production: HTLC + deposits + fidelity bonds.
+
+Full architecture documented in ROADMAP.md Phase 7.
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `oikos-app/src/swarm/coordinator.ts` | Dual-channel delivery, pre-open room channels, smart payment direction, board message fallback handling |
+| `oikos-app/src/swarm/types.ts` | `AnnouncementCategory` type, `BoardBidNotification`, `BoardAcceptNotification`, `BoardPaymentNotification` |
+| `oikos-app/src/swarm/marketplace.ts` | Bid/accept deduplication (same bidder + timestamp = skip) |
+| `oikos-app/src/events/types.ts` | Added `details` field to `SwarmEventData` |
+| `oikos-app/src/main.ts` | Enriched swarm event summaries (bid received, bid accepted, payment confirmed) |
+| `oikos-app/src/mcp/server.ts` | Updated `swarm_announce` category enum and descriptions |
+| `skills/wdk-wallet/SKILL.md` | REQUEST/OFFER dual-flow documentation, role tables, payment direction rules |
+| `ROADMAP.md` | Phase 7 (Trustless Settlement Layer), 6 new decision log entries |
+
+#### Commits
+
+- `21f3a96` — fix(swarm): dual-channel bid delivery + request/offer categories + smart payment direction
+- `dc636ef` — docs: update SKILL.md with request/offer dual-flow negotiation
+
+#### Key Insight
+
+The hardest problem in P2P agent commerce isn't the networking (Hyperswarm solved that) or the wallet (WDK solved that) — it's **settlement**. Who goes first? How do you prevent the counterparty from walking away? The answer depends on what's being traded: same-chain tokens use DEX atomics, cross-chain uses HTLCs, services use collateral deposits. All three flow through the same PolicyEngine. Oikos becomes a **settlement protocol**, not just a wallet protocol.
+
+---

@@ -2,7 +2,7 @@
   "name": "oikos-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Canonical Oikos autonomous agent — LLM-powered portfolio manager connecting to oikos-app via REST/MCP",
+  "description": "Canonical Oikos autonomous agent — LLM-powered portfolio manager connecting to oikos-wallet via REST/MCP",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/src/main.js",

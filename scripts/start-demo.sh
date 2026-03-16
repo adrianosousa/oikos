@@ -2,7 +2,7 @@
 #
 # Oikos Demo — One-command start.
 #
-# Boots oikos-app in mock mode (agent-agnostic infrastructure):
+# Boots oikos-wallet in mock mode (agent-agnostic infrastructure):
 # - Wallet Isolate with mock wallet (no blockchain)
 # - Mock Swarm (2 simulated peer agents: AlphaBot, BetaBot)
 # - Mock Events (3-min simulated event stream)
@@ -47,7 +47,7 @@ if [[ -z "$WALLET_RUNTIME" ]]; then
 fi
 
 # Build if needed
-if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/oikos-app/dist/src/main.js" ]]; then
+if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/oikos-wallet/dist/src/main.js" ]]; then
   echo "[oikos] Building project..."
   cd "$PROJECT_DIR"
   npm run build 2>&1 | tail -5
@@ -96,4 +96,4 @@ exec env \
   AUDIT_LOG_PATH="./audit-demo.jsonl" \
   AGENT_NAME="oikos-demo-agent" \
   AGENT_CAPABILITIES="payment,swap,bridge,yield,analysis,price-feed" \
-  node oikos-app/dist/src/main.js
+  node oikos-wallet/dist/src/main.js

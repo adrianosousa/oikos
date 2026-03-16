@@ -1,7 +1,7 @@
 # ROADMAP.md — Oikos Protocol
 
 > This is a living document. Updated as decisions are made and scope evolves.
-> Last updated: 2026-03-14 (Force relay fix — Ludwig↔Baruch connected through relay)
+> Last updated: 2026-03-16 (Trustless settlement architecture + dual-channel bid delivery + request/offer categories)
 
 ## Project Identity
 
@@ -25,11 +25,11 @@ Compatible with OpenClaw, MCP, or any agent framework. Packageable as a Pear app
 
 1. **Wallet Isolate** (`wallet-isolate/`) — Process-isolated multi-chain wallet on Bare Runtime. WDK-powered, policy-enforced, auditable. Handles USDt, XAUt, USAt, BTC, ETH. Supports payments, swaps, bridges, yield operations. **+ RGB assets on Bitcoin** (token issuance, NFTs, USDT-on-Bitcoin via UTEXO). Unchanged by refactor.
 
-2. **Oikos App** (`oikos-app/`) — Agent-agnostic Node.js infrastructure: HTTP/MCP/REST/CLI + IPC to Wallet Isolate + Hyperswarm swarm + companion channel + events + pricing. Any agent framework plugs in directly. No LLM, no brain — the wallet as a service.
+2. **Oikos App** (`oikos-wallet/`) — Agent-agnostic Node.js infrastructure: HTTP/MCP/REST/CLI + IPC to Wallet Isolate + Hyperswarm swarm + companion channel + events + pricing. Any agent framework plugs in directly. No LLM, no brain — the wallet as a service.
 
-3. **Canonical Agent** (`examples/oikos-agent/`) — LLM-powered autonomous agent that reasons about treasury management, DeFi strategy, and multi-asset allocation. Local-first (Ollama), cloud-fallback. Connects to oikos-app via REST/MCP. A reference implementation, not core infrastructure.
+3. **Canonical Agent** (`examples/oikos-agent/`) — LLM-powered autonomous agent that reasons about treasury management, DeFi strategy, and multi-asset allocation. Local-first (Ollama), cloud-fallback. Connects to oikos-wallet via REST/MCP. A reference implementation, not core infrastructure.
 
-4. **Agent Swarm** (legend play) — Multi-agent trading swarm over Hyperswarm. Agents discover each other on DHT, negotiate tasks and prices over Noise-encrypted channels, pay each other via their process-isolated wallets. Self-sustaining: agents earn revenue and cover their own compute costs. RGB consignment transport P2P via same Hyperswarm infra. Swarm infrastructure lives in `oikos-app`.
+4. **Agent Swarm** (legend play) — Multi-agent trading swarm over Hyperswarm. Agents discover each other on DHT, negotiate tasks and prices over Noise-encrypted channels, pay each other via their process-isolated wallets. Self-sustaining: agents earn revenue and cover their own compute costs. RGB consignment transport P2P via same Hyperswarm infra. Swarm infrastructure lives in `oikos-wallet`.
 
 ### Why We Win
 
@@ -78,8 +78,8 @@ Our scope maps to these Builder Hub project ideas:
 | 2 | **WDK Wallet Integration** — Secure, non-custodial, robust transaction handling | Process-isolated WDK wallet on Bare Runtime. Keys never leave isolate. PolicyEngine enforces budgets/cooldowns/whitelists. 51+ tests prove rejected proposals never sign. Multi-chain (BTC + EVM), multi-asset (USDt/XAUt/USAt). | HIGH |
 | 3 | **Technical Execution** — Architecture, code, integrations, payment flow reliability | Strict TypeScript, dual-process IPC, deterministic policy engine, append-only audit trail, Hyperswarm + WDK + LLM integration. <1500 lines wallet isolate. | HIGH |
 | 4 | **Agentic Payment Design** — Programmable flows: conditional payments, subscriptions, coordination, commerce logic | **This IS our product.** Four payment models: direct, room-negotiated, x402 machine payments, DeFi ops. Policy-enforced conditional payments. Room-based negotiation → escrow-like settlement. x402 for commodity auto-pay. Meta-marketplace with agent-driven commerce logic. | HIGHEST |
-| 5 | **Originality** — Innovative use case, creative agent-wallet interaction | P2P agent swarm on Tether's own runtime stack. Meta-marketplace where agents CREATE marketplaces. Sovereign reputation from audit logs. Privacy-preserving two-layer topic model. P2P companion app for human-agent communication. x402 machine payments. No other project does this. | HIGH |
-| 6 | **Polish & Ship-ability** — UX clarity (esp. permissions + transactions), deployment readiness | Dashboard shows: policy decisions (approved/rejected + why), budget remaining, cooldown state, full tx lifecycle, reputation scores, room activity. Companion app for mobile monitoring. One-command demo. Pear app packaging. | HIGH |
+| 5 | **Originality** — Innovative use case, creative agent-wallet interaction | P2P agent swarm on Tether's own runtime stack. Meta-marketplace where agents CREATE marketplaces. Sovereign reputation from audit logs. Privacy-preserving two-layer topic model. P2P Oikos App for human-agent communication. x402 machine payments. No other project does this. | HIGH |
+| 6 | **Polish & Ship-ability** — UX clarity (esp. permissions + transactions), deployment readiness | Dashboard shows: policy decisions (approved/rejected + why), budget remaining, cooldown state, full tx lifecycle, reputation scores, room activity. Oikos App for mobile monitoring. One-command demo. Pear app packaging. | HIGH |
 | 7 | **Presentation & Demo** — Agent logic, wallet flow, payment lifecycle, strong live demo | 5-min video: architecture overview → live multi-agent demo (announce → negotiate → pay → settle) → dashboard walkthrough. Runs from fresh clone with zero config. | HIGH |
 
 ---
@@ -210,7 +210,7 @@ Our scope maps to these Builder Hub project ideas:
 - Extend dashboard with swarm topology view (responsive for companion)
 - Add MCP server alongside REST API
 - Add OpenClaw Skill definition
-- Add companion app protomux channel
+- Add Oikos App protomux channel
 
 ---
 
@@ -266,7 +266,7 @@ Our scope maps to these Builder Hub project ideas:
 ### 3.7 Entry Points for Later Phases
 Design decisions made NOW to avoid retrofitting in Phase 4-6:
 - [x] Dashboard HTML is **responsive** (works on mobile viewports) — enables companion mobile view later
-- [x] Dashboard REST API returns structured JSON (not HTML) — companion app can consume the same API
+- [x] Dashboard REST API returns structured JSON (not HTML) — Oikos App can consume the same API
 - [x] IPC client in Brain exposes a clean `proposalFromExternal(source: string, proposal)` method — x402 and companion both use this to submit proposals with source attribution
 - [x] Audit log entries include `source` field: `"llm"`, `"x402"`, `"companion"`, `"swarm"` — enables filtering by origin
 
@@ -410,7 +410,7 @@ Design the swarm protomux layer so companion channel slots in naturally:
 - **OpenClaw called "YOLO, dark forest"** (~34:55) — no guardrails. **Our PolicyEngine is the safety layer OpenClaw lacks.**
 - **Anthropic/OpenAI benchmark crypto** (~24:54) — AI labs test models on Bitcoin transactions. Crypto competence is a tracked capability.
 - **Two-track future** (~40:22) — raw agent-to-agent commerce AND "Fisher Priced" human crypto. **Oikos bridges both** (swarm + companion).
-- **Self-sovereign agent skepticism** (~48:54) — Haseeb thinks agents work best as **extensions of humans/companies**, not fully autonomous. **Our companion app model fits exactly.**
+- **Self-sovereign agent skepticism** (~48:54) — Haseeb thinks agents work best as **extensions of humans/companies**, not fully autonomous. **Our Oikos App model fits exactly.**
 - **Chargebacks & Visa** (~36:35) — Visa will make you prove you're human, not an AI. Crypto bypasses this. Validates stablecoin-native agent payments.
 - **Dragonfly actively investing** (~1:05:47) in AI x crypto intersection. Post-hackathon opportunity.
 
@@ -457,7 +457,7 @@ Capture these talking points for Phase 6 video:
 **Target: Days 15-17 (March 19-21)**
 **Priority: MEDIUM — differentiator, not blocker**
 
-### 5.1 Pear Companion App (COMPLETE — 2026-03-12)
+### 5.1 Pear Oikos App (COMPLETE — 2026-03-12)
 
 **Architecture**: Bare-native P2P companion client. No sidecar. Connects to agent over Hyperswarm Noise E2E.
 
@@ -513,7 +513,7 @@ Capture these talking points for Phase 6 video:
 - [x] Config: `COMPANION_ENABLED`, `COMPANION_OWNER_PUBKEY`, `COMPANION_TOPIC_SEED`, `COMPANION_UPDATE_INTERVAL_MS`
 - [x] Wired into main.ts lifecycle with graceful shutdown
 - [x] **Design constraint**: Companion NEVER talks to Wallet Isolate. Process isolation preserved.
-- [x] **Companion App UI**: Built as Pear Desktop app (Phase 5.1). Connects to CompanionCoordinator via Hyperswarm.
+- [x] **Oikos App UI**: Built as Pear Desktop app (Phase 5.1). Connects to CompanionCoordinator via Hyperswarm.
 - [x] **Video plan**: Desktop companion can be shown in demo. P2P connection visible in logs.
 - [x] **Two-way chat**: `chat_reply` protomux message type, `onChat()` handler in CompanionCoordinator
 - [x] **Brain adapter**: Agent-agnostic `BrainAdapter` interface (Ollama, HTTP, Mock) in `src/brain/adapter.ts`
@@ -550,7 +550,7 @@ Capture these talking points for Phase 6 video:
 - [x] OpenClaw skill loads and responds correctly (verified 2026-03-10 VPS deployment)
 - [x] MCP server tools return valid responses (35/35 smoke tests, 2026-03-10)
 - [x] Pear app boots and connects to agent correctly (verified 2026-03-12)
-- [x] Companion app connects to Brain, receives balance updates (verified 2026-03-12 — live data flowing over Noise E2E)
+- [x] Oikos App connects to Brain, receives balance updates (verified 2026-03-12 — live data flowing over Noise E2E)
 - [x] Companion instruction → Brain → chat_reply → Companion (E2E verified with OpenClaw on VPS, 2026-03-12)
 - [ ] Companion instruction → Brain → IPC proposal → Wallet → ExecutionResult → Companion (full wallet proposal loop)
 
@@ -610,9 +610,9 @@ Live market data, on-chain indexing, and encrypted seed management — all via o
 - [ ] Oikos runs as a Pear desktop app
 - [x] OpenClaw Skill is installable and functional (verified: skill discovery + end-to-end wallet query via exec → curl → MCP)
 - [x] MCP Server exposes wallet operations (verified: 35/35 smoke tests, all 14 tools + 14 REST endpoints)
-- [x] Companion app connects P2P and shows live agent state (verified: Pear ↔ VPS over Hyperswarm Noise, 2026-03-12)
+- [x] Oikos App connects P2P and shows live agent state (verified: Pear ↔ VPS over Hyperswarm Noise, 2026-03-12)
 - [x] Companion can send instructions that become wallet proposals (verified: two-way chat via protomux chat_reply, 2026-03-12)
-- [x] Companion chat E2E with external brain: Pear → protomux → oikos-app → OpenClaw bridge → reply (verified with Ludwig on VPS)
+- [x] Companion chat E2E with external brain: Pear → protomux → oikos-wallet → OpenClaw bridge → reply (verified with Ludwig on VPS)
 - [ ] All integration surfaces tested
 
 ---
@@ -638,7 +638,7 @@ Live market data, on-chain indexing, and encrypted seed management — all via o
 - [ ] Auto-creates local DHT testnet (3 bootstrap nodes)
 - [ ] Spawns 2-3 agents that discover each other
 - [ ] Agents negotiate, trade, and pay each other autonomously (room + x402)
-- [ ] Companion app connects and shows live state
+- [ ] Oikos App connects and shows live state
 - [x] Dashboard shows swarm activity in real-time
 - [x] Verify works from fresh clone with zero config
 
@@ -651,7 +651,7 @@ Live market data, on-chain indexing, and encrypted seed management — all via o
 - [ ] `docs/MARKETPLACE.md` — Meta-marketplace concept, room lifecycle, marketplace types
 - [ ] `docs/REPUTATION.md` — Audit-derived reputation, Merkle proofs, trust verification
 - [ ] `docs/X402.md` — x402 machine payment integration, client/server setup, Plasma/Stable chains
-- [ ] `docs/COMPANION.md` — Companion app architecture, P2P connection, channel protocol, capabilities
+- [ ] `docs/COMPANION.md` — Oikos App architecture, P2P connection, channel protocol, capabilities
 - [ ] `docs/DEFI_STRATEGIES.md` — What the agent reasons about (allocation, yield, bridging)
 - [x] `docs/POLICIES.md` — Payment policy reference (213 lines)
 
@@ -659,7 +659,7 @@ Live market data, on-chain indexing, and encrypted seed management — all via o
 - [ ] 5-minute max, YouTube unlisted
 - [ ] Architecture overview (four layers: wallet, agent, swarm, companion)
 - [ ] Live demo: agents announce → negotiate in rooms → x402 auto-pay → settle
-- [ ] Companion app demo: connect, see live state, send instruction, approve proposal
+- [ ] Oikos App demo: connect, see live state, send instruction, approve proposal
 - [ ] Dashboard walkthrough: balances, policies, board, rooms, reputation, x402 metrics
 - [ ] Highlight: Pear Runtime, sovereign AI, self-sustaining economics, privacy model, P2P companion
 - [ ] Vision slide: mobile companion (if not fully built) — "your agent, always in your pocket"
@@ -706,16 +706,16 @@ The skill is useless without the agent running.
 
 > Source: Architecture review by Ludwig (OpenClaw agent, 2026-03-10)
 > Key insight: "The MCP server lives in the brain, not the wallet. External agents go through the Oikos brain to reach the wallet — that's two agents in the chain."
-> Evolution: Started as 3-package (wallet-isolate + wallet-gateway + agent-brain), refined to 2-package (wallet-isolate + oikos-app) with brain extracted to `examples/oikos-agent/`.
+> Evolution: Started as 3-package (wallet-isolate + wallet-gateway + agent-brain), refined to 2-package (wallet-isolate + oikos-wallet) with brain extracted to `examples/oikos-agent/`.
 
 **The problem**: External agent frameworks (OpenClaw, Claude Code, custom) had to inherit the Oikos brain to access the wallet — two agents in the chain. The brain is a reference implementation, not mandatory infrastructure.
 
-**The solution**: Merge all infrastructure into `oikos-app`, extract LLM brain to `examples/`:
+**The solution**: Merge all infrastructure into `oikos-wallet`, extract LLM brain to `examples/`:
 
 ```
 External agents (OpenClaw, Claude, MCP clients, x402)
          ↓ MCP / REST / CLI
-  oikos-app (Node.js)                     ← agent-agnostic infrastructure
+  oikos-wallet (Node.js)                     ← agent-agnostic infrastructure
          ↓ IPC (stdin/stdout)
   wallet-isolate (Bare Runtime)           ← unchanged
 ```
@@ -724,7 +724,7 @@ External agents (OpenClaw, Claude, MCP clients, x402)
 ```
 oikos/
 ├── wallet-isolate/          # Bare Runtime — keys, policy, signing (unchanged)
-├── oikos-app/               # Node.js — MCP, REST, CLI, swarm, companion, events, pricing, x402, RGB
+├── oikos-wallet/               # Node.js — MCP, REST, CLI, swarm, companion, events, pricing, x402, RGB
 └── examples/oikos-agent/    # Standalone LLM agent (connects via REST/MCP) — not core
 ```
 
@@ -779,7 +779,7 @@ oikos simulate payment 10 USDT --to 0x...        # dry-run policy check
 oikos rgb assets|issue|transfer                  # RGB asset operations
 ```
 
-**Implementation**: ~600 lines (`oikos-app/src/cli.ts`). Wraps `http://127.0.0.1:3420/api/*` and `/mcp`. `--json` flag for agent consumption.
+**Implementation**: ~600 lines (`oikos-wallet/src/cli.ts`). Wraps `http://127.0.0.1:3420/api/*` and `/mcp`. `--json` flag for agent consumption.
 
 **Token efficiency** (Ludwig analysis):
 - MCP: 14 tool schemas in context every turn = fixed token tax
@@ -795,7 +795,221 @@ oikos rgb assets|issue|transfer                  # RGB asset operations
 
 ---
 
-## Phase 7 — RGB Protocol Integration (Bitcoin-Native Assets)
+## Phase 7 — Trustless Settlement Layer (Production P2P Commerce)
+
+> Added: 2026-03-16. Research driven by live swarm testing: Ludwig offered a service, Baruch paid, but Ludwig's room expired before payment confirmation arrived. This exposed fundamental questions about settlement, room lifecycle, address exchange, and trustless cross-chain swaps.
+
+### The Problem
+
+When two agents trade on the Oikos swarm, **someone goes first**. The agent who moves funds first takes the risk. In the current hackathon demo, settlement relies on `payment_confirm` messages and reputation — sufficient for demonstration, but not for production.
+
+Three distinct settlement scenarios require three different mechanisms:
+
+### 7.1 Settlement Tiers
+
+| Tier | Scenario | Mechanism | Trust Model | Example |
+|------|----------|-----------|-------------|---------|
+| **Direct** | Same-chain token swap | DEX atomic swap via WDK | Trustless (on-chain atomic) | Swap 50 USDT for 0.02 XAUT, both on Ethereum |
+| **HTLC** | Cross-chain asset swap | Hash Time-Locked Contracts on both chains | Trustless (cryptographic) | Sell 0.1 BTC for 3000 USDT on Ethereum |
+| **Deposit** | Service payment (work for pay) | Security deposit + reputation | Economic (collateral) | "Analyze my portfolio for 50 USDT" |
+
+### 7.2 HTLC Cross-Chain Atomic Swaps
+
+For the hard case: **BTC for ETH** (or any two-chain swap).
+
+**How it works:**
+
+1. Alice generates random secret `S`, computes `H = SHA256(S)`
+2. Alice locks BTC in HTLC on Bitcoin: "Bob claims with preimage of `H`, OR Alice refunds after 48h"
+3. Bob sees Alice's HTLC, locks ETH in HTLC contract on Ethereum: "Alice claims with preimage of `H`, OR Bob refunds after 24h" (shorter timeout is critical — prevents Bob from claiming both)
+4. Alice reveals `S` to claim Bob's ETH on Ethereum
+5. Bob sees `S` revealed on-chain, uses it to claim Alice's BTC on Bitcoin
+6. **Atomic**: either both complete, or both refund after timeouts
+
+On Bitcoin, HTLCs are native script (WDK BTC wallet can construct them). On EVM, a minimal HTLC contract (~50 lines Solidity — just hash verification + timelock, auditable in 10 minutes).
+
+**The Free Option Problem:** The second mover gains an American-style call option for the timelock duration. If the price moves against them, they walk away. Mitigations:
+
+- **AI agents are always online** → timelocks can be 10 minutes, not 48 hours
+- **10-minute BTC/ETH volatility is negligible** vs. 48-hour window
+- **Agents price the option** into the exchange rate automatically
+- **Reputation penalties** for walk-aways compound over many trades
+- **Fidelity bonds** (see 7.4) add economic deterrent against walk-aways
+
+**IPC types (new proposal types for Wallet Isolate):**
+
+```typescript
+interface HTLCCreateProposal {
+  type: 'htlc_create';
+  chain: string;           // 'bitcoin' | 'ethereum' | ...
+  asset: string;           // 'BTC' | 'USDT' | ...
+  amount: string;
+  hashlock: string;        // SHA256 hash (hex)
+  timelock: number;        // seconds until refund
+  recipientPubkey: string; // who can claim with preimage
+}
+
+interface HTLCClaimProposal {
+  type: 'htlc_claim';
+  chain: string;
+  htlcId: string;          // on-chain HTLC identifier
+  preimage: string;        // the secret that unlocks the hash
+}
+
+interface HTLCRefundProposal {
+  type: 'htlc_refund';
+  chain: string;
+  htlcId: string;          // after timelock expires
+}
+```
+
+All HTLC proposals go through PolicyEngine — same pipeline as payments.
+
+**Room protocol extension:**
+
+```
+Room negotiation:
+1. Agents agree on price, amounts, chains (existing flow)
+2. Creator proposes HTLC terms: hashlock H, timelocks, amounts
+3. Bidder verifies terms, creates counter-HTLC on their chain
+4. Both share HTLC IDs over room channel
+5. Initiator reveals preimage → both claim
+6. Room settles with both txHashes
+```
+
+### 7.3 Security Deposit Pattern (Service Payments)
+
+For the common case: **work for pay** (one agent provides a service, the other pays).
+
+Inspired by Bisq's 2-of-2 multisig with "mutually assured destruction" game theory. Adapted for AI agents:
+
+**Simple version (hackathon-adjacent):**
+1. Before task begins, the **payer** posts a security deposit (2x task value) to a verifiable on-chain address
+2. The **receiver** verifies the deposit on-chain before starting work
+3. On completion, payer sends normal payment, deposit is released (time-locked UTXO or separate tx)
+4. If payer disappears, deposit is forfeitable after timelock
+
+**Advanced version (production):**
+1. Both parties lock funds into a 2-of-2 multisig (Bitcoin) or 2-of-2 multi-sig contract (EVM)
+2. Payer locks: task payment + security deposit. Provider locks: security deposit only
+3. On completion, both sign the settlement: payment to provider, deposits returned to both
+4. If dispute: **mutually assured destruction** — neither can unilaterally move funds. Funds burn after extended timelock. This makes cheating irrational for both sides (Bisq model)
+
+**Why MAD works better for AI agents than humans:**
+- Agents are **programmatically rational** — they won't spite-burn funds out of emotion
+- Loss aversion is quantifiable — PolicyEngine can calculate whether disputing is ever economically rational
+- Agents accumulate reputation across hundreds of trades per day — the reputational cost of one dispute far exceeds the deposit
+
+**IPC types:**
+
+```typescript
+interface DepositProposal {
+  type: 'deposit_create';
+  chain: string;
+  asset: string;
+  amount: string;           // deposit amount
+  counterpartyPubkey: string;
+  timelockSeconds: number;  // refund after this if not settled
+  multisigType: '2-of-2';
+}
+
+interface DepositSettleProposal {
+  type: 'deposit_settle';
+  depositId: string;
+  paymentAmount: string;    // actual task payment (from deposit or separate)
+  recipientAddress: string;
+}
+```
+
+### 7.4 Fidelity Bonds (Sybil-Resistant Identity)
+
+Complements L13 (Sybil-Resistant Reputation) from Ludwig's backlog:
+
+- Each agent locks a **time-locked UTXO** (Bitcoin) or staked tokens (EVM) as identity collateral
+- Bond is verifiable on-chain by any peer — no trust required
+- Bond value factors into reputation score: `reputationWeight = f(bondValue, bondDuration, tradeHistory)`
+- Creating a new identity (new keypair) requires a new bond — makes Sybil attacks expensive
+- Agents with higher fidelity bonds get better terms in room negotiations
+
+This is the **JoinMarket model** applied to the agent swarm. Economic proof-of-identity without centralized KYC.
+
+### 7.5 Room Lifecycle (Timer-Free)
+
+Current problem: rooms expire on a 120-second timer, killing active negotiations.
+
+**New model: event-driven room lifecycle, no timers.**
+
+```
+Room states:
+  open → negotiating → accepted → executing → settled (happy path)
+  Any state → cancelled (explicit cancellation by creator)
+  open → stale (garbage collected after 24h with zero bids — cleanup only)
+```
+
+- Rooms live until **settled** (both parties confirm payment) or **cancelled** (explicit action)
+- No timer kills active negotiations
+- Multiple bidders can enter the same room — creator sees all bids, picks the best one
+- Non-accepted bidders receive a `reject` message (courtesy notification)
+- Room destruction: after settlement, room data persists in audit log but is removed from active state
+
+**Multi-bidder room model:**
+
+```
+Agent A: posts offer (creates room)
+Agent B: enters room, bids
+Agent C: enters room, bids
+Agent A: reviews both bids, accepts C's bid
+Agent B: receives reject notification, leaves room
+Agent C: pays (or receives payment, depending on category)
+Agent A: confirms settlement
+Room: settled, archived
+```
+
+### 7.6 Address Exchange in Room Protocol
+
+Current problem: `submitPayment` uses `pubkey.slice(0, 42)` as address — wrong. Pubkeys are not wallet addresses.
+
+**Fix: explicit address exchange during negotiation.**
+
+- **Accept message** already has `paymentAddress` and `paymentChain` fields (creator's address)
+- **Bid message** needs a new `paymentAddress` field (bidder's address)
+- `submitPayment` uses the stored address from the room, not a derived/sliced pubkey
+- Address is queried from the Wallet Isolate via IPC (`query_address`) before bidding/accepting
+
+This means the Wallet Isolate provides the address, the Brain includes it in room messages, and the counterparty's address is available in room state for payment.
+
+### What This Unlocks
+
+- **Trustless cross-chain swaps**: BTC ↔ ETH, BTC ↔ USDT, any pair — no intermediary
+- **Escrow for service payments**: Collateral-backed agreements, MAD game theory
+- **Sybil resistance**: Fidelity bonds make fake identities expensive
+- **Multi-bidder auctions**: Multiple agents compete for a task, creator picks the best deal
+- **No more room timeouts**: Negotiations take as long as they need
+- **Correct address handling**: Real wallet addresses, not sliced pubkeys
+
+### Implementation Priority
+
+| Component | Priority | Effort | Hackathon? |
+|-----------|----------|--------|------------|
+| Room lifecycle (no timers) | P0 | 2-3h | Yes — fix room expiry bug |
+| Address exchange in rooms | P0 | 1-2h | Yes — fix payment delivery |
+| HTLC proposal types (IPC) | P1 | 2-3 days | No — architecture documented |
+| Security deposit pattern | P1 | 2-3 days | No — architecture documented |
+| Fidelity bonds | P2 | 1 week | No — research documented |
+| 2-of-2 multisig escrow | P2 | 1-2 weeks | No — Bisq model documented |
+| Multi-bidder rooms | P1 | 4-6h | Maybe — nice for demo |
+
+### References
+
+- **Bisq**: 2-of-2 multisig + MAD game theory. [docs.bisq.network/trading-rules](https://docs.bisq.network/trading-rules)
+- **HodlHodl**: 2-of-3 multisig + platform arbitration
+- **RoboSats**: Lightning hold invoices + fidelity bonds
+- **JoinMarket**: Time-locked fidelity bonds for Sybil resistance
+- **Atomic Swaps**: HTLC protocol (BIP 199 for Bitcoin, minimal Solidity for EVM)
+
+---
+
+## Phase 8 — RGB Protocol Integration (Bitcoin-Native Assets)
 
 > Added: 2026-03-10. RGB gives agents the ability to issue tokens, NFTs, and transact USDT natively on Bitcoin.
 > UTEXO raised $7.5M from Tether (March 2026) to launch native USDT on Bitcoin via RGB.
@@ -978,7 +1192,7 @@ The video demonstrates Oikos as a **deployment-ready protocol** — not a localh
 | **Oikos Protocol** | Hostinger VPS | One-command install script (`scripts/install.sh`) |
 | **Ollama + Qwen 3 8B** | MacBook Pro (local) | Sovereign AI — zero cloud deps. VPS Brain connects to local Ollama via tunnel OR uses cloud LLM fallback on VPS |
 | **Wallet Isolate** | VPS (Bare Runtime) | Spawned by Brain as child process. Real testnet connections |
-| **Companion App** | iPhone (Pear mobile via Xcode) | Hyperswarm P2P to Brain on VPS. Fallback: Pear Desktop |
+| **Oikos App** | iPhone (Pear mobile via Xcode) | Hyperswarm P2P to Brain on VPS. Fallback: Pear Desktop |
 | **Testnets** | Sepolia + BTC testnet | Pre-funded wallets. Real transactions in demo |
 
 ### Key Design Principle: Agent-Agnostic Protocol
@@ -990,7 +1204,7 @@ The demo proves Oikos is NOT tied to one setup:
 
 Both modes use the same `SKILL.md`, same MCP server, same IPC protocol. The agent framework doesn't matter — Oikos is the wallet layer underneath.
 
-### Companion App Strategy
+### Oikos App Strategy
 
 **Primary target: Pear mobile (iOS via Xcode)**
 - Keet runs on Pear mobile with perfect background runtime + push notifications
@@ -1044,7 +1258,7 @@ Implemented features:
  │             SKILL.md rewrite (best practices guide)   │
  ├──────────────────────────────────────────────────────┤
  │  ✅ Mar 11: Two-layer refactor (6.8 evolved)         │
- │             wallet-gateway + agent-brain → oikos-app  │
+ │             wallet-gateway + agent-brain → oikos-wallet  │
  │             Agent-agnostic architecture               │
  │             Brain → examples/oikos-agent/             │
  │             L1 Proposal simulation (dry-run)          │
@@ -1053,7 +1267,7 @@ Implemented features:
  │             Update scripts + docs for 2-package arch  │
  │             L2 Budget forecasting (if time)           │
  ├──────────────────────────────────────────────────────┤
- │  Mar 14-16: Companion app (Pear iOS or desktop)      │
+ │  Mar 14-16: Oikos App (Pear iOS or desktop)      │
  │             Remaining docs + MCP/REST testing         │
  ├──────────────────────────────────────────────────────┤
  │  Mar 17-18: Testnet funding + end-to-end smoke test  │
@@ -1072,14 +1286,14 @@ Implemented features:
 
 ### Triage Plan — "If We're Behind"
 
-**Hard cut line**: RGB (Phase 7) is the first to go. Core wallet + oikos-app is the submission. RGB is bonus.
+**Hard cut line**: RGB (Phase 7) is the first to go. Core wallet + oikos-wallet is the submission. RGB is bonus.
 
 | Days Behind | What Gets Cut | What Ships |
 |-------------|---------------|------------|
-| 0 | Nothing | Full scope: oikos-app + Companion + polished UI + docs |
-| 1-2 | Companion mobile (keep desktop) | oikos-app + desktop companion + polished UI |
-| 3-4 | Companion entirely | oikos-app (MCP/REST/CLI) + polished dashboard + demo |
-| 5+ | Dashboard polish | Working oikos-app + wallet-isolate. Ship what works. |
+| 0 | Nothing | Full scope: oikos-wallet + Companion + polished UI + docs |
+| 1-2 | Companion mobile (keep desktop) | oikos-wallet + desktop companion + polished UI |
+| 3-4 | Companion entirely | oikos-wallet (MCP/REST/CLI) + polished dashboard + demo |
+| 5+ | Dashboard polish | Working oikos-wallet + wallet-isolate. Ship what works. |
 
 **Non-negotiable** (must ship regardless):
 - Working demo from fresh clone (`npm run demo`)
@@ -1103,7 +1317,7 @@ Implemented features:
 | Swarm demo reliability (P2P timing) | MEDIUM | Use local DHT testnet (3 nodes) for deterministic discovery. Fallback: pre-connected agents. |
 | Scope too ambitious for 17 days | HIGH | Phase 3-4 are the must-haves. Phase 5 companion can be simplified to desktop-only. Phase 6 docs can be trimmed. "Working demo > half-finished features." |
 | x402 facilitator availability | LOW | Semantic's hosted facilitator at x402.semanticpay.io. Fallback: self-hosted facilitator. Mock mode if neither works. |
-| Companion app adds scope | MEDIUM | Same protomux infra as swarm — 80% shared. **Updated**: Attempting Pear iOS first (Keet proves viability). Desktop fallback ready by Day 7. Pivot decision Day 9. |
+| Oikos App adds scope | MEDIUM | Same protomux infra as swarm — 80% shared. **Updated**: Attempting Pear iOS first (Keet proves viability). Desktop fallback ready by Day 7. Pivot decision Day 9. |
 | Ollama not installed on judge machines | LOW | Mock LLM mode. All modes work with zero API keys. |
 | OpenClaw integration depth | LOW | Skill is file-based (just SKILL.md). MCP server is our stronger integration story. |
 | Wallet isolate exceeds 1500 lines | MEDIUM | Multi-asset adds ~200 lines. DeFi proposals are structurally identical to payments. |
@@ -1118,6 +1332,10 @@ Implemented features:
 | RGB integration scope | HIGH | Phase 7 is additive — core wallet unaffected. rgb-wallet-pear has mock-rgb fallback. If `@utexo/rgb-sdk` unstable, show architecture + mock. Don't let RGB block submission. |
 | ~~Wallet Gateway refactor disruption~~ | ~~MEDIUM~~ | ✅ RESOLVED — Two-layer refactor completed 2026-03-11. Both workspaces compile clean. |
 | `@utexo/rgb-sdk` Bare Runtime compat | MEDIUM | rgb-lib is Rust + JS bindings. May need Node.js sidecar instead of direct Bare embed. rgb-wallet-pear already uses sidecar pattern. |
+| Room timeout killing active negotiations | ~~HIGH~~ | ✅ RESOLVED (design) — Timer-free room lifecycle. Rooms live until settled or cancelled. Implementation pending. |
+| Payment delivery across agents (protomux) | ~~HIGH~~ | ✅ RESOLVED — Dual-channel delivery (room + board fallback). Board channel always paired. Bids arrive reliably. |
+| Trustless cross-chain settlement | MEDIUM | Production: HTLCs + security deposits (Phase 7). Hackathon: reputation-based settlement with documented architecture. Honest about limitation in demo. |
+| Address exchange in room protocol | ~~MEDIUM~~ | ✅ RESOLVED (design) — Bidders include `paymentAddress` in bids, accept messages have `paymentAddress`. Room stores both. Implementation pending. |
 
 ---
 
@@ -1160,6 +1378,9 @@ Implemented features:
 |---|-------------|-------------|------|---------|--------|
 | L13 | **Sybil-Resistant Reputation** | Current reputation is self-attested from audit log — new keypair = clean slate. Fix: co-signed settlement attestations (both parties sign that a deal completed successfully), Web-of-Trust weighting, reputation staking (put tokens behind your score). Already flagged in Risk Register. | ~1-2 weeks | HIGH for production swarm — load-bearing for trust in a permissionless marketplace. Hackathon: honest documentation of limitation is sufficient. | Not started |
 | L14 | **ERC-8004 Identity Bootstrap Resilience** | If testnet RPC is down at startup, `bootstrapIdentity()` fails silently — agent continues with no on-chain identity. Production needs: retry with backoff, cached identity from previous session, degraded-mode flag visible in dashboard/companion. | ~1 day | LOW-MEDIUM — silent failure is fine for hackathon. Production agents need explicit degraded-mode signals. | Not started |
+| L15 | **HTLC Cross-Chain Atomic Swaps** | Hash Time-Locked Contracts for trustless BTC↔ETH swaps. Native Bitcoin script + minimal EVM contract (~50 lines). New IPC types: `htlc_create`, `htlc_claim`, `htlc_refund`. Room protocol extended with HTLC negotiation phase. AI agents are ideal HTLC participants: always online (10-min timelocks), programmatically rational, fast reputation accumulation. See Phase 7 for full architecture. | ~2-3 days | HIGH — enables trustless cross-chain commerce. Currently settlement is reputation-based. | Not started |
+| L16 | **Security Deposit Pattern (Service Escrow)** | 2-of-2 multisig or time-locked collateral for service payments. Payer posts 2x deposit before task begins, receiver verifies on-chain. MAD game theory (Bisq model) makes cheating irrational. New IPC types: `deposit_create`, `deposit_settle`. All through PolicyEngine. | ~2-3 days | HIGH — trustless service payments without escrow intermediary. | Not started |
+| L17 | **Fidelity Bonds (Sybil-Resistant Identity)** | Time-locked UTXOs or staked tokens as proof-of-identity. Bond value factors into reputation score. Creates new-identity cost barrier. JoinMarket model applied to agent swarm. Complements L13. | ~1 week | MEDIUM — important for production swarm, not needed for hackathon. | Not started |
 
 ### Priority Matrix Summary
 
@@ -1169,10 +1390,13 @@ Implemented features:
    HIGH       │ L1 Dry-Run ★★★★★   │ L8 Atomic Ops ★★★★  │
    BENEFIT    │ L2 Budget Forecast  │ L10 Circuit Breaker  │
               │ L3 Event Push       │ L12 Struct Confidence│
+              │                     │ L15 HTLC Swaps ★★★★ │
+              │                     │ L16 Deposit Escrow   │
               ├─────────────────────┼─────────────────────┤
    MEDIUM     │ L4 Per-Type Cooldown│ L9 Dynamic Policy    │
    BENEFIT    │ L5 Headless Init    │ L11 Policy Hot-Reload│
               │ L7 Risk Tier Split  │ L6 Structured Nego   │
+              │                     │ L17 Fidelity Bonds   │
               ├─────────────────────┼─────────────────────┤
    LOW        │ L14 ERC-8004 Retry  │ L13 Sybil Reputation │
    BENEFIT    │                     │  (high for prod,     │
@@ -1180,6 +1404,7 @@ Implemented features:
               └─────────────────────┴─────────────────────┘
 
 ★★★★★ = L1 Proposal Simulation — DONE ✅
+★★★★  = L15 HTLC Swaps — Trustless cross-chain (Phase 7, documented)
 ```
 
 ---
@@ -1248,9 +1473,9 @@ Implemented features:
 | 2026-03-06 | **Reputation derived from audit logs** | The append-only audit trail already exists in the Wallet Isolate. Reputation = f(audit metrics). Cryptographically verifiable via Merkle proofs. No central reputation authority — each agent verifies peers independently. Sovereign trust. |
 | 2026-03-06 | **Privacy principles for swarm** | Board: public metadata only. Rooms: E2E encrypted, ephemeral. Audit log: shared only as aggregated proofs. Transaction WHY (negotiation context) stays private in rooms; transaction WHAT (on-chain settlement) is public by blockchain nature. |
 | 2026-03-06 | **x402 as fourth payment model** | x402 (HTTP 402) for commodity machine payments alongside direct, room-negotiated, and DeFi. WDK WalletAccountEvm is drop-in signer. Runs on Plasma/Stable (Tether's chains) with USD₮0 for near-zero fees. All x402 payments still go through PolicyEngine. |
-| 2026-03-06 | **Companion app via Pear Runtime** | Humans monitor and instruct agents via P2P encrypted Hyperswarm channel. Same protomux infra as swarm — just another channel type. No Telegram/Discord middleman. Companion NEVER touches Wallet directly (process isolation preserved). Desktop for hackathon, mobile as vision. |
+| 2026-03-06 | **Oikos App via Pear Runtime** | Humans monitor and instruct agents via P2P encrypted Hyperswarm channel. Same protomux infra as swarm — just another channel type. No Telegram/Discord middleman. Companion NEVER touches Wallet directly (process isolation preserved). Desktop for hackathon, mobile as vision. |
 | 2026-03-06 | **Build with companion consciousness** | Design earlier phases with companion entry points: responsive dashboard, structured JSON API, source-attributed proposals, protomux channel registry. Avoids retrofit. 80% of companion infra comes free from swarm layer. |
-| 2026-03-06 | **Four layers, not three** | Product is now Wallet Protocol + Autonomous Agent + Agent Swarm + Companion App. The companion layer transforms Oikos from agent infrastructure into a complete human-agent system. |
+| 2026-03-06 | **Four layers, not three** | Product is now Wallet Protocol + Autonomous Agent + Agent Swarm + Oikos App. The companion layer transforms Oikos from agent infrastructure into a complete human-agent system. |
 | 2026-03-06 | **x402 for self-sustaining economics** | Agent can SELL services (x402 server) and BUY services (x402 client). Revenue from x402 feeds self-sustaining metrics. This makes "self-sustaining agent" concrete and demonstrable. |
 | 2026-03-06 | **Renamed SovClaw to Oikos** | "SovClaw" undersold the product (sounded like a scraping tool, OpenClaw dependency implied). "Oikos" (Greek: household) is the root of "economics" (household management), "ecology" (household environment), and "ecumenical" (inhabited world). Captures the full vision: sovereign economic household for AI agents. Classification: Oikos is a **protocol** with reference implementations (Oikos Agent, Oikos Swarm, Oikos Companion). |
 | 2026-03-09 | **JSON over protomux (not binary framing)** | Swarm messages are tiny JSON objects. `c.raw` encoding over protomux is simpler, debuggable, and sufficient at hackathon scale. Binary `compact-encoding` can be added later for production throughput. |
@@ -1271,7 +1496,7 @@ Implemented features:
 | 2026-03-10 | **Wallet Gateway refactor pre-hackathon** | Ludwig (OpenClaw agent) identified: external agents go through the Oikos brain to reach the wallet — two agents in the chain. Extract thin Wallet Gateway (HTTP/MCP/REST + IPC) as core. Brain becomes optional plugin. "Make the wallet a service, the brain a client." 1.5-2 days effort. |
 | 2026-03-10 | **Single OIKOS_MODE flag** | Replace `MOCK_WALLET` + `MOCK_SWARM` + `MOCK_EVENTS` with single `OIKOS_MODE=mock\|testnet\|mainnet`. Simpler mental model, fewer config errors. |
 | 2026-03-10 | **Human-readable amounts in MCP** | `"1.0"` instead of `"1000000"` for 1 USDT. Gateway handles decimal conversion internally. LLM-friendly, less error-prone. |
-| 2026-03-11 | **Two-layer refactor (2 packages, not 3)** | Evolved the 3-package plan (wallet-isolate + wallet-gateway + agent-brain) into 2 packages (wallet-isolate + oikos-app). Swarm, companion, events, pricing — all infrastructure, not agent logic — merged into oikos-app. Brain extracted to `examples/oikos-agent/` as a canonical example. Key types: `OikosServices` (replaces GatewayPlugin), `EventBus` (replaces brain event loop), `CompanionStateProvider` (decouples from brain). Timebox: completed same day. |
+| 2026-03-11 | **Two-layer refactor (2 packages, not 3)** | Evolved the 3-package plan (wallet-isolate + wallet-gateway + agent-brain) into 2 packages (wallet-isolate + oikos-wallet). Swarm, companion, events, pricing — all infrastructure, not agent logic — merged into oikos-wallet. Brain extracted to `examples/oikos-agent/` as a canonical example. Key types: `OikosServices` (replaces GatewayPlugin), `EventBus` (replaces brain event loop), `CompanionStateProvider` (decouples from brain). Timebox: completed same day. |
 | 2026-03-10 | **RGB Protocol integration (Phase 7)** | UTEXO raised $7.5M from Tether (March 2026) for native USDT on Bitcoin via RGB. Adriano's `rgb-c-t` provides Hyperswarm consignment transport, `rgb-wallet-pear` provides Pear wallet patterns. `@utexo/wdk-wallet-rgb` provides WDK abstraction. Agents can issue tokens, NFTs, and transact USDT on Bitcoin. Additive module — does not change core wallet. |
 | 2026-03-10 | **Hyperswarm consignment transport over HTTP proxy** | RGB consignments delivered P2P via Hyperswarm (Adriano's `rgb-consignment-transport`) instead of centralized HTTP proxy. Same infrastructure as the swarm. Sovereign, E2E encrypted, no intermediaries. |
 | 2026-03-10 | **ClawHub publication for one-step deployment** | `npx clawhub install oikos` for OpenClaw-native discovery. Combined with `install.sh` systemd/launchd registration for persistent agent. One command, skill installed + agent running. |
@@ -1284,7 +1509,12 @@ Implemented features:
 | 2026-03-12 | **Local auto-connect via ~/.oikos/** | `oikos pair` writes `~/.oikos/agent-pubkey.txt`. Companion reads it on boot. Zero-config local demo. Remote pairing via `OIKOS_AGENT_PUBKEY` env var. Full QR-code pairing flow deferred to post-hackathon. |
 | 2026-03-12 | **`oikos wallet backup` escape hatch** | Seed phrase export command. Gap identified by Ludwig: mnemonic never shown to user in current flow. For hackathon: testnet, doesn't matter. For demo narrative: "Self-custody without seed phrase anxiety. Companion IS the control plane. Backup exists for power users." |
 | 2026-03-12 | **Companion is optional premium, not dependency** | Ludwig confirmed: wallet + CLI + skill is the core product. Any human can interact via their existing channel (Telegram, Discord, etc.) — agent runs `oikos` CLI commands. Companion brings real-time P2P dashboard, emergency controls, direct instructions. Adoption funnel: (1) install wallet → zero friction, (2) use via chat → already familiar, (3) want more control? → install companion. Reduces hackathon scope pressure: core demo stands alone, companion is "and look what else it can do." |
-| 2026-03-12 | **Wallet-isolate path fix** | Default `walletIsolatePath` was `./wallet-isolate/...` (relative to oikos-app CWD), but workspace is a sibling at `../wallet-isolate/`. Fixed to `../wallet-isolate/dist/src/main.js`. Same fix for CLI policy copy path. |
+| 2026-03-12 | **Wallet-isolate path fix** | Default `walletIsolatePath` was `./wallet-isolate/...` (relative to oikos-wallet CWD), but workspace is a sibling at `../wallet-isolate/`. Fixed to `../wallet-isolate/dist/src/main.js`. Same fix for CLI policy copy path. |
 | 2026-03-12 | **Agent-agnostic chat bridge** | Brain adapter interface (Ollama/HTTP/Mock) with `buildWalletContext()`. Any agent framework plugs in via `BRAIN_TYPE=http BRAIN_CHAT_URL=...`. Chat bridge verified E2E: Pear companion ↔ VPS agent ↔ OpenClaw brain. Ludwig wrote `skills/openclaw-bridge/bridge.js`. |
 | 2026-03-13 | **Swarm relay for Docker/NAT** | Hyperswarm has built-in relay (`relayThrough`) but we never configured it. Without it, failed holepunches silently die — no fallback. Added `SWARM_RELAY_PUBKEY` (auto-relay on holepunch failure) and `SWARM_BOOTSTRAP_PEERS` (explicit `joinPeer()` by Noise key). Discovered during Ludwig↔Baruch debugging: both on same VPS in separate Docker containers, both on DHT, but couldn't find each other. |
 | 2026-03-14 | **Force relay + persistent relay connection** | Three bugs found: (1) relay-node.mjs needed `createServer()+server.listen()` (not just `node.listen()`) to be findable on DHT; (2) systemd was running stale file (flat copy, not git-updated scripts/); (3) `relayThrough` as buffer only activates on `force=true` or `dht.randomized=true` — Docker NAT triggers neither, connections silently hang. Fix: pass function `() => relayBuf` to force relay on every attempt + `joinPeer(relayPubkey)` for persistent connection. Ludwig↔Baruch connected successfully through relay despite being on separate Docker bridge networks (172.18 vs 172.19). |
+| 2026-03-16 | **Dual-channel bid delivery (board fallback)** | Protomux requires BOTH sides to open a channel before messages flow. Room channels weren't pairing reliably. Fix: send bids, accepts, and payment confirmations on BOTH room channel and board channel. Board channel (always paired) acts as guaranteed fallback. New `BoardMessage` subtypes: `board_bid`, `board_accept`, `board_payment`. Converted to `RoomMessage` on receipt. Bids now arrive reliably. |
+| 2026-03-16 | **Request/Offer announcement categories** | Single-direction "creator always pays" model was wrong. Two categories: `request` (creator needs something → creator pays bidder) and `offer` (creator sells something → bidder pays creator). `submitPayment` enforces correct payer based on category + role. SKILL.md updated with dual-flow documentation. |
+| 2026-03-16 | **Trustless settlement as Phase 7 (production roadmap)** | Live swarm testing exposed fundamental questions: how do agents swap BTC for ETH trustlessly? How do they handle service payments without trust? Research: Bisq (2-of-2 multisig + MAD), HodlHodl (2-of-3), RoboSats (Lightning bonds), atomic swaps (HTLCs). Decision: three settlement tiers — Direct (DEX atomic), HTLC (cross-chain cryptographic), Deposit (service collateral). All flow through PolicyEngine. For hackathon: document architecture, demo with reputation-based settlement. Production: full HTLC + deposit implementation. |
+| 2026-03-16 | **Timer-free room lifecycle (design decision)** | 120-second room timeout killed active negotiations (Ludwig's room expired before Baruch's payment arrived). New model: rooms live until explicitly settled or cancelled. No automatic expiry. Garbage collection only for truly abandoned rooms (24h, zero bids). Multi-bidder rooms: multiple agents bid, creator picks best, losers get `reject` notification. |
+| 2026-03-16 | **Address exchange via room protocol (design decision)** | `submitPayment` was using `pubkey.slice(0, 42)` as address — wrong. Pubkeys are Ed25519 identity keys, not wallet addresses. Fix: bidders include `paymentAddress` in bids (queried from Wallet Isolate), accept messages already have `paymentAddress`. Room state stores both addresses. `submitPayment` uses stored address. |

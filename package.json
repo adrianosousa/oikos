@@ -8,7 +8,7 @@
   "main": "index.js",
   "pear": {
     "pre": "pear-electron/pre",
-    "name": "oikos-companion",
+    "name": "oikos-app",
     "gui": {
       "main": "index.html",
       "icon": "assets/logo.png",
@@ -24,7 +24,7 @@
   },
   "workspaces": [
     "wallet-isolate",
-    "oikos-app"
+    "oikos-wallet"
   ],
   "scripts": {
     "update": "./scripts/update.sh",
@@ -34,8 +34,8 @@
     "live": "./scripts/start-live.sh",
     "generate-seed": "node scripts/generate-seed.js",
     "pear:dev": "pear run -d .",
-    "start": "node oikos-app/dist/src/main.js",
-    "oikos": "node oikos-app/dist/src/cli.js"
+    "start": "node oikos-wallet/dist/src/main.js",
+    "oikos": "node oikos-wallet/dist/src/cli.js"
   },
   "engines": {
     "node": ">=22.0.0"

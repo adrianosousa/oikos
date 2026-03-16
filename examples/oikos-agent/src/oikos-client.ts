@@ -1,12 +1,12 @@
 /**
- * Oikos REST Client — connects to oikos-app via HTTP.
+ * Oikos REST Client — connects to oikos-wallet via HTTP.
  *
  * This is how any external agent talks to Oikos.
  * No workspace dependencies — just plain HTTP fetch.
  */
 
 export interface OikosClientConfig {
-  /** Base URL of the oikos-app dashboard (default: http://127.0.0.1:3420) */
+  /** Base URL of the oikos-wallet dashboard (default: http://127.0.0.1:3420) */
   baseUrl: string;
 }
 
@@ -50,7 +50,7 @@ export class OikosClient {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
   }
 
-  /** Check if oikos-app is healthy */
+  /** Check if oikos-wallet is healthy */
   async health(): Promise<HealthResponse> {
     return this.get<HealthResponse>('/api/health');
   }

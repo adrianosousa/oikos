@@ -384,7 +384,7 @@ check_openclaw() {
 # ────────────────────────────────────────────────────
 
 install_cli() {
-  CLI_PATH="$(pwd)/oikos-app/dist/src/cli.js"
+  CLI_PATH="$(pwd)/oikos-wallet/dist/src/cli.js"
   if [ -f "$CLI_PATH" ]; then
     # Try to symlink into a PATH directory
     LOCAL_BIN="${HOME}/.local/bin"

@@ -37,7 +37,7 @@ const PORT = parseInt(getArg('--port', process.env.GATEWAY_PORT || '8080'), 10);
 const SWARM_ID = getArg('--swarm-id', process.env.SWARM_ID || 'oikos-hackathon-v1');
 const RELAY_PUBKEY = getArg('--relay', process.env.SWARM_RELAY_PUBKEY || 'e7ab6adb1a18e7d22649691dc65f5789f6fdd25422b0770ab068ee9bbe0a3003');
 
-// ── Topic Derivation (mirrors oikos-app/src/swarm/topic.ts) ──
+// ── Topic Derivation (mirrors oikos-wallet/src/swarm/topic.ts) ──
 
 function deriveBoardTopic(swarmId) {
   const key = b4a.from('oikos-board-v0--'); // 16 bytes, same as agents
@@ -117,6 +117,7 @@ function handleBoardMessage(msg, fromPubkey) {
       description: msg.description || '',
       priceRange: msg.priceRange || null,
       capabilities: msg.capabilities || [],
+      tags: msg.tags || [],
       expiresAt: msg.expiresAt || 0,
       timestamp: msg.timestamp || Date.now(),
     });
@@ -206,19 +207,31 @@ if (RELAY_PUBKEY) {
 
 // ── HTTP Server ──
 
-const boardHtmlPath = join(__dirname, '..', 'oikos-app', 'src', 'dashboard', 'public', 'board.html');
-const logoPath = join(__dirname, '..', 'assets', 'logo.png');
+const boardHtmlPath = join(__dirname, '..', 'oikos-wallet', 'src', 'dashboard', 'public', 'board.html');
+const assetsDir = join(__dirname, '..', 'assets');
 
 const server = http.createServer((req, res) => {
   // CORS headers for API
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  // Serve logo
-  if (req.url === '/logo.png') {
+  // Serve SVG assets
+  if (req.url === '/oikos-logo.svg') {
     try {
-      const logo = readFileSync(logoPath);
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
-      res.end(logo);
+      const svg = readFileSync(join(assetsDir, 'oikos-logo.svg'), 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
+      res.end(svg);
+    } catch {
+      res.writeHead(404);
+      res.end('logo not found');
+    }
+    return;
+  }
+
+  if (req.url === '/reshimu-labs.svg') {
+    try {
+      const svg = readFileSync(join(assetsDir, 'reshimu-labs.svg'), 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
+      res.end(svg);
     } catch {
       res.writeHead(404);
       res.end('logo not found');
@@ -229,6 +242,17 @@ const server = http.createServer((req, res) => {
   if (req.url === '/api/board' || req.url?.startsWith('/api/board?')) {
     const peerList = Array.from(peers.values());
     const annList = Array.from(announcements.values());
+
+    // Aggregate tags from all announcements
+    const tagMap = new Map();
+    for (const ann of annList) {
+      for (const tag of (ann.tags || [])) {
+        const key = tag.toLowerCase();
+        if (!tagMap.has(key)) tagMap.set(key, { tag, count: 0 });
+        tagMap.get(key).count++;
+      }
+    }
+    const tags = [...tagMap.values()].sort((a, b) => b.count - a.count).slice(0, 20);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -257,9 +281,11 @@ const server = http.createServer((req, res) => {
         description: a.description,
         priceRange: a.priceRange,
         capabilities: a.capabilities,
+        tags: a.tags || [],
         expiresAt: a.expiresAt,
         timestamp: a.timestamp,
       })),
+      tags,
       economics: null,
       events: events.slice(0, 30),
       stats: {
@@ -280,7 +306,7 @@ const server = http.createServer((req, res) => {
       // Patch the title to say "Gateway" instead of just "Board"
       const patched = html
         .replace('<title>Oikos Board</title>', '<title>Oikos Gateway</title>')
-        .replace('OIKOS <span>/ board</span>', 'OIKOS <span>/ gateway</span>');
+        .replace('OIKOS BOARD', 'OIKOS GATEWAY');
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(patched);
     } catch {
@@ -292,7 +318,7 @@ const server = http.createServer((req, res) => {
 
   // 404 for everything else
   res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not found', routes: ['/', '/board', '/api/board', '/logo.png'] }));
+  res.end(JSON.stringify({ error: 'not found', routes: ['/', '/board', '/api/board', '/oikos-logo.svg', '/reshimu-labs.svg'] }));
 });
 
 server.listen(PORT, '0.0.0.0', () => {

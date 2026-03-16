@@ -1,8 +1,8 @@
 {
-  "name": "oikos-app",
+  "name": "oikos-wallet",
   "version": "0.2.0",
   "private": true,
-  "description": "Oikos Protocol — agent-agnostic wallet app with MCP, REST, CLI, swarm, companion",
+  "description": "Oikos Protocol — agent wallet infrastructure with MCP, REST, CLI, swarm",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/src/main.js",

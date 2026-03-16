@@ -6,7 +6,7 @@ Built on Tether's runtime stack: Bare/Pear Runtime + WDK.
 ## Four-Layer Architecture
 
 ```
-Layer 4: Companion App        Pear Runtime, Hyperswarm Noise, Ed25519 owner auth
+Layer 4: Oikos App             Pear Runtime, Hyperswarm Noise, Ed25519 owner auth
 Layer 3: Agent Swarm           Hyperswarm DHT, Protomux, meta-marketplace, reputation
 Layer 2: Oikos App              Node.js agent-agnostic infra, CLI, MCP, dashboard
 Layer 1: Wallet Protocol       Bare Runtime, WDK, PolicyEngine, AuditLog
@@ -95,7 +95,7 @@ PaymentRequest, PaymentConfirm), feed (PriceUpdate, StrategySignal).
 BLAKE2b commitment for verification without exposing raw data.
 ERC-8004 on-chain identity for Sybil resistance.
 
-### Layer 4 -- Companion App (Pear Runtime)
+### Layer 4 -- Oikos App (Pear Runtime)
 
 P2P human-agent communication using the same Hyperswarm infrastructure as the swarm.
 
@@ -173,7 +173,7 @@ Messages that fail schema validation are silently dropped and logged to the audi
                                                                  |--> x402 endpoints
                                                                  |--> RGB operations
                                                                  |
-                                                            Companion App
+                                                            Oikos App
                                                             (via Hyperswarm only)
                                                                  |
                                                             External Agent (optional)
@@ -186,7 +186,7 @@ Messages that fail schema validation are silently dropped and logged to the audi
   MCP server + CLI. No LLM access -- agent-agnostic. Never connects to blockchain nodes. Never signs transactions.
 - **External Agent (optional):** Connects to Oikos App via MCP, REST, or CLI. Contains LLM reasoning.
   The reference implementation is in `examples/oikos-agent/`.
-- **Companion App:** Connects to the Oikos App via Hyperswarm only. Bare-native P2P client (no sidecar).
+- **Oikos App:** Connects to the Oikos infrastructure via Hyperswarm only. Bare-native P2P client (no sidecar).
   Auth via Ed25519 keypair. Never connects to Wallet Isolate. Never has key access.
 
 ## Directory Structure
@@ -204,7 +204,7 @@ oikos/
       secret/              Encrypted seed persistence (WDK SecretManager)
       erc8004/             ERC-8004 ABI encoding, contract constants
       compat/              Bare/Node.js compatibility (fs, process)
-  oikos-app/               Agent-agnostic infrastructure (Node.js)
+  oikos-wallet/               Agent-agnostic infrastructure (Node.js)
     src/
       main.ts              Entry point, service wiring
       cli.ts               CLI entry point (oikos init, pair, balance, pay, etc.)
@@ -230,7 +230,7 @@ oikos/
         strategy/          DeFi strategy engine
   skills/wdk-wallet/       OpenClaw skill definition (SKILL.md)
   policies.example.json    Example policy config
-  index.js                 Pear companion entry point (Bare-native P2P client)
-  app.js                   Companion frontend
-  index.html               Companion GUI shell
+  index.js                 Pear Oikos App entry point (Bare-native P2P client)
+  app.js                   Oikos App frontend
+  index.html               Oikos App GUI shell
 ```

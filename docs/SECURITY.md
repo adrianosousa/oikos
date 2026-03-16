@@ -127,7 +127,7 @@ The audit log is an append-only JSON-lines file with these guarantees:
 | Wallet Isolate | Blockchain RPC (Electrum, JSON-RPC), DeFi protocols (DEXs, lending, bridges) | HTTP servers, Hyperswarm, LLM APIs, external APIs |
 | Oikos App | Hyperswarm DHT, x402 endpoints, localhost dashboard + MCP, CLI | Blockchain nodes (directly), wallet signing, LLM APIs |
 | External Agent | Oikos App (via MCP / REST / CLI) | Wallet Isolate, blockchain nodes |
-| Companion App | Oikos App (via Hyperswarm) | Wallet Isolate, blockchain nodes, LLM APIs |
+| Oikos App | Oikos infrastructure (via Hyperswarm) | Wallet Isolate, blockchain nodes, LLM APIs |
 
 The Oikos App negotiates with peers over Hyperswarm, handles x402 payment flows, receives companion
 instructions, then sends Proposals to the Wallet via IPC. The Wallet evaluates policy and signs.

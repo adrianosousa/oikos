@@ -60,6 +60,7 @@ export interface BoardAnnouncement {
   description: string;
   priceRange: { min: string; max: string; symbol: string };
   capabilities: AgentCapability[];
+  tags: string[];
   expiresAt: number;
   timestamp: number;
 }
@@ -343,6 +344,7 @@ export interface SwarmCoordinatorInterface {
     title: string;
     description: string;
     priceRange: { min: string; max: string; symbol: string };
+    tags?: string[];
   }): string;
   bidOnAnnouncement(announcementId: string, price: string, symbol: string, reason: string): Promise<void>;
   acceptBestBid(announcementId: string): Promise<RoomAccept | undefined>;

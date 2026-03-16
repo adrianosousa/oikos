@@ -1,7 +1,7 @@
 /**
  * Oikos Services — direct service references for dashboard/MCP.
  *
- * Replaces the GatewayPlugin indirection pattern. The oikos-app
+ * Replaces the GatewayPlugin indirection pattern. The oikos-wallet
  * owns all services directly — no brain plugin needed.
  */
 
@@ -16,6 +16,7 @@ export interface SwarmAnnounceOpts {
   title: string;
   description: string;
   priceRange: { min: string; max: string; symbol: string };
+  tags?: string[];
 }
 
 /** Interface that a swarm coordinator must implement */

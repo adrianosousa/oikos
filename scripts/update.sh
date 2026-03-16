@@ -31,7 +31,7 @@ echo -e "${DIM}[2/3] npm install...${RESET}"
 npm install 2>&1 | tail -5
 echo ""
 
-# 3. Build both workspaces (wallet-isolate + oikos-app)
+# 3. Build both workspaces (wallet-isolate + oikos-wallet)
 echo -e "${DIM}[3/3] npm run build...${RESET}"
 npm run build 2>&1
 echo ""
@@ -41,22 +41,22 @@ if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]]; then
   echo -e "\033[31mERROR: wallet-isolate/dist/src/main.js not found after build\033[0m"
   exit 1
 fi
-if [[ ! -f "$PROJECT_DIR/oikos-app/dist/src/main.js" ]]; then
-  echo -e "\033[31mERROR: oikos-app/dist/src/main.js not found after build\033[0m"
+if [[ ! -f "$PROJECT_DIR/oikos-wallet/dist/src/main.js" ]]; then
+  echo -e "\033[31mERROR: oikos-wallet/dist/src/main.js not found after build\033[0m"
   exit 1
 fi
 
 echo -e "${GREEN}Build OK.${RESET} Both workspaces compiled."
 echo ""
 echo -e "  wallet-isolate: ${DIM}$(wc -l < wallet-isolate/dist/src/main.js) lines${RESET}"
-echo -e "  oikos-app:      ${DIM}$(wc -l < oikos-app/dist/src/main.js) lines${RESET}"
+echo -e "  oikos-wallet:      ${DIM}$(wc -l < oikos-wallet/dist/src/main.js) lines${RESET}"
 echo ""
 
 # Optional restart
 if [[ "${1:-}" == "--restart" ]]; then
   echo -e "${DIM}Restarting oikos...${RESET}"
   # Kill existing node process running main.js
-  pkill -f "node.*oikos-app/dist/src/main.js" 2>/dev/null || true
+  pkill -f "node.*oikos-wallet/dist/src/main.js" 2>/dev/null || true
   sleep 1
   echo -e "${GREEN}Stopped. Start again with: npm start${RESET}"
 fi

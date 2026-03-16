@@ -9,7 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const boardHtmlPath = join(__dirname, '..', 'oikos-app', 'src', 'dashboard', 'public', 'board.html');
+const boardHtmlPath = join(__dirname, '..', 'oikos-wallet', 'src', 'dashboard', 'public', 'board.html');
 const logoPath = join(__dirname, '..', 'assets', 'logo.png');
 
 const PORT = 9090;

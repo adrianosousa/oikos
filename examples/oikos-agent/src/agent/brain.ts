@@ -1,7 +1,7 @@
 /**
  * Oikos Agent Brain — Autonomous portfolio manager.
  *
- * Connects to oikos-app via HTTP REST. Polls events, reasons with LLM,
+ * Connects to oikos-wallet via HTTP REST. Polls events, reasons with LLM,
  * proposes operations via MCP. The canonical example of building on Oikos.
  *
  * The brain NEVER signs transactions. It proposes, Oikos decides.
@@ -95,7 +95,7 @@ export class AgentBrain {
     try {
       this.state.status = 'polling';
 
-      // Fetch events, balances, policies from oikos-app
+      // Fetch events, balances, policies from oikos-wallet
       const [events, balances, policies] = await Promise.all([
         this.oikos.getEvents(20),
         this.oikos.getBalances(),

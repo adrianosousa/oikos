@@ -1,15 +1,15 @@
 /**
  * Oikos Agent — Canonical autonomous agent example.
  *
- * Connects to a running oikos-app via HTTP REST and MCP.
+ * Connects to a running oikos-wallet via HTTP REST and MCP.
  * Polls events, reasons with LLM, proposes wallet operations.
  *
  * This is the flagship example of what you can build on the Oikos protocol.
  * No workspace dependencies — standalone package with only `openai` as dep.
  *
  * Usage:
- *   # Start oikos-app first:
- *   OIKOS_MODE=mock node oikos-app/dist/src/main.js
+ *   # Start oikos-wallet first:
+ *   OIKOS_MODE=mock node oikos-wallet/dist/src/main.js
  *
  *   # Then start the agent:
  *   OIKOS_URL=http://127.0.0.1:3420 node examples/oikos-agent/dist/src/main.js
@@ -42,17 +42,17 @@ async function main(): Promise<void> {
   const creatorAddress = getEnv('CREATOR_ADDRESS', '0xCREATOR1000000000000000000000000000000001');
   const pollIntervalMs = parseInt(getEnv('POLL_INTERVAL_MS', '10000'), 10);
 
-  // Connect to oikos-app
+  // Connect to oikos-wallet
   const oikos = new OikosClient({ baseUrl: oikosUrl });
 
   // Verify connection
-  console.error(`[oikos-agent] Connecting to oikos-app at ${oikosUrl}...`);
+  console.error(`[oikos-agent] Connecting to oikos-wallet at ${oikosUrl}...`);
   try {
     const health = await oikos.health();
     console.error(`[oikos-agent] Connected! Wallet: ${health.wallet}, Events: ${health.eventsBuffered}`);
   } catch (err) {
-    console.error(`[oikos-agent] FATAL: Cannot connect to oikos-app at ${oikosUrl}`);
-    console.error(`[oikos-agent] Make sure oikos-app is running: OIKOS_MODE=mock node oikos-app/dist/src/main.js`);
+    console.error(`[oikos-agent] FATAL: Cannot connect to oikos-wallet at ${oikosUrl}`);
+    console.error(`[oikos-agent] Make sure oikos-wallet is running: OIKOS_MODE=mock node oikos-wallet/dist/src/main.js`);
     process.exit(1);
   }
 

@@ -53,7 +53,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
 fi
 
 # ── Build if needed ──
-if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/oikos-app/dist/src/main.js" ]]; then
+if [[ ! -f "$PROJECT_DIR/wallet-isolate/dist/src/main.js" ]] || [[ ! -f "$PROJECT_DIR/oikos-wallet/dist/src/main.js" ]]; then
   echo "[oikos] Building project..."
   npm run build 2>&1 | tail -5
   echo ""
@@ -107,4 +107,4 @@ exec env \
   AUDIT_LOG_PATH="./audit-live.jsonl" \
   AGENT_NAME="$AGENT_NAME" \
   AGENT_CAPABILITIES="$AGENT_CAPS" \
-  node oikos-app/dist/src/main.js
+  node oikos-wallet/dist/src/main.js

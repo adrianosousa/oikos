@@ -55,7 +55,7 @@ Oikos separates the wallet from the agent at the process level. The infrastructu
   └─────────────────────────────────────────────────────────────┘
          ▲                    ▲                    ▲
          │                    │                    │
-    Companion App       Any Agent              x402 Clients
+    Oikos App            Any Agent              x402 Clients
     (P2P, Bare-native)  (MCP/REST/CLI)      (Machine Payments)
 ```
 
@@ -66,7 +66,7 @@ Oikos separates the wallet from the agent at the process level. The infrastructu
 | **Wallet Protocol** | Process-isolated, policy-enforced multi-chain wallet on Bare Runtime |
 | **Oikos App** | Agent-agnostic infrastructure: MCP, CLI, dashboard, swarm, x402, RGB (no LLM) |
 | **Agent Swarm** | Multi-agent trading swarm on Hyperswarm with Noise E2E encryption |
-| **Companion App** | Bare-native P2P encrypted human-agent communication via Hyperswarm |
+| **Oikos App** | Bare-native P2P encrypted human-agent communication via Hyperswarm |
 
 ## Features
 
@@ -161,7 +161,7 @@ oikos/
 │       ├── erc8004/           # On-chain identity (ABI encoder + constants)
 │       ├── secret/            # Encrypted seed manager (WDK SecretManager)
 │       └── compat/            # Runtime compatibility (bare-fs / node:fs)
-├── oikos-app/                 # Agent-agnostic infrastructure (Node.js)
+├── oikos-wallet/                 # Agent-agnostic infrastructure (Node.js)
 │   └── src/
 │       ├── cli.ts             # CLI entry (oikos init, balance, pay, pair, etc.)
 │       ├── ipc/               # Wallet IPC client
@@ -183,9 +183,9 @@ oikos/
 ├── skills/                    # OpenClaw skill definition
 │   └── wdk-wallet/SKILL.md
 ├── scripts/                   # Demo + utility scripts
-├── index.js                   # Pear companion entry (Bare-native P2P client)
-├── app.js                     # Companion frontend
-├── index.html                 # Companion GUI shell
+├── index.js                   # Pear Oikos App entry (Bare-native P2P client)
+├── app.js                     # Oikos App frontend
+├── index.html                 # Oikos App GUI shell
 ├── policies.example.json      # Example policy configuration
 └── package.json               # Workspace root (npm workspaces)
 ```
@@ -230,7 +230,7 @@ npm test    # Runs tests in both workspaces
 **140 tests, 0 failures** across two workspaces:
 
 - **wallet-isolate** (105 tests): PolicyEngine rule coverage, executor rejection proofs, IPC schema validation, audit append-only guarantees, encrypted seed manager, ERC-8004 encoding
-- **oikos-app** (35 tests): Swarm topic derivation, reputation scoring, companion authentication, x402 payment flows, MCP tool handlers
+- **oikos-wallet** (35 tests): Swarm topic derivation, reputation scoring, companion authentication, x402 payment flows, MCP tool handlers
 
 Critical invariants proven by tests:
 - A proposal rejected by PolicyEngine **never** results in a signed transaction
