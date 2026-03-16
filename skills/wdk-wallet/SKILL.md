@@ -92,9 +92,10 @@ All write tools require: `amount` (human-readable, e.g. `"1.5"` for 1.5 USDT), `
 ### Swarm Negotiation (private rooms)
 | Tool | What it does |
 |------|-------------|
-| `swarm_bid` | Bid on a peer's announcement. Joins a private E2E-encrypted room and sends a price offer. Args: `announcementId`, `price`, `symbol`, `reason` |
-| `swarm_accept_bid` | Accept the best bid on your announcement (creator only). Args: `announcementId` |
-| `swarm_submit_payment` | Submit payment for an accepted bid via the wallet. Goes through PolicyEngine. Args: `announcementId` |
+| `swarm_bid` | Bid on a peer's announcement. Joins a private E2E-encrypted room and sends a price offer. Your wallet address is included automatically. Args: `announcementId`, `price`, `symbol`, `reason` |
+| `swarm_accept_bid` | Accept the best bid on your announcement (creator only). Losing bidders are notified automatically. Args: `announcementId` |
+| `swarm_submit_payment` | Submit payment for an accepted bid. Payment direction is automatic based on category. Only the correct payer can call this. Args: `announcementId` |
+| `swarm_cancel_room` | Cancel a negotiation room without settling (creator only). Args: `announcementId` |
 | `swarm_room_state` | Get the state of negotiation rooms — bids, status, accepted terms. Args: `announcementId` (optional, omit for all rooms) |
 | `get_events` | Get recent events including swarm notifications — bids received, bids accepted, payments confirmed. Args: `limit` (optional, default 50) |
 
@@ -127,6 +128,10 @@ The system enforces this automatically. `swarm_submit_payment` checks your role 
 5. Creator: **waits.** Polls `get_events` for "Payment confirmed"
 
 **KEY RULE**: After `swarm_accept_bid`, the PAYER (determined by category) should immediately call `swarm_submit_payment`. The other party just waits.
+
+**ROOM LIFECYCLE**: Rooms do NOT expire on a timer. They stay open until settled (`swarm_submit_payment` completes) or explicitly cancelled (`swarm_cancel_room`). Take your time — no rush. Multiple bidders can bid on the same announcement; losing bidders are notified when another bid is accepted.
+
+**WALLET ADDRESSES**: Bids automatically include your wallet address. When you accept a bid, your wallet address is shared with the bidder. `swarm_submit_payment` uses the real wallet addresses from the negotiation — no manual address entry needed.
 
 ### Monitoring for Events
 

@@ -41,7 +41,6 @@ export interface SwarmConfig {
   agentName: string;
   capabilities: AgentCapability[];
   keypairPath: string;
-  roomTimeoutMs: number;
   heartbeatIntervalMs: number;
   /** How long announcements stay active (default: 1 hour). Auto-renewed on heartbeat. */
   announcementTtlMs: number;
@@ -65,7 +64,6 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
   private knownPeers: Map<string, SwarmPeerInfo> = new Map();
   private announcements: BoardAnnouncement[] = [];
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  private expiryInterval: ReturnType<typeof setInterval> | null = null;
   private started = false;
 
   constructor(wallet: WalletIPCClient, config: SwarmConfig) {
@@ -125,7 +123,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       // Ensures late-joining peers can immediately bid (protomux requires both
       // sides to open a channel before messages flow).
       for (const room of this.marketplace.getRooms()) {
-        if (room.role === 'creator' && room.status !== 'settled' && room.status !== 'expired') {
+        if (room.role === 'creator' && room.status !== 'settled' && room.status !== 'cancelled') {
           this.channels!.openRoomChannel(remotePubkey, room.announcementId);
         }
       }
@@ -165,11 +163,6 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       this._sendHeartbeat();
     }, this.config.heartbeatIntervalMs);
 
-    // 9. Start room expiry checker
-    this.expiryInterval = setInterval(() => {
-      this.marketplace.expireStaleRooms();
-    }, 10000);
-
     this.started = true;
     console.error(`[swarm] Started. Identity: ${this.identity.name} (${this.identity.pubkey.slice(0, 12)}...)`);
   }
@@ -206,8 +199,8 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     // Track locally
     this.announcements.push(announcement);
 
-    // Create room for this announcement (rooms have shorter timeout than announcements)
-    this.marketplace.createRoom(announcement, this.config.roomTimeoutMs);
+    // Create room for this announcement
+    this.marketplace.createRoom(announcement);
 
     // Join the room DHT topic so bidders can find us even without board connection
     if (this.discovery && this.keypair) {
@@ -244,6 +237,19 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     const announcement = this.announcements.find((a) => a.id === announcementId);
     if (!announcement) throw new Error(`Announcement ${announcementId} not found`);
 
+    // Get our wallet address so the creator knows where to pay us (if we're the payee)
+    let bidderPaymentAddress: string | undefined;
+    let bidderPaymentChain: string | undefined;
+    try {
+      const addr = await this.wallet.queryAddress('ethereum');
+      if (addr && typeof addr === 'object' && 'address' in addr) {
+        bidderPaymentAddress = (addr as { address: string }).address;
+        bidderPaymentChain = 'ethereum';
+      }
+    } catch {
+      // Will fall back to pubkey-derived address
+    }
+
     // Join the room topic
     const creatorPubkeyBuf = Buffer.from(announcement.agentPubkey, 'hex');
     await this.discovery.joinRoom(announcementId, creatorPubkeyBuf);
@@ -263,6 +269,8 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       price,
       symbol,
       reason,
+      paymentAddress: bidderPaymentAddress,
+      paymentChain: bidderPaymentChain,
       timestamp: Date.now(),
     };
 
@@ -280,6 +288,8 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       price,
       symbol,
       reason,
+      paymentAddress: bidderPaymentAddress,
+      paymentChain: bidderPaymentChain,
       timestamp: Date.now(),
     };
     const sentBoard = this.channels.broadcastBoard(boardBid);
@@ -326,6 +336,25 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         timestamp: Date.now(),
       };
       this.channels.broadcastBoard(boardAccept);
+
+      // Notify losing bidders
+      const room = this.marketplace.getRoom(announcementId);
+      if (room) {
+        for (const bid of room.bids) {
+          if (bid.bidderPubkey !== bestBid.bidderPubkey) {
+            const reject: RoomMessage = {
+              type: 'reject',
+              announcementId,
+              rejectedBidderPubkey: bid.bidderPubkey,
+              reason: `Another bid was accepted (${bestBid.bidderName}: ${bestBid.price} ${bestBid.symbol})`,
+              timestamp: Date.now(),
+            };
+            this.channels.broadcastRoom(announcementId, reject);
+            this.channels.broadcastBoard(reject as unknown as BoardMessage);
+          }
+        }
+      }
+
       console.error(`[swarm] Accepted bid from ${bestBid.bidderName} for ${bestBid.price} ${bestBid.symbol}`);
     }
 
@@ -359,15 +388,22 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       return;
     }
 
-    // Determine recipient address
+    // Determine recipient address from negotiation data (real wallet addresses)
     let toAddress: string;
     if (creatorPays) {
-      // Creator pays bidder — use bidder's pubkey as address (best effort)
-      toAddress = room.acceptedBid.bidderPubkey.slice(0, 42);
+      // Creator pays bidder — use bidder's wallet address from their bid
+      toAddress = room.acceptedBid.paymentAddress
+        ?? room.acceptedBid.bidderPubkey.slice(0, 42); // fallback: pubkey prefix
     } else {
-      // Bidder pays creator — use creator's pubkey as address
-      toAddress = room.announcement.agentPubkey.slice(0, 42);
+      // Bidder pays creator — use creator's wallet address from the accept message
+      toAddress = room.paymentAddress
+        ?? room.announcement.agentPubkey.slice(0, 42); // fallback: pubkey prefix
     }
+
+    // Determine chain from negotiation data
+    const paymentChain = (creatorPays
+      ? room.acceptedBid.paymentChain
+      : room.paymentChain) ?? 'ethereum';
 
     const directionLabel = creatorPays
       ? `${room.announcement.agentName} → ${room.acceptedBid.bidderName}`
@@ -380,7 +416,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       const result = await this.wallet.proposalFromExternal('swarm', 'payment', {
         amount: room.agreedPrice,
         symbol: room.agreedSymbol as 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH',
-        chain: 'ethereum' as const,
+        chain: paymentChain as 'ethereum' | 'bitcoin' | 'arbitrum' | 'polygon',
         reason: `Swarm payment for: ${room.announcement.title} [${directionLabel}]`,
         confidence: 0.9,
         strategy: 'swarm-settlement',
@@ -429,6 +465,11 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     this.marketplace.settleRoom(announcementId, txHash);
   }
 
+  /** Cancel a negotiation room (creator only) */
+  cancelRoom(announcementId: string): boolean {
+    return this.marketplace.cancelRoom(announcementId);
+  }
+
   /** Explicitly connect to a peer by Noise public key */
   joinPeer(pubkeyHex: string): void {
     if (!this.discovery) throw new Error('Swarm not started');
@@ -466,7 +507,6 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
   /** Graceful shutdown */
   async stop(): Promise<void> {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-    if (this.expiryInterval) clearInterval(this.expiryInterval);
     if (this.discovery) await this.discovery.destroy();
     this.started = false;
     console.error('[swarm] Stopped.');
@@ -545,6 +585,8 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         price: msg.price,
         symbol: msg.symbol,
         reason: msg.reason,
+        paymentAddress: msg.paymentAddress,
+        paymentChain: msg.paymentChain,
         timestamp: msg.timestamp,
       };
       this._handleRoomMessage(msg.announcementId, roomBid, fromPubkey);

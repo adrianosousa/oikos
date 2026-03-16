@@ -110,7 +110,6 @@ async function main(): Promise<void> {
       swarm = new MockSwarmCoordinator(wallet, {
         agentName: config.agentName,
         capabilities,
-        roomTimeoutMs: 60000,
       });
     } else {
       const { SwarmCoordinator } = await import('./swarm/coordinator.js');
@@ -122,7 +121,6 @@ async function main(): Promise<void> {
         agentName: config.agentName,
         capabilities,
         keypairPath: config.keypairPath,
-        roomTimeoutMs: 120000,            // 2 min — room negotiation timeout
         heartbeatIntervalMs: 15000,       // 15s — heartbeat + announcement re-broadcast
         announcementTtlMs: 3600000,       // 1 hour — auto-renewed on each heartbeat
         relayPubkey: config.swarmRelayPubkey || undefined,

@@ -36,7 +36,7 @@ export class Marketplace {
   };
 
   /** Create a new room from an announcement I posted (creator role) */
-  createRoom(announcement: BoardAnnouncement, timeoutMs: number = 60000): ActiveRoom {
+  createRoom(announcement: BoardAnnouncement): ActiveRoom {
     const room: ActiveRoom = {
       announcementId: announcement.id,
       announcement,
@@ -44,7 +44,6 @@ export class Marketplace {
       status: 'open',
       bids: [],
       createdAt: Date.now(),
-      timeoutMs,
     };
 
     this.rooms.set(announcement.id, room);
@@ -52,7 +51,7 @@ export class Marketplace {
   }
 
   /** Join a room for an announcement I want to bid on (bidder role) */
-  joinRoom(announcement: BoardAnnouncement, timeoutMs: number = 60000): ActiveRoom {
+  joinRoom(announcement: BoardAnnouncement): ActiveRoom {
     // If we already have this room (e.g., we posted it), don't overwrite
     const existing = this.rooms.get(announcement.id);
     if (existing) return existing;
@@ -64,7 +63,6 @@ export class Marketplace {
       status: 'negotiating',
       bids: [],
       createdAt: Date.now(),
-      timeoutMs,
     };
 
     this.rooms.set(announcement.id, room);
@@ -102,6 +100,9 @@ export class Marketplace {
         room.status = 'accepted';
         room.agreedPrice = accept.agreedPrice;
         room.agreedSymbol = accept.agreedSymbol;
+        // Store payment address from accept message (creator's wallet address)
+        room.paymentAddress = accept.paymentAddress;
+        room.paymentChain = accept.paymentChain;
 
         // Find the accepted bid
         room.acceptedBid = room.bids.find(
@@ -109,6 +110,10 @@ export class Marketplace {
         );
         break;
       }
+
+      case 'reject':
+        // Informational — losing bidders receive this
+        break;
 
       case 'task_result':
         if (room.status === 'accepted') {
@@ -185,27 +190,18 @@ export class Marketplace {
     this._updateEconomics(room);
   }
 
-  /** Check and expire timed-out rooms */
-  expireStaleRooms(): string[] {
-    const now = Date.now();
-    const expired: string[] = [];
+  /** Cancel a room explicitly (creator decides to close it) */
+  cancelRoom(roomId: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    if (room.status === 'settled' || room.status === 'cancelled') return false;
 
-    for (const [id, room] of this.rooms) {
-      if (
-        room.status !== 'settled' &&
-        room.status !== 'expired' &&
-        now - room.createdAt > room.timeoutMs
-      ) {
-        const wasActive = room.status === 'accepted' || room.status === 'executing';
-        room.status = 'expired';
-        expired.push(id);
-        if (wasActive) {
-          this.economics.failedTasks++;
-        }
-      }
+    const wasActive = room.status === 'accepted' || room.status === 'executing';
+    room.status = 'cancelled';
+    if (wasActive) {
+      this.economics.failedTasks++;
     }
-
-    return expired;
+    return true;
   }
 
   /** Get a specific room */
@@ -218,10 +214,10 @@ export class Marketplace {
     return Array.from(this.rooms.values());
   }
 
-  /** Get active (non-settled, non-expired) rooms */
+  /** Get active (non-settled, non-cancelled) rooms */
   getActiveRooms(): ActiveRoom[] {
     return this.getRooms().filter(
-      (r) => r.status !== 'settled' && r.status !== 'expired'
+      (r) => r.status !== 'settled' && r.status !== 'cancelled'
     );
   }
 
@@ -237,19 +233,29 @@ export class Marketplace {
 
   // ── Private ──
 
-  /** Update economics after a room settles */
+  /**
+   * Update economics after a room settles.
+   * Payment direction depends on announcement category:
+   * - 'request': creator pays bidder → creator has cost, bidder has revenue
+   * - 'offer'/'service'/'auction': bidder pays creator → creator has revenue, bidder has cost
+   */
   private _updateEconomics(room: ActiveRoom): void {
     if (!room.agreedPrice) return;
 
     const amount = parseFloat(room.agreedPrice);
     if (isNaN(amount)) return;
 
-    if (room.role === 'creator') {
-      // We paid for a service
+    const category = room.announcement.category;
+    const creatorPays = category === 'request';
+
+    // Determine if WE paid or received based on our role + category
+    const wePaid = (room.role === 'creator' && creatorPays)
+                || (room.role === 'bidder' && !creatorPays);
+
+    if (wePaid) {
       const current = parseFloat(this.economics.totalCosts);
       this.economics.totalCosts = (current + amount).toString();
-    } else if (room.role === 'bidder') {
-      // We earned revenue
+    } else {
       const current = parseFloat(this.economics.totalRevenue);
       this.economics.totalRevenue = (current + amount).toString();
     }

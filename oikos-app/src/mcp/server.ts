@@ -214,11 +214,22 @@ const TOOLS: MCPTool[] = [
   },
   {
     name: 'swarm_submit_payment',
-    description: 'Submit payment for an accepted bid via the wallet (creator only). Goes through PolicyEngine for approval, then signs and executes on-chain.',
+    description: 'Submit payment for an accepted bid. Payment direction is automatic: "request" announcements = creator pays bidder. "offer"/"service" announcements = bidder pays creator. Only the correct payer can call this. Goes through PolicyEngine.',
     inputSchema: {
       type: 'object',
       properties: {
         announcementId: { type: 'string', description: 'The announcement ID to pay for' },
+      },
+      required: ['announcementId'],
+    },
+  },
+  {
+    name: 'swarm_cancel_room',
+    description: 'Cancel a negotiation room (creator only). Use when you want to close a room without settling.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: { type: 'string', description: 'The announcement ID whose room to cancel' },
       },
       required: ['announcementId'],
     },
@@ -430,6 +441,13 @@ const handlers: Record<string, ToolHandler> = {
     if (!svc.swarm) return { error: 'Swarm not enabled' };
     await svc.swarm.submitPayment(params['announcementId'] as string);
     return { submitted: true, announcementId: params['announcementId'] };
+  },
+  async swarm_cancel_room(params, svc) {
+    if (!svc.swarm) return { error: 'Swarm not enabled' };
+    if (!svc.swarm.cancelRoom) return { error: 'Cancel not supported' };
+    const cancelled = svc.swarm.cancelRoom(params['announcementId'] as string);
+    if (!cancelled) return { cancelled: false, reason: 'Room not found or already settled/cancelled' };
+    return { cancelled: true, announcementId: params['announcementId'] };
   },
   async swarm_room_state(params, svc) {
     if (!svc.swarm) return { enabled: false };

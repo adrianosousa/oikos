@@ -36,7 +36,6 @@ interface MockPeer {
 export interface MockSwarmConfig {
   agentName: string;
   capabilities: AgentCapability[];
-  roomTimeoutMs: number;
   announcementTtlMs?: number;
 }
 
@@ -145,7 +144,7 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
     };
 
     this.announcements.push(announcement);
-    this.marketplace.createRoom(announcement, this.config.roomTimeoutMs);
+    this.marketplace.createRoom(announcement);
     console.error(`[swarm:mock] Our announcement: ${opts.title} (${announcement.id.slice(0, 8)})`);
 
     // Mock peers will bid on this after a delay
@@ -306,6 +305,10 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
 
   confirmPayment(announcementId: string, txHash: string): void {
     this.marketplace.settleRoom(announcementId, txHash);
+  }
+
+  cancelRoom(announcementId: string): boolean {
+    return this.marketplace.cancelRoom(announcementId);
   }
 
   // ── Private ──

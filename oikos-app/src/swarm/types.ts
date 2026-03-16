@@ -87,6 +87,9 @@ export interface BoardBidNotification {
   price: string;
   symbol: string;
   reason: string;
+  /** Bidder's wallet address for receiving payment (if bidder is the payee) */
+  paymentAddress?: string;
+  paymentChain?: string;
   timestamp: number;
 }
 
@@ -133,6 +136,18 @@ export interface RoomBid {
   bidderName: string;
   price: string;
   symbol: string;
+  reason: string;
+  /** Bidder's wallet address for receiving payment (if bidder is the payee) */
+  paymentAddress?: string;
+  /** Chain for payment (e.g., 'ethereum') */
+  paymentChain?: string;
+  timestamp: number;
+}
+
+export interface RoomReject {
+  type: 'reject';
+  announcementId: string;
+  rejectedBidderPubkey: string;
   reason: string;
   timestamp: number;
 }
@@ -191,6 +206,7 @@ export type RoomMessage =
   | RoomBid
   | RoomCounterOffer
   | RoomAccept
+  | RoomReject
   | RoomTaskResult
   | RoomPaymentRequest
   | RoomPaymentConfirm;
@@ -269,7 +285,7 @@ export type RoomStatus =
   | 'accepted'
   | 'executing'
   | 'settled'
-  | 'expired'
+  | 'cancelled'
   | 'disputed';
 
 export interface ActiveRoom {
@@ -281,9 +297,12 @@ export interface ActiveRoom {
   acceptedBid?: RoomBid;
   agreedPrice?: string;
   agreedSymbol?: string;
+  /** Wallet address of the party receiving payment (resolved from accept/bid) */
+  paymentAddress?: string;
+  /** Chain for payment settlement */
+  paymentChain?: string;
   paymentTxHash?: string;
   createdAt: number;
-  timeoutMs: number;
 }
 
 // ── Swarm State (exposed to dashboard) ──
@@ -329,6 +348,8 @@ export interface SwarmCoordinatorInterface {
   acceptBestBid(announcementId: string): Promise<RoomAccept | undefined>;
   submitPayment(announcementId: string): Promise<void>;
   confirmPayment(announcementId: string, txHash: string): void;
+  /** Cancel a negotiation room (creator only). Room closes without settlement. */
+  cancelRoom?(announcementId: string): boolean;
   /** Explicitly connect to a peer by Noise public key (bypasses topic discovery) */
   joinPeer?(pubkeyHex: string): void;
   /** Stop explicitly connecting to a peer */
