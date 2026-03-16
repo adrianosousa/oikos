@@ -132,11 +132,35 @@ async function main(): Promise<void> {
 
     // Swarm events flow into the EventBus (agents read via MCP/REST)
     swarm.onEvent((event) => {
+      // Build a rich summary so agents polling get_events see useful info
+      const ev = event as unknown as Record<string, unknown>;
+      let summary = `Swarm: ${event.kind}`;
+
+      if (event.kind === 'room_message') {
+        const msg = ev['message'] as Record<string, unknown> | undefined;
+        if (msg) {
+          if (msg['type'] === 'bid') {
+            summary = `Bid received from ${msg['bidderName'] ?? 'unknown'}: ${msg['price']} ${msg['symbol']}`;
+          } else if (msg['type'] === 'accept') {
+            summary = `Bid accepted in room ${(ev['roomId'] as string | undefined)?.slice(0, 8) ?? '?'}`;
+          } else if (msg['type'] === 'payment_confirm') {
+            summary = `Payment confirmed: ${msg['amount']} ${msg['symbol']}`;
+          }
+        }
+      } else if (event.kind === 'peer_connected') {
+        summary = `Peer connected: ${(ev['pubkey'] as string | undefined)?.slice(0, 12) ?? '?'}...`;
+      } else if (event.kind === 'board_message') {
+        const msg = ev['message'] as Record<string, unknown> | undefined;
+        if (msg?.['type'] === 'announcement') {
+          summary = `New announcement: ${msg['title']} by ${msg['agentName']}`;
+        }
+      }
+
       eventBus.emit([{
         type: 'swarm' as const,
-        id: `swarm-${Date.now()}`,
+        id: `swarm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         timestamp: new Date().toISOString(),
-        data: { type: 'swarm' as const, kind: event.kind, summary: `Swarm: ${event.kind}` },
+        data: { type: 'swarm' as const, kind: event.kind, summary, details: ev },
       }]);
     });
 

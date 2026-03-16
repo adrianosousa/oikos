@@ -117,6 +117,16 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     // 6. Wire discovery -> channels
     this.discovery.onConnection((socket, remotePubkey) => {
       this.channels!.setupPeer(socket, remotePubkey);
+
+      // Auto-open room channels for any active rooms where we're the creator.
+      // Ensures late-joining peers can immediately bid (protomux requires both
+      // sides to open a channel before messages flow).
+      for (const room of this.marketplace.getRooms()) {
+        if (room.role === 'creator' && room.status !== 'settled' && room.status !== 'expired') {
+          this.channels!.openRoomChannel(remotePubkey, room.announcementId);
+        }
+      }
+
       this._emit({ kind: 'peer_connected', pubkey: remotePubkey.toString('hex') });
     });
 
@@ -201,6 +211,17 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       void this.discovery.joinRoom(announcement.id, this.keypair.publicKey);
     }
 
+    // Pre-open room channels with ALL connected board peers.
+    // Critical: protomux drops messages on unmatched channels. If a bidder opens
+    // oikos/room/{id} and sends a bid before the creator has opened the same
+    // channel, the bid is silently lost. By pre-opening, we ensure the channel
+    // is paired and ready when any peer decides to bid.
+    const connectedPeers = this.channels.getConnectedPeers();
+    for (const peerHex of connectedPeers) {
+      this.channels.openRoomChannel(Buffer.from(peerHex, 'hex'), announcement.id);
+    }
+    console.error(`[swarm] Room channels pre-opened with ${connectedPeers.length} peers`);
+
     console.error(`[swarm] Posted announcement: ${announcement.title} (${announcement.id.slice(0, 8)})`);
     return announcement.id;
   }
@@ -242,8 +263,8 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       timestamp: Date.now(),
     };
 
-    this.channels.broadcastRoom(announcementId, bid);
-    console.error(`[swarm] Bid on ${announcementId.slice(0, 8)}: ${price} ${symbol}`);
+    const sentCount = this.channels.broadcastRoom(announcementId, bid);
+    console.error(`[swarm] Bid on ${announcementId.slice(0, 8)}: ${price} ${symbol} (sent to ${sentCount} peers)`);
   }
 
   /** Accept the best bid in a room I created */
@@ -441,6 +462,19 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
 
   /** Handle incoming room message */
   private _handleRoomMessage(roomId: string, msg: RoomMessage, fromPubkey: Buffer): void {
+    const fromHex = fromPubkey.toString('hex');
+
+    // Log room events prominently — these are the core negotiation flow
+    if (msg.type === 'bid') {
+      const bid = msg as { bidderName?: string; price?: string; symbol?: string };
+      console.error(`[swarm] ★ BID RECEIVED from ${bid.bidderName ?? fromHex.slice(0, 12)} — ${bid.price} ${bid.symbol} on room ${roomId.slice(0, 8)}`);
+    } else if (msg.type === 'accept') {
+      console.error(`[swarm] ★ BID ACCEPTED in room ${roomId.slice(0, 8)} by ${fromHex.slice(0, 12)}`);
+    } else if (msg.type === 'payment_confirm') {
+      const confirm = msg as { amount?: string; symbol?: string; txHash?: string };
+      console.error(`[swarm] ★ PAYMENT CONFIRMED in room ${roomId.slice(0, 8)} — ${confirm.amount} ${confirm.symbol} (tx: ${confirm.txHash?.slice(0, 12) ?? '?'})`);
+    }
+
     // Auto-open room channel back to bidder when creator receives a bid.
     // The bidder opens oikos/room/{id}; creator must reciprocate so
     // broadcastRoom (accept, payment_confirm) can reach them.
@@ -456,7 +490,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       kind: 'room_message',
       roomId,
       message: msg,
-      fromPubkey: fromPubkey.toString('hex'),
+      fromPubkey: fromHex,
     });
   }
 

@@ -65,6 +65,8 @@ export interface SwarmEventData {
   type: 'swarm';
   kind: string;
   summary: string;
+  /** Full event details (roomId, message, fromPubkey, etc.) */
+  details?: Record<string, unknown>;
 }
 
 /** Interface for event sources */
