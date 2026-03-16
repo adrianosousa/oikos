@@ -64,7 +64,56 @@ export interface BoardHeartbeat {
   timestamp: number;
 }
 
-export type BoardMessage = BoardAnnouncement | BoardHeartbeat;
+/**
+ * Board-level bid notification — fallback for room channel delivery.
+ * Protomux room channels require both sides to open before messages flow.
+ * This board-level message guarantees bid delivery via the proven board channel.
+ * Contains the same data as RoomBid.
+ */
+export interface BoardBidNotification {
+  type: 'board_bid';
+  announcementId: string;
+  bidderPubkey: string;
+  bidderName: string;
+  price: string;
+  symbol: string;
+  reason: string;
+  timestamp: number;
+}
+
+/**
+ * Board-level accept notification — fallback for room channel delivery.
+ */
+export interface BoardAcceptNotification {
+  type: 'board_accept';
+  announcementId: string;
+  acceptedBidderPubkey: string;
+  agreedPrice: string;
+  agreedSymbol: string;
+  paymentAddress: string;
+  paymentChain: string;
+  timestamp: number;
+}
+
+/**
+ * Board-level payment confirmation — fallback for room channel delivery.
+ */
+export interface BoardPaymentNotification {
+  type: 'board_payment';
+  announcementId: string;
+  fromPubkey: string;
+  txHash: string;
+  amount: string;
+  symbol: string;
+  timestamp: number;
+}
+
+export type BoardMessage =
+  | BoardAnnouncement
+  | BoardHeartbeat
+  | BoardBidNotification
+  | BoardAcceptNotification
+  | BoardPaymentNotification;
 
 // ── Room Messages (Private Negotiation) ──
 

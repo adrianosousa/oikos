@@ -21,6 +21,9 @@ import type {
   SwarmEvent,
   RoomAccept,
   SwarmCoordinatorInterface,
+  BoardBidNotification,
+  BoardAcceptNotification,
+  BoardPaymentNotification,
 } from './types.js';
 import { SwarmDiscovery } from './discovery.js';
 import { ChannelManager } from './channels.js';
@@ -251,7 +254,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     // Join the room in marketplace
     this.marketplace.joinRoom(announcement);
 
-    // Send bid
+    // Send bid on room channel (private, E2E encrypted)
     const bid: RoomMessage = {
       type: 'bid',
       announcementId,
@@ -263,8 +266,24 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       timestamp: Date.now(),
     };
 
-    const sentCount = this.channels.broadcastRoom(announcementId, bid);
-    console.error(`[swarm] Bid on ${announcementId.slice(0, 8)}: ${price} ${symbol} (sent to ${sentCount} peers)`);
+    const sentRoom = this.channels.broadcastRoom(announcementId, bid);
+
+    // Also send bid notification on the board channel (proven reliable).
+    // Protomux room channels require both sides to have opened the channel
+    // before messages flow. The board channel is always paired (opened in
+    // setupPeer). This dual-send guarantees bid delivery.
+    const boardBid: BoardBidNotification = {
+      type: 'board_bid',
+      announcementId,
+      bidderPubkey: this.identity.pubkey,
+      bidderName: this.identity.name,
+      price,
+      symbol,
+      reason,
+      timestamp: Date.now(),
+    };
+    const sentBoard = this.channels.broadcastBoard(boardBid);
+    console.error(`[swarm] Bid on ${announcementId.slice(0, 8)}: ${price} ${symbol} (room: ${sentRoom}, board: ${sentBoard})`);
   }
 
   /** Accept the best bid in a room I created */
@@ -294,6 +313,19 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
 
     if (accept) {
       this.channels.broadcastRoom(announcementId, accept);
+
+      // Board fallback for accept notification
+      const boardAccept: BoardAcceptNotification = {
+        type: 'board_accept',
+        announcementId,
+        acceptedBidderPubkey: accept.acceptedBidderPubkey,
+        agreedPrice: accept.agreedPrice,
+        agreedSymbol: accept.agreedSymbol,
+        paymentAddress: accept.paymentAddress,
+        paymentChain: accept.paymentChain,
+        timestamp: Date.now(),
+      };
+      this.channels.broadcastBoard(boardAccept);
       console.error(`[swarm] Accepted bid from ${bestBid.bidderName} for ${bestBid.price} ${bestBid.symbol}`);
     }
 
@@ -335,6 +367,19 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         };
 
         this.channels!.broadcastRoom(announcementId, confirm);
+
+        // Board fallback for payment confirmation
+        const boardPayment: BoardPaymentNotification = {
+          type: 'board_payment',
+          announcementId,
+          fromPubkey: this.identity!.pubkey,
+          txHash: result.txHash ?? 'unknown',
+          amount: room.agreedPrice,
+          symbol: room.agreedSymbol,
+          timestamp: Date.now(),
+        };
+        this.channels!.broadcastBoard(boardPayment);
+
         this.marketplace.settleRoom(announcementId, result.txHash ?? 'unknown');
         console.error(`[swarm] Payment settled for ${announcementId.slice(0, 8)}: ${result.txHash}`);
       } else {
@@ -455,6 +500,48 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         capabilities: msg.capabilities,
         lastSeen: Date.now(),
       });
+    } else if (msg.type === 'board_bid') {
+      // Board-level bid fallback: convert to RoomMessage and process via room handler.
+      // This guarantees bid delivery even when protomux room channels aren't paired.
+      const roomBid: RoomMessage = {
+        type: 'bid',
+        announcementId: msg.announcementId,
+        bidderPubkey: msg.bidderPubkey,
+        bidderName: msg.bidderName,
+        price: msg.price,
+        symbol: msg.symbol,
+        reason: msg.reason,
+        timestamp: msg.timestamp,
+      };
+      this._handleRoomMessage(msg.announcementId, roomBid, fromPubkey);
+      return; // Skip the board event emit — room handler already emits
+    } else if (msg.type === 'board_accept') {
+      // Board-level accept fallback
+      const roomAccept: RoomMessage = {
+        type: 'accept',
+        announcementId: msg.announcementId,
+        acceptedBidderPubkey: msg.acceptedBidderPubkey,
+        agreedPrice: msg.agreedPrice,
+        agreedSymbol: msg.agreedSymbol,
+        paymentAddress: msg.paymentAddress,
+        paymentChain: msg.paymentChain,
+        timestamp: msg.timestamp,
+      };
+      this._handleRoomMessage(msg.announcementId, roomAccept, fromPubkey);
+      return;
+    } else if (msg.type === 'board_payment') {
+      // Board-level payment confirmation fallback
+      const roomPayment: RoomMessage = {
+        type: 'payment_confirm',
+        announcementId: msg.announcementId,
+        fromPubkey: msg.fromPubkey,
+        txHash: msg.txHash,
+        amount: msg.amount,
+        symbol: msg.symbol,
+        timestamp: msg.timestamp,
+      };
+      this._handleRoomMessage(msg.announcementId, roomPayment, fromPubkey);
+      return;
     }
 
     this._emit({ kind: 'board_message', message: msg, fromPubkey: pubkeyHex });

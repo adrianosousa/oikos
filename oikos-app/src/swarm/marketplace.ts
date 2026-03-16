@@ -79,8 +79,15 @@ export class Marketplace {
     switch (msg.type) {
       case 'bid':
         if (room.status === 'open' || room.status === 'negotiating') {
-          room.bids.push(msg);
-          room.status = 'negotiating';
+          // Deduplicate: skip if same bidder+price+timestamp already exists
+          // (board fallback + room channel may both deliver the same bid)
+          const dup = room.bids.find(
+            (b) => b.bidderPubkey === msg.bidderPubkey && b.timestamp === msg.timestamp
+          );
+          if (!dup) {
+            room.bids.push(msg);
+            room.status = 'negotiating';
+          }
         }
         break;
 
@@ -89,6 +96,8 @@ export class Marketplace {
         break;
 
       case 'accept': {
+        // Deduplicate: only process first accept
+        if (room.status === 'accepted' || room.status === 'executing' || room.status === 'settled') break;
         const accept = msg as RoomAccept;
         room.status = 'accepted';
         room.agreedPrice = accept.agreedPrice;
