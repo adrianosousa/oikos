@@ -113,6 +113,8 @@ export function loadOikosConfig() {
         // RGB
         rgbEnabled: getEnv('RGB_ENABLED', 'false') === 'true',
         rgbTransportPort: parseInt(getEnv('RGB_TRANSPORT_PORT', '13100'), 10),
+        // Remote MCP
+        mcpAuthToken: getEnv('MCP_AUTH_TOKEN', ''),
         // Brain (Chat Bridge)
         brainType: getEnv('BRAIN_TYPE', mode === 'mock' ? 'mock' : 'ollama'),
         brainChatUrl: getEnv('BRAIN_CHAT_URL', ''),

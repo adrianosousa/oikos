@@ -24,7 +24,7 @@ import { dirname, join } from 'path';
 import type { OikosServices } from '../types.js';
 import type { TokenSymbol, Chain } from '../ipc/types.js';
 import type { SwarmState, SwarmPeerInfo, BoardAnnouncement } from '../swarm/types.js';
-import { mountMCP } from '../mcp/server.js';
+import { mountMCP, mountRemoteMCP } from '../mcp/server.js';
 import { buildWalletContext } from '../brain/adapter.js';
 import type { ChatMessage } from '../brain/adapter.js';
 import { processActions } from '../brain/actions.js';
@@ -86,8 +86,12 @@ export function createDashboard(
     });
   });
 
-  // -- MCP Endpoint --
+  // -- MCP Endpoints --
   mountMCP(app, services);
+
+  // Remote MCP (Streamable HTTP) — for Claude iOS/web custom connectors
+  const mcpAuthToken = process.env['MCP_AUTH_TOKEN'] ?? '';
+  mountRemoteMCP(app, services, mcpAuthToken || undefined);
 
   // -- API Routes --
 

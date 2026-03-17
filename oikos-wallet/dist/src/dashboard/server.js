@@ -20,7 +20,7 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { mountMCP } from '../mcp/server.js';
+import { mountMCP, mountRemoteMCP } from '../mcp/server.js';
 import { buildWalletContext } from '../brain/adapter.js';
 import { processActions } from '../brain/actions.js';
 const __filename = fileURLToPath(import.meta.url);
@@ -70,8 +70,11 @@ export function createDashboard(services, port, host = '127.0.0.1') {
                 res.status(404).end();
         });
     });
-    // -- MCP Endpoint --
+    // -- MCP Endpoints --
     mountMCP(app, services);
+    // Remote MCP (Streamable HTTP) — for Claude iOS/web custom connectors
+    const mcpAuthToken = process.env['MCP_AUTH_TOKEN'] ?? '';
+    mountRemoteMCP(app, services, mcpAuthToken || undefined);
     // -- API Routes --
     /** Agent state — stub for agent-agnostic mode */
     app.get('/api/state', async (_req, res) => {

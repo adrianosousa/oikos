@@ -1,9 +1,14 @@
 /**
  * MCP Server — Model Context Protocol tools for wallet operations.
  *
- * Exposes Oikos wallet capabilities as MCP tools so any MCP-compatible
- * agent (Claude, OpenClaw, custom) can query balances, propose payments,
- * check policies, and interact with events/swarm.
+ * Two transports:
+ *   1. POST /mcp          — local JSON-RPC (for stdio bridge, localhost agents)
+ *   2. POST /mcp/remote   — Streamable HTTP transport (MCP 2025-03-26 spec)
+ *      GET  /mcp/remote   — SSE stream for server-initiated messages
+ *      DELETE /mcp/remote  — session termination
+ *
+ * The remote endpoint supports Claude iOS/web custom connectors.
+ * Optional Bearer token auth via MCP_AUTH_TOKEN env var.
  *
  * Agent-agnostic: uses OikosServices directly, no brain plugin.
  *
@@ -11,6 +16,7 @@
  * The MCP server NEVER signs transactions or handles keys.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { OikosServices } from '../types.js';
 import type {
@@ -584,7 +590,7 @@ async function handleRequest(req: MCPRequest, svc: OikosServices): Promise<MCPRe
   return makeError(id, -32601, `Method not found: ${method}`);
 }
 
-// ── Express Middleware ──
+// ── Express Middleware (local JSON-RPC) ──
 
 export function mountMCP(
   app: { post: (path: string, ...handlers: Array<(req: Request, res: Response) => void>) => void },
@@ -601,4 +607,243 @@ export function mountMCP(
   });
 
   console.error('[mcp] MCP endpoint mounted at POST /mcp');
+}
+
+// ── Streamable HTTP Transport (MCP 2025-03-26 spec) ──
+// For Claude iOS/web custom connectors and any remote MCP client.
+
+/** Active sessions — maps session ID to creation timestamp */
+const sessions = new Map<string, number>();
+
+/** Session TTL: 30 minutes */
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
+/** Cleanup expired sessions (called on each request) */
+function cleanSessions(): void {
+  const now = Date.now();
+  for (const [id, created] of sessions) {
+    if (now - created > SESSION_TTL_MS) sessions.delete(id);
+  }
+}
+
+/**
+ * Mount the Streamable HTTP MCP endpoint at /mcp/remote.
+ *
+ * Implements the MCP Streamable HTTP transport spec:
+ * - POST: receives JSON-RPC, returns JSON or SSE stream
+ * - GET: opens SSE stream for server-initiated messages
+ * - DELETE: terminates a session
+ *
+ * Auth: Bearer token if MCP_AUTH_TOKEN is set, otherwise authless.
+ *
+ * @see https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
+ */
+export function mountRemoteMCP(
+  app: {
+    post: (path: string, ...handlers: Array<(req: Request, res: Response) => void>) => void;
+    get: (path: string, ...handlers: Array<(req: Request, res: Response) => void>) => void;
+    delete: (path: string, ...handlers: Array<(req: Request, res: Response) => void>) => void;
+    options: (path: string, ...handlers: Array<(req: Request, res: Response) => void>) => void;
+  },
+  services: OikosServices,
+  authToken?: string,
+): void {
+  const MCP_PATH = '/mcp/remote';
+
+  // ── Auth middleware ──
+  function checkAuth(req: Request, res: Response): boolean {
+    // CORS preflight always passes
+    if (req.method === 'OPTIONS') return true;
+
+    if (!authToken) return true; // authless mode
+
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${authToken}`) {
+      res.status(401).json({ jsonrpc: '2.0', id: 0, error: { code: -32000, message: 'Unauthorized' } });
+      return false;
+    }
+    return true;
+  }
+
+  // ── Session validation ──
+  function validateSession(req: Request, res: Response, method: string): boolean {
+    // initialize doesn't need a session
+    if (method === 'initialize') return true;
+
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId && !sessions.has(sessionId)) {
+      res.status(404).json({ jsonrpc: '2.0', id: 0, error: { code: -32000, message: 'Session expired' } });
+      return false;
+    }
+    return true;
+  }
+
+  // ── CORS for remote clients ──
+  app.options(MCP_PATH, (_req: Request, res: Response) => {
+    res.set({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, Mcp-Session-Id',
+      'Access-Control-Expose-Headers': 'Mcp-Session-Id',
+      'Access-Control-Max-Age': '86400',
+    });
+    res.status(204).end();
+  });
+
+  // ── POST: Client sends JSON-RPC messages ──
+  app.post(MCP_PATH, async (req: Request, res: Response) => {
+    if (!checkAuth(req, res)) return;
+    cleanSessions();
+
+    // Set CORS headers on all responses
+    res.set({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Mcp-Session-Id',
+    });
+
+    const body = req.body;
+
+    // Handle batch (array) or single message
+    const messages: MCPRequest[] = Array.isArray(body) ? body : [body];
+
+    // Separate requests from notifications/responses
+    const requests: MCPRequest[] = [];
+    const notificationsAndResponses: MCPRequest[] = [];
+
+    for (const msg of messages) {
+      if (!msg || msg.jsonrpc !== '2.0') {
+        res.status(400).json(makeError(0, -32600, 'Invalid JSON-RPC request'));
+        return;
+      }
+      // Requests have an id and a method
+      if (msg.id !== undefined && msg.id !== null && msg.method) {
+        if (!validateSession(req, res, msg.method)) return;
+        requests.push(msg);
+      } else {
+        notificationsAndResponses.push(msg);
+      }
+    }
+
+    // If only notifications/responses, acknowledge with 202
+    if (requests.length === 0) {
+      // Process notifications silently (e.g., notifications/initialized)
+      for (const msg of notificationsAndResponses) {
+        if (msg.method) {
+          await handleRequest(msg, services).catch(() => { /* ignore */ });
+        }
+      }
+      res.status(202).end();
+      return;
+    }
+
+    // Process all requests
+    const responses: MCPResponse[] = [];
+    for (const request of requests) {
+      const response = await handleRequest(request, services);
+
+      // If this is an initialize response, create a session
+      if (request.method === 'initialize' && response.result) {
+        const sessionId = randomUUID();
+        sessions.set(sessionId, Date.now());
+        res.set('Mcp-Session-Id', sessionId);
+      }
+
+      responses.push(response);
+    }
+
+    // Check Accept header to decide response format
+    const accept = req.headers['accept'] ?? '';
+
+    if (accept.includes('text/event-stream')) {
+      // SSE response — stream each response as an event
+      res.set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no', // nginx: disable buffering
+      });
+      res.flushHeaders();
+
+      for (const response of responses) {
+        const eventId = randomUUID();
+        res.write(`id: ${eventId}\n`);
+        res.write(`event: message\n`);
+        res.write(`data: ${JSON.stringify(response)}\n\n`);
+      }
+
+      // Close the stream after all responses sent
+      res.end();
+    } else {
+      // Plain JSON response
+      res.set('Content-Type', 'application/json');
+      if (responses.length === 1) {
+        res.json(responses[0]);
+      } else {
+        res.json(responses);
+      }
+    }
+  });
+
+  // ── GET: Server-initiated SSE stream ──
+  app.get(MCP_PATH, (req: Request, res: Response) => {
+    if (!checkAuth(req, res)) return;
+
+    const accept = req.headers['accept'] ?? '';
+    if (!accept.includes('text/event-stream')) {
+      res.status(405).json({ error: 'Method Not Allowed. Use Accept: text/event-stream' });
+      return;
+    }
+
+    // Validate session
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId && !sessions.has(sessionId)) {
+      res.status(404).json({ jsonrpc: '2.0', id: 0, error: { code: -32000, message: 'Session expired' } });
+      return;
+    }
+
+    // Open SSE stream for server-initiated messages
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Mcp-Session-Id',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+
+    // Keep-alive ping every 30s to prevent proxy timeouts
+    const keepAlive = setInterval(() => {
+      res.write(': ping\n\n');
+    }, 30000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+    });
+
+    // For now, we don't push server-initiated messages.
+    // The stream stays open for future use (notifications, etc.)
+  });
+
+  // ── DELETE: Session termination ──
+  app.delete(MCP_PATH, (req: Request, res: Response) => {
+    if (!checkAuth(req, res)) return;
+
+    res.set({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Mcp-Session-Id',
+    });
+
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId && sessions.has(sessionId)) {
+      sessions.delete(sessionId);
+      res.status(200).json({ ok: true });
+    } else {
+      res.status(404).json({ error: 'Session not found' });
+    }
+  });
+
+  const authMode = authToken ? 'Bearer token' : 'authless';
+  console.error(`[mcp] Remote MCP endpoint mounted at ${MCP_PATH} (${authMode})`);
+  console.error(`[mcp] Claude iOS: Add as custom connector → https://<your-domain>${MCP_PATH}`);
 }

@@ -169,6 +169,11 @@ export interface OikosConfig {
   /** Port for the RGB transport bridge HTTP server */
   rgbTransportPort: number;
 
+  // ── Remote MCP ──
+
+  /** Bearer token for remote MCP auth. If empty, remote MCP is authless. */
+  mcpAuthToken: string;
+
   // ── Brain (Chat Bridge) ──
 
   /** Brain adapter type: 'ollama' (default), 'http' (OpenClaw/custom), 'mock' */
@@ -246,6 +251,9 @@ export function loadOikosConfig(): OikosConfig {
     // RGB
     rgbEnabled: getEnv('RGB_ENABLED', 'false') === 'true',
     rgbTransportPort: parseInt(getEnv('RGB_TRANSPORT_PORT', '13100'), 10),
+
+    // Remote MCP
+    mcpAuthToken: getEnv('MCP_AUTH_TOKEN', ''),
 
     // Brain (Chat Bridge)
     brainType: getEnv('BRAIN_TYPE', mode === 'mock' ? 'mock' : 'ollama') as 'ollama' | 'http' | 'mock',

@@ -285,8 +285,10 @@ async function main() {
     console.error('[oikos] Oikos App ready.');
     console.error(`[oikos] Dashboard: http://${config.dashboardHost}:${config.dashboardPort}`);
     console.error(`[oikos] MCP: POST http://${config.dashboardHost}:${config.dashboardPort}/mcp`);
+    console.error(`[oikos] Remote MCP: http://${config.dashboardHost}:${config.dashboardPort}/mcp/remote`);
     if (config.dashboardHost === '0.0.0.0') {
         console.error(`[oikos] Public board: http://<your-ip>:${config.dashboardPort}/board`);
+        console.error(`[oikos] Claude iOS: Add https://<your-domain>/mcp/remote as custom connector`);
     }
     console.error(`[oikos] CLI: oikos --port ${config.dashboardPort} <command>`);
     if (config.swarmEnabled)
