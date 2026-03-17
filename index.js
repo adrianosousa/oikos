@@ -532,11 +532,7 @@ server.listen(INTERNAL_PORT, '127.0.0.1', () => {
   console.log('[companion] Internal API: http://127.0.0.1:' + INTERNAL_PORT)
 })
 
-// ── 5. Connect to agent ──
-
-await connectToAgent()
-
-// ── 6. Start Electron renderer ──
+// ── 5. Start Electron renderer (must happen before any slow async work) ──
 
 const bridge = new Bridge()
 await bridge.ready()
@@ -547,6 +543,12 @@ const pipe = await runtime.start({ bridge })
 pipe.on('close', () => {
   if (swarm) swarm.destroy()
   Pear.exit()
+})
+
+// ── 6. Connect to agent (non-blocking — after Runtime is up) ──
+
+connectToAgent().catch((err) => {
+  console.log('[companion] Swarm connect error:', err.message)
 })
 
 console.log('[companion] Oikos Companion ready.')
