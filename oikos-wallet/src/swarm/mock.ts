@@ -313,6 +313,14 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
     return this.marketplace.cancelRoom(announcementId);
   }
 
+  removeAnnouncement(announcementId: string): boolean {
+    const idx = this.announcements.findIndex((a) => a.id === announcementId);
+    if (idx === -1) return false;
+    this.announcements.splice(idx, 1);
+    console.error(`[swarm:mock] Removed announcement: ${announcementId.slice(0, 8)}`);
+    return true;
+  }
+
   // ── Private ──
 
   private _createMockPeer(name: string, caps: AgentCapability[], reputation: number): MockPeer {

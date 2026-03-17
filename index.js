@@ -451,7 +451,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, { reply: errMsg.text, from: 'agent', brainName: 'offline' })
     }
 
-    // Wait for chat_reply (timeout 30s)
+    // Wait for chat_reply (timeout 120s — Ollama 8B can take 30-60s for complex queries)
     try {
       const reply = await new Promise((resolve, reject) => {
         chatReplyResolve = resolve
@@ -460,7 +460,7 @@ const server = http.createServer(async (req, res) => {
             chatReplyResolve = null
             reject(new Error('timeout'))
           }
-        }, 30000)
+        }, 120000)
       })
       return json(res, {
         reply: reply.text,

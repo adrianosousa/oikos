@@ -22,6 +22,7 @@ import { resolve } from 'path';
 import type { OikosServices, IdentityState, CompanionInstruction, SwarmInterface } from './types.js';
 import { createBrainAdapter } from './brain/adapter.js';
 import type { ChatMessage } from './brain/adapter.js';
+import { processActions } from './brain/actions.js';
 import type { SwarmCoordinatorInterface, AgentCapability } from './swarm/types.js';
 import type { CompanionCoordinator, CompanionStateProvider } from './companion/coordinator.js';
 
@@ -272,7 +273,13 @@ async function main(): Promise<void> {
       try {
         const { buildWalletContext } = await import('./brain/adapter.js');
         const context = await buildWalletContext(services);
-        const reply = await brain.chat(text, context);
+        const rawReply = await brain.chat(text, context, chatMessages);
+
+        // Parse and execute any ACTION: lines in the brain's reply
+        const { reply, results } = await processActions(rawReply, services);
+        if (results.length > 0) {
+          console.error(`[companion] Executed ${results.length} action(s): ${results.map(r => `${r.tool}:${r.success ? 'ok' : 'fail'}`).join(', ')}`);
+        }
 
         // Store both messages in history
         const humanMsg: ChatMessage = {

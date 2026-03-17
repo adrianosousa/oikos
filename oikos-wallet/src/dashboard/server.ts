@@ -27,6 +27,7 @@ import type { SwarmState, SwarmPeerInfo, BoardAnnouncement } from '../swarm/type
 import { mountMCP } from '../mcp/server.js';
 import { buildWalletContext } from '../brain/adapter.js';
 import type { ChatMessage } from '../brain/adapter.js';
+import { processActions } from '../brain/actions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -511,11 +512,18 @@ export function createDashboard(
     console.error(`[chat] ${from}: "${message.slice(0, 80)}"`);
 
     try {
-      // Build wallet context and call brain
+      // Build wallet context and call brain (with conversation history for continuity)
       const context = await buildWalletContext(services);
-      const reply = await services.brain.chat(message, context);
+      const rawReply = await services.brain.chat(message, context, services.chatMessages);
 
-      // Store agent reply
+      // Parse and execute any ACTION: lines in the brain's reply.
+      // This bridges brain text output → MCP tool execution → real results.
+      const { reply, results } = await processActions(rawReply, services);
+      if (results.length > 0) {
+        console.error(`[chat] Executed ${results.length} action(s): ${results.map(r => `${r.tool}:${r.success ? 'ok' : 'fail'}`).join(', ')}`);
+      }
+
+      // Store agent reply (enriched with action results)
       const agentMsg: ChatMessage = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         text: reply,

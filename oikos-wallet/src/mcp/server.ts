@@ -187,6 +187,17 @@ const TOOLS: MCPTool[] = [
       required: ['category', 'title', 'description', 'minPrice', 'maxPrice', 'symbol'],
     },
   },
+  {
+    name: 'swarm_remove_announcement',
+    description: 'Remove your own announcement from the swarm board. Only the creator can remove.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: { type: 'string', description: 'ID of the announcement to remove' },
+      },
+      required: ['announcementId'],
+    },
+  },
   // ── Room Negotiation Tools ──
   {
     name: 'swarm_bid',
@@ -422,6 +433,13 @@ const handlers: Record<string, ToolHandler> = {
     });
     return { announcementId: id };
   },
+  async swarm_remove_announcement(params, svc) {
+    if (!svc.swarm) return { error: 'Swarm not enabled' };
+    if (!svc.swarm.removeAnnouncement) return { error: 'Remove not supported' };
+    const removed = svc.swarm.removeAnnouncement(params['announcementId'] as string);
+    if (!removed) return { removed: false, reason: 'Announcement not found or not owned by you' };
+    return { removed: true, announcementId: params['announcementId'] };
+  },
   // ── Room Negotiation Handlers ──
   async swarm_bid(params, svc) {
     if (!svc.swarm) return { error: 'Swarm not enabled' };
@@ -511,6 +529,10 @@ const handlers: Record<string, ToolHandler> = {
     return { events: svc.eventBus.getRecent(limit) };
   },
 };
+
+// ── Exported handler access (for chat action executor) ──
+
+export { handlers as mcpHandlers };
 
 // ── JSON-RPC Router ──
 

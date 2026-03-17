@@ -122,12 +122,21 @@ export interface BoardPaymentNotification {
   timestamp: number;
 }
 
+/** Board removal — creator withdraws an announcement */
+export interface BoardRemovalNotification {
+  type: 'announcement_removed';
+  id: string;
+  agentPubkey: string;
+  timestamp: number;
+}
+
 export type BoardMessage =
   | BoardAnnouncement
   | BoardHeartbeat
   | BoardBidNotification
   | BoardAcceptNotification
-  | BoardPaymentNotification;
+  | BoardPaymentNotification
+  | BoardRemovalNotification;
 
 // ── Room Messages (Private Negotiation) ──
 

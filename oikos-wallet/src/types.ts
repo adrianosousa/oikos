@@ -27,6 +27,7 @@ export interface SwarmInterface {
   acceptBestBid(announcementId: string): Promise<unknown>;
   submitPayment(announcementId: string): Promise<void>;
   cancelRoom?(announcementId: string): boolean;
+  removeAnnouncement?(announcementId: string): boolean;
 }
 
 /** ERC-8004 identity state */

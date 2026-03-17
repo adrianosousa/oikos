@@ -224,6 +224,30 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     return announcement.id;
   }
 
+  /** Remove own announcement from the board. Only the creator can remove. */
+  removeAnnouncement(announcementId: string): boolean {
+    if (!this.identity) return false;
+    const idx = this.announcements.findIndex(
+      (a) => a.id === announcementId && a.agentPubkey === this.identity!.pubkey,
+    );
+    if (idx === -1) return false;
+
+    this.announcements.splice(idx, 1);
+
+    // Broadcast removal to peers
+    if (this.channels) {
+      this.channels.broadcastBoard({
+        type: 'announcement_removed',
+        id: announcementId,
+        agentPubkey: this.identity.pubkey,
+        timestamp: Date.now(),
+      });
+    }
+
+    console.error(`[swarm] Removed announcement: ${announcementId.slice(0, 8)}`);
+    return true;
+  }
+
   /** Bid on a peer's announcement */
   async bidOnAnnouncement(
     announcementId: string,
@@ -607,6 +631,13 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       };
       this._handleRoomMessage(msg.announcementId, roomAccept, fromPubkey);
       return;
+    } else if (msg.type === 'announcement_removed') {
+      // Peer removed their announcement — remove from our local list
+      const idx = this.announcements.findIndex((a) => a.id === msg.id);
+      if (idx !== -1) {
+        this.announcements.splice(idx, 1);
+        console.error(`[swarm] Peer removed announcement: ${msg.id.slice(0, 8)}`);
+      }
     } else if (msg.type === 'board_payment') {
       // Board-level payment confirmation fallback
       const roomPayment: RoomMessage = {

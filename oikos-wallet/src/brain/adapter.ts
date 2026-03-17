@@ -38,75 +38,110 @@ export interface ChatMessage {
 /** Brain adapter interface — the agent-agnostic contract */
 export interface BrainAdapter {
   /** Process a chat message and return the agent's reply */
-  chat(message: string, context: WalletContext): Promise<string>;
+  chat(message: string, context: WalletContext, history?: ChatMessage[]): Promise<string>;
   /** Human-readable adapter name (for logs/UI) */
   readonly name: string;
 }
 
 // ── Ollama Adapter (default — sovereign, local) ──
 
-const WALLET_SYSTEM_PROMPT = `You are the Oikos Agent — an autonomous AI managing a self-custodial multi-chain cryptocurrency wallet via the Oikos Protocol.
+/**
+ * Compact system prompt — optimized for 8B models.
+ * Every token counts. No markdown headers, no verbose explanations.
+ * The Modelfile (oikos-wallet/Modelfile) bakes in the core identity;
+ * this prompt covers tools + rules only when using the stock model.
+ */
+const WALLET_SYSTEM_PROMPT = `You are the Oikos Agent managing a self-custodial crypto wallet.
 
-You operate through MCP tools at http://127.0.0.1:3420/mcp. All operations go through the PolicyEngine in the Wallet Isolate (a separate process). You NEVER have access to private keys or seed phrases — they exist in a different process you cannot reach.
+TO EXECUTE A TOOL, output an ACTION line with valid JSON. The system will parse and execute it automatically.
 
-## Your MCP Tools
+FORMAT (one action per line, must be valid JSON):
+ACTION: {"tool": "TOOL_NAME", "args": {ARGS}}
 
-### Wallet Operations
-- propose_payment: Send tokens. Args: amount, symbol, chain, to, reason, confidence
-- propose_swap: Swap tokens (e.g. USDT→XAUT). Args: amount, symbol, toSymbol, chain, reason, confidence
-- propose_bridge: Bridge cross-chain. Args: amount, symbol, fromChain, toChain, reason, confidence
-- propose_yield: Deposit/withdraw yield. Args: amount, symbol, chain, protocol, action (deposit|withdraw), reason, confidence
-- wallet_balance_all: Get all balances
-- wallet_address: Get wallet addresses
-- policy_status: Check spending limits and cooldowns
+EXAMPLES:
+User: "sell 0.1 XAUT on arbitrum for best offer"
+ACTION: {"tool": "swarm_announce", "args": {"category": "seller", "title": "Sell 0.1 XAUT", "description": "Selling 0.1 XAUT on Arbitrum for best offer", "minPrice": "0", "maxPrice": "10000", "symbol": "USDT", "tags": ["XAUT", "Arbitrum"]}}
 
-### Swarm Operations (P2P Agent Marketplace)
-- swarm_announce: Post listing on the board. Args: category (seller|buyer|auction), title, description, minPrice, maxPrice, symbol, tags[]
-- swarm_bid: Bid on a listing. Args: announcementId, price, symbol, reason
-- swarm_accept_bid: Accept best bid (if you're the creator). Args: announcementId
-- swarm_submit_payment: Execute payment for accepted deal. Args: announcementId
-- swarm_cancel_room: Cancel a negotiation. Args: announcementId
-- swarm_room_state: Check negotiation status. Args: announcementId
-- swarm_state: Get full swarm state (peers, board, rooms)
+User: "send 10 USDT to 0xABC on ethereum"
+ACTION: {"tool": "propose_payment", "args": {"amount": "10", "symbol": "USDT", "chain": "ethereum", "to": "0xABC", "reason": "user requested", "confidence": 0.9}}
 
-### Read-Only
-- audit_log: Transaction history
-- agent_state: Overall agent state
+User: "swap 50 USDT to XAUT"
+ACTION: {"tool": "propose_swap", "args": {"amount": "50", "symbol": "USDT", "toSymbol": "XAUT", "chain": "ethereum", "reason": "user requested", "confidence": 0.9}}
 
-## Rules
-- When asked to perform an operation, DO IT by calling the appropriate MCP tool via the REST API. Don't just describe what you would do.
-- For swarm announcements: pick appropriate category (seller if offering something, buyer if requesting something).
-- All write operations go through the PolicyEngine. If rejected, explain the policy violation.
-- Be concise, direct, precise with numbers. You manage real value.
-- NEVER claim to have access to seed phrases or private keys. You don't. They are in a separate process.`;
+User: "check balances"
+ACTION: {"tool": "wallet_balance_all", "args": {}}
+
+AVAILABLE TOOLS:
+Wallet: propose_payment, propose_swap, propose_bridge, propose_yield, wallet_balance_all, wallet_address, policy_status
+Swarm: swarm_announce, swarm_remove_announcement(announcementId), swarm_bid, swarm_accept_bid, swarm_submit_payment, swarm_cancel_room, swarm_room_state, swarm_state
+Read: audit_log, agent_state
+
+RULES:
+- When the user gives a COMMAND (send, swap, sell, buy, bridge, deposit, announce, remove), output an ACTION line immediately.
+- When the user asks a QUESTION (what strategy, should I, how, why, explain), ANSWER with advice. Do NOT execute actions unless explicitly told "do it".
+- You can include a brief explanation before or after an ACTION line.
+- All writes go through PolicyEngine. If rejected, explain the violation.
+- Be concise. You manage real value.
+- You NEVER have access to seed phrases or private keys.`;
+
+/** Max conversation history turns to include (user+assistant pairs) */
+const MAX_HISTORY_TURNS = 8;
 
 export class OllamaBrainAdapter implements BrainAdapter {
   readonly name = 'ollama';
   private baseUrl: string;
   private model: string;
 
-  constructor(baseUrl = 'http://127.0.0.1:11434', model = 'qwen3:8b') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl = 'http://127.0.0.1:11434', model = 'oikos-agent') {
+    // Normalize URL: strip /v1 suffix if present (we use native /api/chat endpoint)
+    this.baseUrl = baseUrl.replace(/\/v1\/?$/, '');
     this.model = model;
   }
 
-  async chat(message: string, context: WalletContext): Promise<string> {
+  async chat(message: string, context: WalletContext, history?: ChatMessage[]): Promise<string> {
     const contextBlock = this._buildContext(context);
-    const systemPrompt = `${WALLET_SYSTEM_PROMPT}\n\n## Current Wallet State\n${contextBlock}`;
+    const systemPrompt = `${WALLET_SYSTEM_PROMPT}\n\nSTATE:\n${contextBlock}`;
+
+    // Build message array: system + recent history + current user message.
+    // History gives the model conversational memory across turns.
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
+    ];
+
+    // Inject recent conversation history (last N turns).
+    // Each turn = one human msg + one agent msg. Trim to save context.
+    if (history && history.length > 0) {
+      const recentPairs = this._trimHistory(history, MAX_HISTORY_TURNS);
+      for (const msg of recentPairs) {
+        messages.push({
+          role: msg.from === 'human' ? 'user' : 'assistant',
+          content: msg.text,
+        });
+      }
+    }
+
+    // Current user message
+    messages.push({ role: 'user', content: message });
 
     try {
-      const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      // Use Ollama native API (not OpenAI-compat) for think:false support.
+      // The /v1/chat/completions endpoint doesn't support disabling Qwen thinking.
+      const res = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: this.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: message },
-          ],
-          temperature: 0.7,
-          max_tokens: 1024,
+          messages,
           stream: false,
+          // Disable Qwen3 thinking mode — saves ~200-500 tokens per response.
+          // Without this, the model burns output budget on internal reasoning.
+          think: false,
+          options: {
+            temperature: 0.3,
+            num_predict: 512,
+            // Extended context window — overrides Ollama default (2048).
+            num_ctx: 8192,
+          },
         }),
       });
 
@@ -116,12 +151,12 @@ export class OllamaBrainAdapter implements BrainAdapter {
       }
 
       const data = await res.json() as {
-        choices?: Array<{ message?: { content?: string } }>;
+        message?: { content?: string };
       };
-      const reply = data.choices?.[0]?.message?.content ?? '';
+      const reply = data.message?.content ?? '';
       if (!reply) throw new Error('Empty response from Ollama');
 
-      // Strip <think> blocks if present (Qwen reasoning mode)
+      // Strip <think> blocks if present (Qwen reasoning mode fallback)
       return reply.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -130,42 +165,59 @@ export class OllamaBrainAdapter implements BrainAdapter {
     }
   }
 
+  /**
+   * Trim history to last N user+assistant turn pairs.
+   * Skips error messages and very long messages (>300 chars get truncated).
+   */
+  private _trimHistory(history: ChatMessage[], maxTurns: number): ChatMessage[] {
+    // Filter out error messages
+    const clean = history.filter(m => !m.text.startsWith('[Brain error:'));
+
+    // Take last maxTurns * 2 messages (each turn = user + assistant)
+    const recent = clean.slice(-(maxTurns * 2));
+
+    // Truncate very long messages to save context tokens
+    return recent.map(m => ({
+      ...m,
+      text: m.text.length > 400 ? m.text.slice(0, 380) + '...[truncated]' : m.text,
+    }));
+  }
+
+  /** Build compact wallet state block — minimal tokens, max info density */
   private _buildContext(ctx: WalletContext): string {
     const lines: string[] = [];
 
+    // Balances — single-line CSV-style
     if (ctx.balances.length > 0) {
-      lines.push('### Balances');
-      for (const b of ctx.balances) {
-        lines.push(`- ${b.symbol} (${b.chain}): ${b.formatted}`);
-      }
+      lines.push('Balances: ' + ctx.balances.map(b => `${b.symbol}/${b.chain}=${b.formatted}`).join(', '));
     } else {
-      lines.push('### Balances\nNo balances available yet.');
+      lines.push('Balances: none loaded');
     }
 
+    // Policies — compact
     if (ctx.policies.length > 0) {
-      lines.push('\n### Policy Status');
-      for (const p of ctx.policies) {
-        lines.push(`- ${p.rule}: ${p.remaining ?? p.status ?? 'active'}`);
-      }
+      lines.push('Policies: ' + ctx.policies.map(p => `${p.rule}:${p.remaining ?? p.status ?? 'ok'}`).join(', '));
     }
 
+    // Identity
     if (ctx.identity.registered) {
-      lines.push(`\n### Identity\nERC-8004 registered, agentId: ${ctx.identity.agentId}`);
+      lines.push(`Identity: ERC-8004 agentId=${ctx.identity.agentId}`);
     }
 
+    // Swarm — compact
     if (ctx.swarmPeers > 0 || ctx.swarmAnnouncements.length > 0) {
-      lines.push(`\n### Swarm\n${ctx.swarmPeers} peers connected`);
+      lines.push(`Swarm: ${ctx.swarmPeers} peers`);
       if (ctx.swarmAnnouncements.length > 0) {
-        lines.push(`\n**Board Announcements** (${ctx.swarmAnnouncements.length}):`);
-        for (const a of ctx.swarmAnnouncements.slice(0, 10)) {
-          const price = a.priceRange ? `${a.priceRange.min}-${a.priceRange.max} ${a.priceRange.symbol}` : 'N/A';
-          lines.push(`- [${a.id.slice(0, 8)}] ${a.category}: "${a.title}" by ${a.agentName} (${price})`);
+        lines.push('Board:');
+        for (const a of ctx.swarmAnnouncements.slice(0, 8)) {
+          const price = a.priceRange ? `${a.priceRange.min}-${a.priceRange.max}${a.priceRange.symbol}` : '?';
+          lines.push(` [${a.id.slice(0, 8)}] ${a.category} "${a.title}" by ${a.agentName} (${price})`);
         }
       }
       if (ctx.swarmRooms.length > 0) {
-        lines.push(`\n**Active Rooms** (${ctx.swarmRooms.length}):`);
+        lines.push('Rooms:');
         for (const r of ctx.swarmRooms.slice(0, 5)) {
-          lines.push(`- [${r.announcementId.slice(0, 8)}] ${r.status}, ${r.bids} bid(s)`);
+          lines.push(` [${r.announcementId.slice(0, 8)}] ${r.status} ${r.bids}bids`);
         }
       }
     }
@@ -181,7 +233,7 @@ export class HttpBrainAdapter implements BrainAdapter {
   private url: string;
   private timeoutMs: number;
 
-  constructor(url: string, name = 'http', timeoutMs = 30000) {
+  constructor(url: string, name = 'http', timeoutMs = 60000) {
     this.url = url;
     this.name = name;
     this.timeoutMs = timeoutMs;
@@ -271,7 +323,7 @@ export interface BrainConfig {
 export function createBrainAdapter(config: BrainConfig): BrainAdapter {
   switch (config.type) {
     case 'ollama':
-      return new OllamaBrainAdapter(config.chatUrl || 'http://127.0.0.1:11434', config.model || 'qwen3:8b');
+      return new OllamaBrainAdapter(config.chatUrl || 'http://127.0.0.1:11434', config.model || 'oikos-agent');
     case 'http':
       return new HttpBrainAdapter(config.chatUrl, 'external');
     case 'mock':
