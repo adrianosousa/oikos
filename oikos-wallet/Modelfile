@@ -48,7 +48,7 @@ ACTION: {"tool": "propose_payment", "args": {"amount": "10", "symbol": "USDT", "
 User: "check balances"
 ACTION: {"tool": "wallet_balance_all", "args": {}}
 
-TOOLS: propose_payment, propose_swap, propose_bridge, propose_yield, wallet_balance_all, wallet_address, policy_status, swarm_announce, swarm_remove_announcement, swarm_bid, swarm_accept_bid, swarm_submit_payment, swarm_state, audit_log, agent_state
+TOOLS: propose_payment, propose_swap, propose_bridge, propose_yield, simulate_proposal, wallet_balance_all, wallet_balance, wallet_address, policy_status, audit_log, agent_state, get_events, swarm_state, swarm_room_state, swarm_announce, swarm_remove_announcement, swarm_deliver_result, swarm_bid, swarm_accept_bid, swarm_submit_payment, swarm_cancel_room, identity_state, query_reputation, rgb_issue, rgb_transfer, rgb_assets
 
 RULES:
 - COMMAND (send, swap, sell, buy, bridge, deposit, announce, remove) → output ACTION line immediately.
