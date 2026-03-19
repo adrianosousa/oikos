@@ -37,19 +37,15 @@ const c = {
 
 // ── Logo ──
 function printLogo() {
-  const r = c.reset, d = c.dim;
-  const yb = '\x1b[43m\x1b[30m'; // yellow bg, black fg
-  // Geometric style matching the SVG logo:
-  // O = circle, I = tall rectangle, K = angular, O = circle, S = diagonal
+  const r = c.reset, d = c.dim, y = c.yellow, b = c.bold;
   console.log('');
-  console.log(`  ${yb}                                                      ${r}`);
-  console.log(`  ${yb}    ▄████▄   ████  ██  ██   ▄████▄   ▄████▄         ${r}`);
-  console.log(`  ${yb}   ██    ██   ██   ██▄██   ██    ██  ██▀▀▀▀          ${r}`);
-  console.log(`  ${yb}   ██    ██   ██   █████   ██    ██   ▀████▄         ${r}`);
-  console.log(`  ${yb}   ██    ██   ██   ██ ▀██  ██    ██       ██         ${r}`);
-  console.log(`  ${yb}    ▀████▀   ████  ██  ██   ▀████▀   █████▀         ${r}`);
-  console.log(`  ${yb}                                                      ${r}`);
-  console.log(`  ${d}  Sovereign Agent Wallet Protocol${r}`);
+  console.log(`${y}${b}    ██████╗  ██╗ ██╗  ██╗  ██████╗  ███████╗${r}`);
+  console.log(`${y}${b}   ██╔═══██╗ ██║ ██║ ██╔╝ ██╔═══██╗ ██╔════╝${r}`);
+  console.log(`${y}${b}   ██║   ██║ ██║ █████╔╝  ██║   ██║ ███████╗${r}`);
+  console.log(`${y}${b}   ██║   ██║ ██║ ██╔═██╗  ██║   ██║ ╚════██║${r}`);
+  console.log(`${y}${b}   ╚██████╔╝ ██║ ██║  ██╗ ╚██████╔╝ ███████║${r}`);
+  console.log(`${y}${b}    ╚═════╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝  ╚══════╝${r}`);
+  console.log(`${d}   Sovereign Agent Wallet Protocol${r}`);
   console.log('');
 }
 
