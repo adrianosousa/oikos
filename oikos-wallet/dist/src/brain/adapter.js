@@ -140,9 +140,18 @@ export class OllamaBrainAdapter {
     /** Build compact wallet state block — minimal tokens, max info density */
     _buildContext(ctx) {
         const lines = [];
-        // Balances — single-line CSV-style
+        // Live prices — the model MUST have these to calculate USD values
+        if (ctx.prices.length > 0) {
+            lines.push('Live Prices: ' + ctx.prices.map(p => `${p.symbol}=$${p.priceUsd}`).join(', '));
+        }
+        // Portfolio valuation — pre-calculated so model doesn't need to do math
+        if (ctx.portfolio.totalUsd > 0) {
+            lines.push(`Portfolio: $${ctx.portfolio.totalUsd.toFixed(2)} USD`);
+            lines.push('Holdings: ' + ctx.portfolio.assets.map(a => `${a.symbol}: ${a.humanBalance.toFixed(a.symbol === 'BTC' ? 6 : 2)} ($${a.usdValue.toFixed(0)}, ${a.pct.toFixed(1)}%)`).join(', '));
+        }
+        // Raw balances per chain (for chain-specific queries)
         if (ctx.balances.length > 0) {
-            lines.push('Balances: ' + ctx.balances.map(b => `${b.symbol}/${b.chain}=${b.formatted}`).join(', '));
+            lines.push('Balances by chain: ' + ctx.balances.map(b => `${b.symbol}/${b.chain}=${b.formatted}`).join(', '));
         }
         else {
             lines.push('Balances: none loaded');
@@ -306,11 +315,53 @@ export async function buildWalletContext(services) {
         }
     }
     catch { /* strategies dir doesn't exist yet — fine */ }
+    // Fetch live prices from pricing service
+    const prices = [];
+    if (services.pricing) {
+        try {
+            const priceData = await services.pricing.getAllPrices();
+            if (priceData && Array.isArray(priceData)) {
+                for (const p of priceData) {
+                    if (p.symbol && p.priceUsd)
+                        prices.push({ symbol: p.symbol, priceUsd: p.priceUsd, source: p.source || 'live' });
+                }
+            }
+        }
+        catch { /* pricing not available */ }
+    }
+    // Calculate portfolio valuation using live prices
+    const priceMap = { USDT: 1, USAT: 1 };
+    for (const p of prices)
+        priceMap[p.symbol] = p.priceUsd;
+    const assetTotals = {};
+    const typedBalances = balances;
+    for (const b of typedBalances) {
+        const human = parseFloat(b.formatted) || 0;
+        const price = priceMap[b.symbol] || 0;
+        if (!assetTotals[b.symbol])
+            assetTotals[b.symbol] = { humanBalance: 0, usdValue: 0 };
+        const entry = assetTotals[b.symbol];
+        if (entry) {
+            entry.humanBalance += human;
+            entry.usdValue += human * price;
+        }
+    }
+    const totalUsd = Object.values(assetTotals).reduce((s, a) => s + a.usdValue, 0);
+    const portfolioAssets = Object.entries(assetTotals)
+        .map(([symbol, data]) => ({
+        symbol,
+        humanBalance: data.humanBalance,
+        usdValue: data.usdValue,
+        pct: totalUsd > 0 ? (data.usdValue / totalUsd) * 100 : 0,
+    }))
+        .sort((a, b) => b.usdValue - a.usdValue);
     return {
-        balances: balances,
+        balances: typedBalances,
         policies: policies,
         recentAudit: audit,
         identity: services.identity,
+        prices,
+        portfolio: { totalUsd, assets: portfolioAssets },
         swarmPeers: swarmState?.boardPeers?.length ?? 0,
         swarmAnnouncements: (swarmState?.announcements ?? []).map(a => ({
             id: a.id, title: a.title, category: a.category, agentName: a.agentName, priceRange: a.priceRange,
