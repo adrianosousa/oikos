@@ -360,6 +360,82 @@ const TOOLS: MCPTool[] = [
       required: [],
     },
   },
+  // ── x402 Machine Payments ──
+  {
+    name: 'x402_fetch',
+    description: 'Make an HTTP request to an x402-enabled endpoint. Auto-detects 402 Payment Required, signs EIP-3009 authorization via wallet, and retries with payment. Uses USDT0 on Plasma/Stable chains.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The URL to fetch (must be x402-enabled)' },
+        method: { type: 'string', enum: ['GET', 'POST'], description: 'HTTP method (default: GET)' },
+        maxPaymentUsd: { type: 'number', description: 'Maximum payment in USD (default: 1.00)' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'x402_status',
+    description: 'Get x402 machine payment economics: total spent, total earned, requests completed/failed, services used.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  // ── Spark / Lightning ──
+  {
+    name: 'spark_balance',
+    description: 'Get Spark (Bitcoin Lightning L2) wallet balance in satoshis. Instant, fee-free transfers.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'spark_address',
+    description: 'Get a Spark deposit address for receiving Bitcoin from L1 or other Spark wallets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['single-use', 'static'], description: 'Address type (default: static)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'spark_send',
+    description: 'Send satoshis to a Spark address. Instant, zero-fee. Goes through PolicyEngine.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'Recipient Spark address (spark1...)' },
+        amountSats: { type: 'number', description: 'Amount in satoshis' },
+        reason: { type: 'string', description: 'Why this payment is being made' },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+      },
+      required: ['to', 'amountSats', 'reason', 'confidence'],
+    },
+  },
+  {
+    name: 'spark_create_invoice',
+    description: 'Create a Lightning Network invoice for receiving payments. Compatible with any Lightning wallet.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        amountSats: { type: 'number', description: 'Amount in satoshis (optional for "any amount" invoice)' },
+        memo: { type: 'string', description: 'Invoice memo/description' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'spark_pay_invoice',
+    description: 'Pay a Lightning Network invoice. Goes through PolicyEngine for spending limits.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        invoice: { type: 'string', description: 'BOLT11 Lightning invoice string (lnbc...)' },
+        maxFeeSats: { type: 'number', description: 'Maximum fee in satoshis (default: 100)' },
+        reason: { type: 'string', description: 'Why this payment is being made' },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+      },
+      required: ['invoice', 'reason', 'confidence'],
+    },
+  },
 ];
 
 // ── Tool Handlers ──
@@ -562,6 +638,69 @@ const handlers: Record<string, ToolHandler> = {
     if (!svc.eventBus) return { events: [] };
     const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
     return { events: svc.eventBus.getRecent(limit) };
+  },
+  // ── x402 Machine Payments ──
+  async x402_fetch(params, svc) {
+    if (!svc.x402) return { error: 'x402 client not enabled. Set X402_ENABLED=true.' };
+    const url = params['url'] as string;
+    const method = (params['method'] as string) || 'GET';
+    const maxPaymentUsd = (params['maxPaymentUsd'] as number) || 1.0;
+    const result = await svc.x402.fetch(url, { method }, maxPaymentUsd);
+    return result;
+  },
+  async x402_status(_params, svc) {
+    if (!svc.x402) return { enabled: false, economics: null };
+    return { enabled: true, economics: svc.x402.getEconomics(), services: svc.x402.getServices() };
+  },
+  // ── Spark / Lightning ──
+  async spark_balance(_params, svc) {
+    if (!svc.sparkEnabled) return { enabled: false, error: 'Spark wallet not enabled' };
+    const result = await svc.wallet.querySparkBalance();
+    return result;
+  },
+  async spark_address(params, svc) {
+    if (!svc.sparkEnabled) return { enabled: false, error: 'Spark wallet not enabled' };
+    const type = (params['type'] as string) || 'static';
+    const result = await svc.wallet.querySparkAddress(type);
+    return result;
+  },
+  async spark_send(params, svc) {
+    if (!svc.sparkEnabled) return { enabled: false, error: 'Spark wallet not enabled' };
+    const result = await svc.wallet.proposeSparkSend({
+      to: params['to'] as string,
+      amountSats: params['amountSats'] as number,
+      reason: params['reason'] as string,
+      confidence: params['confidence'] as number,
+      amount: String(params['amountSats']),
+      symbol: 'BTC' as TokenSymbol,
+      chain: 'spark' as Chain,
+      strategy: 'mcp-tool',
+      timestamp: Date.now(),
+    }, 'mcp');
+    return result;
+  },
+  async spark_create_invoice(params, svc) {
+    if (!svc.sparkEnabled) return { enabled: false, error: 'Spark wallet not enabled' };
+    const result = await svc.wallet.querySparkCreateInvoice(
+      params['amountSats'] as number | undefined,
+      params['memo'] as string | undefined,
+    );
+    return result;
+  },
+  async spark_pay_invoice(params, svc) {
+    if (!svc.sparkEnabled) return { enabled: false, error: 'Spark wallet not enabled' };
+    const result = await svc.wallet.proposeSparkPayInvoice({
+      invoice: params['invoice'] as string,
+      maxFeeSats: (params['maxFeeSats'] as number) || 100,
+      reason: params['reason'] as string,
+      confidence: params['confidence'] as number,
+      amount: '0', // Amount determined by invoice
+      symbol: 'BTC' as TokenSymbol,
+      chain: 'spark' as Chain,
+      strategy: 'mcp-tool',
+      timestamp: Date.now(),
+    }, 'mcp');
+    return result;
   },
 };
 

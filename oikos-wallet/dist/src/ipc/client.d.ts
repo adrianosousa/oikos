@@ -74,6 +74,30 @@ export declare class WalletIPCClient {
     proposeRGBTransfer(proposal: RGBTransferProposal, source?: ProposalSource): Promise<ExecutionResult>;
     /** Query all RGB assets with balances. */
     queryRGBAssets(): Promise<RGBAssetInfo[]>;
+    /** Query Spark wallet balance in satoshis. */
+    querySparkBalance(): Promise<{
+        chain: string;
+        symbol: string;
+        balanceSats: number;
+        formatted: string;
+    }>;
+    /** Query Spark deposit address. */
+    querySparkAddress(type?: string): Promise<{
+        chain: string;
+        address: string;
+        type: string;
+    }>;
+    /** Propose sending sats via Spark. Goes through PolicyEngine. */
+    proposeSparkSend(proposal: Record<string, unknown>, source?: ProposalSource): Promise<ExecutionResult>;
+    /** Create a Lightning invoice for receiving. */
+    querySparkCreateInvoice(amountSats?: number, memo?: string): Promise<{
+        invoice: string;
+        id: string;
+        amountSats: number;
+        memo?: string;
+    }>;
+    /** Pay a Lightning invoice via Spark. Goes through PolicyEngine. */
+    proposeSparkPayInvoice(proposal: Record<string, unknown>, source?: ProposalSource): Promise<ExecutionResult>;
     private send;
     private processBuffer;
 }

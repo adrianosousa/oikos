@@ -227,7 +227,20 @@ async function main() {
     });
     const chatMessages = [];
     console.error(`[oikos] Brain: ${brain.name} adapter`);
-    // 10. Assemble services
+    // 10. x402 client (micropayments)
+    let x402Client = null;
+    const x402Enabled = process.env['X402_ENABLED'] === 'true';
+    if (x402Enabled) {
+        const { X402Client } = await import('./x402/client.js');
+        x402Client = new X402Client(wallet);
+        console.error('[x402] Machine payments client enabled');
+    }
+    // 10b. Spark status (mock for now — wallet isolate handles real ops)
+    const sparkEnabled = process.env['SPARK_ENABLED'] === 'true';
+    if (sparkEnabled) {
+        console.error('[spark] Lightning wallet enabled');
+    }
+    // 11. Assemble services
     const services = {
         wallet,
         pricing,
@@ -238,6 +251,8 @@ async function main() {
         instructions,
         brain,
         chatMessages,
+        x402: x402Client,
+        sparkEnabled,
     };
     // 11. Register companion chat handler (now that brain is available)
     if (companion && brain) {

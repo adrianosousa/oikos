@@ -9,6 +9,7 @@ import type { WalletIPCClient } from './ipc/client.js';
 import type { EventBus } from './events/bus.js';
 import type { PricingService } from './pricing/client.js';
 import type { BrainAdapter, ChatMessage } from './brain/adapter.js';
+import type { X402Client } from './x402/client.js';
 
 /** Swarm announcement posting options */
 export interface SwarmAnnounceOpts {
@@ -64,4 +65,8 @@ export interface OikosServices {
   brain: BrainAdapter | null;
   /** Chat conversation history */
   chatMessages: ChatMessage[];
+  /** x402 machine payment client */
+  x402: X402Client | null;
+  /** Spark/Lightning wallet enabled */
+  sparkEnabled: boolean;
 }
