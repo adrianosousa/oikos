@@ -132,14 +132,47 @@ export class WalletManager {
                     return { chain, symbol, raw: 0n, formatted: formatBalance(0n, symbol) };
                 }
             }
+            // No contract address configured for this token on this chain — return 0
+            return { chain, symbol, raw: 0n, formatted: formatBalance(0n, symbol) };
         }
         // Native balance (ETH or BTC)
         const raw = await account.getBalance();
         return { chain, symbol, raw, formatted: formatBalance(raw, symbol) };
     }
     async getBalances() {
-        // TODO: implement full multi-asset balance query via WDK
-        return [];
+        this.ensureInitialized();
+        const results = [];
+        // Query all known chain+token combinations
+        const queries = [
+            // EVM chains — native + ERC-20 tokens
+            { chain: 'ethereum', symbol: 'ETH' },
+            { chain: 'ethereum', symbol: 'USDT' },
+            { chain: 'ethereum', symbol: 'XAUT' },
+            { chain: 'ethereum', symbol: 'USAT' },
+            { chain: 'arbitrum', symbol: 'ETH' },
+            { chain: 'arbitrum', symbol: 'USDT' },
+            { chain: 'arbitrum', symbol: 'XAUT' },
+            { chain: 'arbitrum', symbol: 'USAT' },
+            // Bitcoin
+            { chain: 'bitcoin', symbol: 'BTC' },
+            // Spark
+            { chain: 'spark', symbol: 'BTC' },
+        ];
+        // Query in parallel with error handling per-query
+        const settled = await Promise.allSettled(queries.map(async (q) => {
+            try {
+                return await this.getBalance(q.chain, q.symbol);
+            }
+            catch {
+                return null;
+            }
+        }));
+        for (const result of settled) {
+            if (result.status === 'fulfilled' && result.value && result.value.raw > 0n) {
+                results.push(result.value);
+            }
+        }
+        return results;
     }
     /**
      * @security THE CODE PATH THAT MOVES FUNDS FOR PAYMENTS.
