@@ -7,7 +7,7 @@
 export const TESTNET_CHAINS = [
     {
         chain: 'ethereum',
-        provider: 'https://rpc.sepolia.org'
+        provider: 'https://ethereum-sepolia-rpc.publicnode.com'
     },
     {
         chain: 'arbitrum',
@@ -27,7 +27,7 @@ export const TESTNET_CHAINS = [
 export const SEPOLIA_ONLY = [
     {
         chain: 'ethereum',
-        provider: 'https://rpc.sepolia.org'
+        provider: 'https://ethereum-sepolia-rpc.publicnode.com'
     }
 ];
 //# sourceMappingURL=chains.js.map

@@ -76,7 +76,7 @@ interface WdkInstance {
 
 const TOKEN_ADDRESSES: Partial<Record<Chain, Partial<Record<TokenSymbol, string>>>> = {
   ethereum: {
-    USDT: '0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0', // Sepolia USDT (Tether faucet)
+    USDT: '0xd077a400968890eacc75cdc901f0356c943e4fdb', // Sepolia USDT (confirmed faucet)
     ETH: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',  // Native ETH sentinel
   },
   arbitrum: {
@@ -188,6 +188,23 @@ export class WalletManager implements WalletOperations {
       return { chain, symbol: 'BTC', raw, formatted: formatBalance(raw, 'BTC') };
     }
     const account = await this.getAccount(chain);
+
+    // For ERC-20 tokens, use getTokenBalance with contract address
+    if (symbol !== 'ETH' && symbol !== 'BTC') {
+      const tokenAddress = getTokenAddress(chain, symbol);
+      if (tokenAddress && tokenAddress !== '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE') {
+        try {
+          // WDK EVM account has getTokenBalance for ERC-20
+          const raw = await (account as any).getTokenBalance(tokenAddress);
+          return { chain, symbol, raw: BigInt(raw), formatted: formatBalance(BigInt(raw), symbol) };
+        } catch {
+          // Fallback: token might not exist on this chain
+          return { chain, symbol, raw: 0n, formatted: formatBalance(0n, symbol) };
+        }
+      }
+    }
+
+    // Native balance (ETH or BTC)
     const raw = await account.getBalance();
     return { chain, symbol, raw, formatted: formatBalance(raw, symbol) };
   }

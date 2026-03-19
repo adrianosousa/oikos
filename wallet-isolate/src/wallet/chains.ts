@@ -10,7 +10,7 @@ import type { ChainConfig } from './types.js';
 export const TESTNET_CHAINS: ChainConfig[] = [
   {
     chain: 'ethereum',
-    provider: 'https://rpc.sepolia.org'
+    provider: 'https://ethereum-sepolia-rpc.publicnode.com'
   },
   {
     chain: 'arbitrum',
@@ -31,6 +31,6 @@ export const TESTNET_CHAINS: ChainConfig[] = [
 export const SEPOLIA_ONLY: ChainConfig[] = [
   {
     chain: 'ethereum',
-    provider: 'https://rpc.sepolia.org'
+    provider: 'https://ethereum-sepolia-rpc.publicnode.com'
   }
 ];
