@@ -8,7 +8,7 @@
  * Every request gets exactly one response, correlated by `id`.
  */
 export type TokenSymbol = 'USDT' | 'BTC' | 'XAUT' | 'USAT' | 'ETH' | 'RGB';
-export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum' | 'rgb';
+export type Chain = 'ethereum' | 'polygon' | 'bitcoin' | 'arbitrum' | 'rgb' | 'spark';
 /** Source of a proposal — used for audit trail attribution */
 export type ProposalSource = 'llm' | 'x402' | 'companion' | 'swarm';
 /** Common fields shared by all proposal types. PolicyEngine evaluates these. */

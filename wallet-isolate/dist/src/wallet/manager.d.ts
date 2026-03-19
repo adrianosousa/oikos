@@ -10,15 +10,9 @@
  */
 import type { Chain, TokenSymbol } from '../ipc/types.js';
 import type { ChainConfig, WalletBalance, TransactionResult, WalletOperations, IdentityOperationResult, OnChainReputation } from './types.js';
-/**
- * WDK Wallet Manager — real implementation using @tetherto/wdk.
- *
- * Initializes WDK with the seed phrase and registers chain wallets.
- * Provides getAddress, getBalance, sendTransaction, swap, bridge,
- * deposit, withdraw, and ERC-8004 identity/reputation operations.
- */
 export declare class WalletManager implements WalletOperations {
     private wdk;
+    private sparkManager;
     private initialized;
     private rpcUrls;
     /**
@@ -91,6 +85,18 @@ export declare class WalletManager implements WalletOperations {
         precision: number;
         balance: string;
     }>>;
+    /** Create a Lightning invoice for receiving payments. */
+    sparkCreateInvoice(amountSats?: number, memo?: string): Promise<{
+        invoice: string;
+        id: string;
+        amountSats: number;
+    }>;
+    /** Pay a Lightning invoice. */
+    sparkPayInvoice(encodedInvoice: string, maxFeeSats?: number): Promise<TransactionResult>;
+    /** Get a deposit address for bridging BTC L1 → Spark L2. */
+    sparkGetDepositAddress(): Promise<string>;
+    /** Get the Spark account (separate from WDK core). */
+    private getSparkAccount;
     /** Get the WDK account for a given chain. */
     private getAccount;
     /**
@@ -113,6 +119,13 @@ export declare class MockWalletManager implements WalletOperations {
     private nextRgbAssetId;
     initialize(_seed: string, chains: ChainConfig[]): Promise<void>;
     getAddress(chain: Chain): Promise<string>;
+    sparkCreateInvoice(amountSats?: number, _memo?: string): Promise<{
+        invoice: string;
+        id: string;
+        amountSats: number;
+    }>;
+    sparkPayInvoice(encodedInvoice: string, _maxFeeSats?: number): Promise<TransactionResult>;
+    sparkGetDepositAddress(): Promise<string>;
     getBalance(chain: Chain, symbol: TokenSymbol): Promise<WalletBalance>;
     getBalances(): Promise<WalletBalance[]>;
     sendTransaction(chain: Chain, _to: string, amount: bigint, symbol: TokenSymbol): Promise<TransactionResult>;

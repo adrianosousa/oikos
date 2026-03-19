@@ -21,6 +21,10 @@ export const TESTNET_CHAINS: ChainConfig[] = [
     network: 'testnet',
     host: 'electrum.blockstream.info',
     port: 50001
+  },
+  {
+    chain: 'spark',
+    network: 'REGTEST'  // MAINNET | SIGNET | REGTEST
   }
 ];
 

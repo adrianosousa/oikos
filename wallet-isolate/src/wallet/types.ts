@@ -10,12 +10,13 @@ import type { Chain, TokenSymbol } from '../ipc/types.js';
 export interface ChainConfig {
   chain: Chain;
   provider?: string;     // RPC URL for EVM chains
-  network?: string;      // 'testnet' | 'mainnet' for BTC
+  network?: string;      // 'testnet' | 'mainnet' for BTC, 'MAINNET' | 'SIGNET' | 'REGTEST' for Spark
   host?: string;         // Electrum host for BTC
   port?: number;         // Electrum port for BTC
   indexerUrl?: string;   // RGB indexer URL
   transportEndpoint?: string; // RGB transport bridge endpoint
   dataDir?: string;      // RGB data directory
+  sparkScanApiKey?: string; // SparkScan API key (optional)
 }
 
 export interface WalletBalance {

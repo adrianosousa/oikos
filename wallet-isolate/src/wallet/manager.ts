@@ -97,8 +97,26 @@ function getTokenAddress(chain: Chain, symbol: TokenSymbol): string | undefined 
  * Provides getAddress, getBalance, sendTransaction, swap, bridge,
  * deposit, withdraw, and ERC-8004 identity/reputation operations.
  */
+/** Spark account interface — ESM module, separate from WDK core */
+interface SparkAccount {
+  getAddress(): Promise<string>;
+  getBalance(): Promise<bigint>;
+  sendTransaction(tx: { to: string; value: number | bigint }): Promise<{ hash: string; fee: bigint }>;
+  createLightningInvoice(opts: { amountSats?: number; memo?: string }): Promise<{ invoice: string; id: string; amountSats: number }>;
+  payLightningInvoice(opts: { encodedInvoice: string; maxFeeSats?: number }): Promise<{ id: string; status: string }>;
+  getSingleUseDepositAddress(): Promise<string>;
+  getStaticDepositAddress(): Promise<string>;
+  dispose(): void;
+}
+
+interface SparkManager {
+  getAccount(index?: number): Promise<SparkAccount>;
+  dispose(): void;
+}
+
 export class WalletManager implements WalletOperations {
   private wdk: WdkInstance | null = null;
+  private sparkManager: SparkManager | null = null;
   private initialized = false;
   private rpcUrls: Map<string, string> = new Map();
 
@@ -135,6 +153,18 @@ export class WalletManager implements WalletOperations {
           host: config.host,
           port: config.port
         });
+      } else if (config.chain === 'spark') {
+        try {
+          const { default: WalletManagerSpark } = await import('@tetherto/wdk-wallet-spark');
+          // Spark is a standalone wallet, not registered with WDK core
+          const sparkConfig: Record<string, unknown> = {};
+          if (config.network) sparkConfig.network = config.network;
+          if (config.sparkScanApiKey) sparkConfig.sparkScanApiKey = config.sparkScanApiKey;
+          this.sparkManager = new WalletManagerSpark(seed, sparkConfig) as unknown as SparkManager;
+          console.log(`[wallet-isolate] Spark wallet initialized (${config.network || 'MAINNET'})`);
+        } catch (err) {
+          console.error('[wallet-isolate] Spark init failed:', err instanceof Error ? err.message : err);
+        }
       }
     }
 
@@ -143,11 +173,20 @@ export class WalletManager implements WalletOperations {
   }
 
   async getAddress(chain: Chain): Promise<string> {
+    if (chain === 'spark') {
+      const sparkAccount = await this.getSparkAccount();
+      return sparkAccount.getAddress() as unknown as string;
+    }
     const account = await this.getAccount(chain);
     return account.getAddress();
   }
 
   async getBalance(chain: Chain, symbol: TokenSymbol): Promise<WalletBalance> {
+    if (chain === 'spark') {
+      const sparkAccount = await this.getSparkAccount();
+      const raw = await sparkAccount.getBalance();
+      return { chain, symbol: 'BTC', raw, formatted: formatBalance(raw, 'BTC') };
+    }
     const account = await this.getAccount(chain);
     const raw = await account.getBalance();
     return { chain, symbol, raw, formatted: formatBalance(raw, symbol) };
@@ -166,6 +205,11 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
+      if (chain === 'spark') {
+        const sparkAccount = await this.getSparkAccount();
+        const result = await sparkAccount.sendTransaction({ to, value: amount });
+        return { success: true, txHash: result.hash };
+      }
       const account = await this.getAccount(chain);
       const result = await account.sendTransaction({ to, value: amount });
       return { success: true, txHash: result.hash };
@@ -460,7 +504,42 @@ export class WalletManager implements WalletOperations {
     return [];
   }
 
+  // ── Spark Lightning Operations ──
+
+  /** Create a Lightning invoice for receiving payments. */
+  async sparkCreateInvoice(amountSats?: number, memo?: string): Promise<{ invoice: string; id: string; amountSats: number }> {
+    const sparkAccount = await this.getSparkAccount();
+    return sparkAccount.createLightningInvoice({ amountSats, memo });
+  }
+
+  /** Pay a Lightning invoice. */
+  async sparkPayInvoice(encodedInvoice: string, maxFeeSats?: number): Promise<TransactionResult> {
+    try {
+      const sparkAccount = await this.getSparkAccount();
+      const result = await sparkAccount.payLightningInvoice({ encodedInvoice, maxFeeSats });
+      return { success: true, txHash: result.id };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown Lightning payment error';
+      return { success: false, error: message };
+    }
+  }
+
+  /** Get a deposit address for bridging BTC L1 → Spark L2. */
+  async sparkGetDepositAddress(): Promise<string> {
+    const sparkAccount = await this.getSparkAccount();
+    return sparkAccount.getStaticDepositAddress();
+  }
+
   // ── Private Helpers ──
+
+  /** Get the Spark account (separate from WDK core). */
+  private async getSparkAccount(): Promise<SparkAccount> {
+    this.ensureInitialized();
+    if (!this.sparkManager) {
+      throw new Error('Spark wallet not initialized. Add spark chain to config.');
+    }
+    return this.sparkManager.getAccount(0);
+  }
 
   /** Get the WDK account for a given chain. */
   private async getAccount(chain: Chain): Promise<WdkAccount> {
@@ -532,6 +611,8 @@ export class MockWalletManager implements WalletOperations {
     for (const chain of chains) {
       if (chain.chain === 'bitcoin') {
         this.balances.set(`${chain.chain}:BTC`, 10_000_000n);  // 0.1 BTC (8 decimals)
+      } else if (chain.chain === 'spark') {
+        this.balances.set(`${chain.chain}:BTC`, 100_000n);  // 100,000 sats = 0.001 BTC on Spark
       } else {
         // EVM chains get all ERC-20 tokens + ETH
         this.balances.set(`${chain.chain}:USDT`, 100_000_000n);  // 100 USDT (6 decimals)
@@ -546,7 +627,27 @@ export class MockWalletManager implements WalletOperations {
   async getAddress(chain: Chain): Promise<string> {
     this.ensureInit();
     if (chain === 'bitcoin') return 'tb1qmock000000000000000000000000000000dead';
+    if (chain === 'spark') return 'spark1mock000000000000000000000dead';
     return '0xMOCK0000000000000000000000000000DEAD';
+  }
+
+  // ── Spark Mock Operations ──
+  async sparkCreateInvoice(amountSats?: number, _memo?: string): Promise<{ invoice: string; id: string; amountSats: number }> {
+    this.ensureInit();
+    return {
+      invoice: `lnbc${amountSats || 1000}u1mock${Date.now().toString(36)}`,
+      id: `inv-mock-${Date.now().toString(36)}`,
+      amountSats: amountSats || 1000,
+    };
+  }
+  async sparkPayInvoice(encodedInvoice: string, _maxFeeSats?: number): Promise<TransactionResult> {
+    this.ensureInit();
+    void encodedInvoice;
+    return { success: true, txHash: `spark-pay-mock-${Date.now().toString(36)}` };
+  }
+  async sparkGetDepositAddress(): Promise<string> {
+    this.ensureInit();
+    return 'tb1qspark-deposit-mock-address';
   }
 
   async getBalance(chain: Chain, symbol: TokenSymbol): Promise<WalletBalance> {

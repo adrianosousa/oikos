@@ -14,6 +14,7 @@ export interface ChainConfig {
     indexerUrl?: string;
     transportEndpoint?: string;
     dataDir?: string;
+    sparkScanApiKey?: string;
 }
 export interface WalletBalance {
     chain: Chain;
