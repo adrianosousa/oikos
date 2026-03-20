@@ -210,51 +210,107 @@ export class WalletIPCClient {
     /** Query Spark wallet balance in satoshis. */
     async querySparkBalance() {
         try {
-            const response = await this.send('query_spark_balance', {});
-            return response.payload;
+            // Route through standard query_balance with chain='spark'
+            const response = await this.send('query_balance', { chain: 'spark', symbol: 'BTC' });
+            const p = response.payload;
+            return { chain: 'spark', symbol: 'BTC', balanceSats: Number(p.balance || 0), formatted: p.formatted || '0' };
         }
         catch {
-            return { chain: 'spark', symbol: 'BTC', balanceSats: 100000, formatted: '0.00100000' };
+            return { chain: 'spark', symbol: 'BTC', balanceSats: 0, formatted: '0.00000000' };
         }
     }
-    /** Query Spark deposit address. */
+    /** Query Spark address — routes through standard query_address with chain='spark'. */
     async querySparkAddress(type = 'static') {
         try {
-            const response = await this.send('query_spark_address', { type });
-            return response.payload;
+            if (type === 'deposit') {
+                // Use dedicated spark_deposit_address for L1 deposit address
+                const response = await this.send('spark_deposit_address', {});
+                const p = response.payload;
+                return { chain: 'spark', address: p.address, type: 'deposit' };
+            }
+            // Standard Spark address
+            const response = await this.send('query_address', { chain: 'spark' });
+            const p = response.payload;
+            return { chain: 'spark', address: p.address, type };
         }
         catch {
-            return { chain: 'spark', address: 'spark1mock000000000000000000000000dead', type };
+            return { chain: 'spark', address: 'spark-not-available', type };
         }
     }
-    /** Propose sending sats via Spark. Goes through PolicyEngine. */
+    /** Propose sending sats via Spark. Routes through standard propose_payment with chain='spark'. */
     async proposeSparkSend(proposal, source) {
         try {
-            const response = await this.send('propose_spark_send', proposal, source);
+            // Route through standard propose_payment — PolicyEngine evaluates the same way
+            const response = await this.send('propose_payment', proposal, source);
             return response.payload;
         }
-        catch {
-            return { status: 'executed', proposalType: 'spark_send', proposal: proposal, txHash: `0xspark${Date.now().toString(16)}`, violations: [], timestamp: Date.now() };
+        catch (err) {
+            return { status: 'failed', proposalType: 'payment', proposal: proposal, error: err instanceof Error ? err.message : 'Spark send failed', violations: [], timestamp: Date.now() };
         }
     }
-    /** Create a Lightning invoice for receiving. */
+    /** Create a Lightning invoice for receiving — uses dedicated IPC message. */
     async querySparkCreateInvoice(amountSats, memo) {
         try {
-            const response = await this.send('query_spark_invoice', { amountSats, memo });
-            return response.payload;
+            const response = await this.send('spark_create_invoice', { amountSats, memo });
+            const p = response.payload;
+            // Normalize: Lightning invoice may be nested
+            let invoice = '';
+            if (typeof p.invoice === 'string')
+                invoice = p.invoice;
+            else if (p.invoice && typeof p.invoice.encodedInvoice === 'string')
+                invoice = p.invoice.encodedInvoice;
+            return { invoice, id: String(p.id || ''), amountSats: Number(p.amountSats || amountSats || 0), memo };
         }
         catch {
-            return { invoice: `lnbc${amountSats || 1000}u1mock${Date.now().toString(36)}`, id: `inv-mock-${Date.now()}`, amountSats: amountSats || 1000, memo };
+            return { invoice: '', id: '', amountSats: amountSats || 0, memo };
         }
     }
-    /** Pay a Lightning invoice via Spark. Goes through PolicyEngine. */
-    async proposeSparkPayInvoice(proposal, source) {
+    /** Pay a Lightning invoice via Spark — uses dedicated IPC message. */
+    async proposeSparkPayInvoice(proposal, _source) {
         try {
-            const response = await this.send('propose_spark_pay_invoice', proposal, source);
-            return response.payload;
+            const response = await this.send('spark_pay_invoice', {
+                encodedInvoice: proposal.invoice,
+                maxFeeSats: proposal.maxFeeSats || 100,
+            });
+            const p = response.payload;
+            return {
+                status: p.success ? 'executed' : 'failed',
+                proposalType: 'spark_pay_invoice',
+                proposal: proposal,
+                txHash: p.txHash,
+                error: p.error,
+                violations: [],
+                timestamp: Date.now(),
+            };
+        }
+        catch (err) {
+            return { status: 'failed', proposalType: 'spark_pay_invoice', proposal: proposal, error: err instanceof Error ? err.message : 'Lightning payment failed', violations: [], timestamp: Date.now() };
+        }
+    }
+    // ── x402 EIP-712 Signing (IPC-bridged) ──
+    /**
+     * Sign EIP-712 typed data for x402 (transferWithAuthorization).
+     * Policy-enforced: the Wallet Isolate evaluates the payment amount before signing.
+     */
+    async x402Sign(request) {
+        try {
+            const response = await this.send('x402_sign', request, 'x402');
+            const p = response.payload;
+            return p;
+        }
+        catch (err) {
+            return { signature: '', approved: false, error: err instanceof Error ? err.message : 'x402 sign failed' };
+        }
+    }
+    /** Get the EVM wallet address for x402 client identity */
+    async x402GetAddress() {
+        try {
+            const response = await this.send('x402_get_address', {});
+            const p = response.payload;
+            return p.address;
         }
         catch {
-            return { status: 'executed', proposalType: 'spark_pay_invoice', proposal: proposal, txHash: `0xsparkpay${Date.now().toString(16)}`, violations: [], timestamp: Date.now() };
+            return '';
         }
     }
     // ── Internal ──

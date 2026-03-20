@@ -109,7 +109,30 @@ export interface SparkPayInvoiceRequest {
     encodedInvoice: string;
     maxFeeSats?: number;
 }
-export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'identity_register' | 'identity_set_wallet' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address';
+/** EIP-712 typed data for x402 signing (transferWithAuthorization) */
+export interface X402SignRequest {
+    domain: {
+        name?: string;
+        version?: string;
+        chainId?: number;
+        verifyingContract?: string;
+        salt?: string;
+    };
+    types: Record<string, Array<{
+        name: string;
+        type: string;
+    }>>;
+    message: Record<string, unknown>;
+    /** Amount in token smallest units — used for policy evaluation */
+    policyAmount: string;
+    /** Recipient address — used for policy evaluation */
+    policyRecipient: string;
+    /** Chain for policy evaluation */
+    policyChain: Chain;
+    /** Symbol for policy evaluation */
+    policySymbol: TokenSymbol;
+}
+export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'identity_register' | 'identity_set_wallet' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address' | 'x402_sign' | 'x402_get_address';
 /** Dry-run policy check result — evaluate without executing or recording */
 export interface PolicyCheckResult {
     wouldApprove: boolean;
@@ -120,7 +143,7 @@ export interface IPCRequest {
     id: string;
     type: IPCRequestType;
     source?: ProposalSource;
-    payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal | RGBIssueProposal | RGBTransferProposal | IdentityRegisterRequest | IdentitySetWalletRequest | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery | SparkInvoiceRequest | SparkPayInvoiceRequest;
+    payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal | RGBIssueProposal | RGBTransferProposal | IdentityRegisterRequest | IdentitySetWalletRequest | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery | SparkInvoiceRequest | SparkPayInvoiceRequest | X402SignRequest;
 }
 export interface ExecutionResult {
     status: 'executed' | 'rejected' | 'failed';
@@ -165,7 +188,7 @@ export interface ReputationResult {
     totalValue: string;
     valueDecimals: number;
 }
-export type IPCResponseType = 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'spark_invoice' | 'spark_pay_result' | 'spark_deposit' | 'error';
+export type IPCResponseType = 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'spark_invoice' | 'spark_pay_result' | 'spark_deposit' | 'x402_signature' | 'x402_address' | 'error';
 export interface IPCResponse {
     id: string;
     type: IPCResponseType;

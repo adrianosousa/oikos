@@ -873,6 +873,21 @@ catch(e){r.textContent='Error: '+e.message;r.style.color='#f87171'}}</script></b
                 res.status(404).send('Board page not found');
         });
     });
+    // -- x402 Resource Server (sell services behind 402 paywall) --
+    const x402ServerEnabled = process.env['X402_SERVER_ENABLED'] !== 'false';
+    if (x402ServerEnabled) {
+        import('../x402/server.js').then(({ mountX402Server, mountX402Discovery }) => {
+            mountX402Server(app, wallet).then(result => {
+                if (result.mounted) {
+                    mountX402Discovery(app, undefined, result.payToAddress);
+                }
+            }).catch(err => {
+                console.error('[x402-server] Mount failed:', err instanceof Error ? err.message : err);
+            });
+        }).catch(() => {
+            console.error('[x402-server] Module not available');
+        });
+    }
     app.listen(port, host, () => {
         console.error(`[dashboard] Listening on http://${host}:${port}`);
         if (host === '0.0.0.0') {

@@ -56,6 +56,12 @@ interface WdkAccount {
   getTransactionReceipt(hash: string): Promise<{
     logs: Array<{ topics: string[]; data: string }>;
   } | null>;
+  /** EIP-712 typed data signing — native WDK method (beta.8+) */
+  signTypedData?(typedData: {
+    domain: Record<string, unknown>;
+    types: Record<string, Array<{ name: string; type: string }>>;
+    message: Record<string, unknown>;
+  }): Promise<string>;
   // eslint-disable-next-line @typescript-eslint/naming-convention -- WDK internal field
   _signer?: {
     signTypedData(
@@ -615,6 +621,36 @@ export class WalletManager implements WalletOperations {
     // Fallback: create account if not cached (shouldn't happen)
     this.sparkAccount = await this.sparkManager.getAccount(0);
     return this.sparkAccount;
+  }
+
+  /**
+   * Sign EIP-712 typed data using the EVM wallet account.
+   * Used by x402 for EIP-3009 transferWithAuthorization.
+   * @security Only called after PolicyEngine approval in wallet-isolate main.
+   */
+  async signTypedData(typedData: {
+    domain: Record<string, unknown>;
+    types: Record<string, Array<{ name: string; type: string }>>;
+    message: Record<string, unknown>;
+  }): Promise<string> {
+    this.ensureInitialized();
+    const account = await this.getAccount('ethereum');
+
+    // WDK WalletAccountEvm has native signTypedData
+    if (typeof account.signTypedData === 'function') {
+      return account.signTypedData(typedData as unknown as Parameters<typeof account.signTypedData>[0]);
+    }
+
+    // Fallback: try internal signer (ethers pattern)
+    if (account._signer && typeof account._signer.signTypedData === 'function') {
+      return account._signer.signTypedData(
+        typedData.domain,
+        typedData.types as unknown as Record<string, unknown>,
+        typedData.message,
+      );
+    }
+
+    throw new Error('WDK account does not support EIP-712 signTypedData');
   }
 
   /** Get the WDK account for a given chain. */

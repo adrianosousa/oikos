@@ -81,23 +81,45 @@ export declare class WalletIPCClient {
         balanceSats: number;
         formatted: string;
     }>;
-    /** Query Spark deposit address. */
+    /** Query Spark address — routes through standard query_address with chain='spark'. */
     querySparkAddress(type?: string): Promise<{
         chain: string;
         address: string;
         type: string;
     }>;
-    /** Propose sending sats via Spark. Goes through PolicyEngine. */
+    /** Propose sending sats via Spark. Routes through standard propose_payment with chain='spark'. */
     proposeSparkSend(proposal: Record<string, unknown>, source?: ProposalSource): Promise<ExecutionResult>;
-    /** Create a Lightning invoice for receiving. */
+    /** Create a Lightning invoice for receiving — uses dedicated IPC message. */
     querySparkCreateInvoice(amountSats?: number, memo?: string): Promise<{
         invoice: string;
         id: string;
         amountSats: number;
         memo?: string;
     }>;
-    /** Pay a Lightning invoice via Spark. Goes through PolicyEngine. */
-    proposeSparkPayInvoice(proposal: Record<string, unknown>, source?: ProposalSource): Promise<ExecutionResult>;
+    /** Pay a Lightning invoice via Spark — uses dedicated IPC message. */
+    proposeSparkPayInvoice(proposal: Record<string, unknown>, _source?: ProposalSource): Promise<ExecutionResult>;
+    /**
+     * Sign EIP-712 typed data for x402 (transferWithAuthorization).
+     * Policy-enforced: the Wallet Isolate evaluates the payment amount before signing.
+     */
+    x402Sign(request: {
+        domain: Record<string, unknown>;
+        types: Record<string, Array<{
+            name: string;
+            type: string;
+        }>>;
+        message: Record<string, unknown>;
+        policyAmount: string;
+        policyRecipient: string;
+        policyChain: string;
+        policySymbol: string;
+    }): Promise<{
+        signature: string;
+        approved: boolean;
+        error?: string;
+    }>;
+    /** Get the EVM wallet address for x402 client identity */
+    x402GetAddress(): Promise<string>;
     private send;
     private processBuffer;
 }

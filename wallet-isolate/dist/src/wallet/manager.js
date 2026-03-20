@@ -493,6 +493,24 @@ export class WalletManager {
         this.sparkAccount = await this.sparkManager.getAccount(0);
         return this.sparkAccount;
     }
+    /**
+     * Sign EIP-712 typed data using the EVM wallet account.
+     * Used by x402 for EIP-3009 transferWithAuthorization.
+     * @security Only called after PolicyEngine approval in wallet-isolate main.
+     */
+    async signTypedData(typedData) {
+        this.ensureInitialized();
+        const account = await this.getAccount('ethereum');
+        // WDK WalletAccountEvm has native signTypedData
+        if (typeof account.signTypedData === 'function') {
+            return account.signTypedData(typedData);
+        }
+        // Fallback: try internal signer (ethers pattern)
+        if (account._signer && typeof account._signer.signTypedData === 'function') {
+            return account._signer.signTypedData(typedData.domain, typedData.types, typedData.message);
+        }
+        throw new Error('WDK account does not support EIP-712 signTypedData');
+    }
     /** Get the WDK account for a given chain. */
     async getAccount(chain) {
         this.ensureInitialized();

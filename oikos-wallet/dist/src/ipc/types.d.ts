@@ -136,7 +136,7 @@ export interface PolicyStatus {
         currentDay: string;
     };
 }
-export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'identity_register' | 'identity_set_wallet' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check';
+export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'identity_register' | 'identity_set_wallet' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address' | 'x402_sign' | 'x402_get_address';
 export interface IPCRequest {
     id: string;
     type: IPCRequestType;

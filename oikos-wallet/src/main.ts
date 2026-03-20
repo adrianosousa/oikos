@@ -255,12 +255,15 @@ async function main(): Promise<void> {
   const chatMessages: ChatMessage[] = [];
   console.error(`[oikos] Brain: ${brain.name} adapter`);
 
-  // 10. x402 client (micropayments)
+  // 10. x402 client (micropayments — buying services)
   let x402Client: import('./x402/client.js').X402Client | null = null;
-  const x402Enabled = process.env['X402_ENABLED'] === 'true';
+  const x402Enabled = process.env['X402_ENABLED'] !== 'false'; // enabled by default
   if (x402Enabled) {
     const { X402Client } = await import('./x402/client.js');
     x402Client = new X402Client(wallet);
+    await x402Client.init().catch(err => {
+      console.error('[x402] Client init warning:', err instanceof Error ? err.message : err);
+    });
     console.error('[x402] Machine payments client enabled');
   }
 

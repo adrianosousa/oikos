@@ -190,7 +190,12 @@ export type IPCRequestType =
   | 'identity_set_wallet'
   | 'query_reputation'
   | 'query_rgb_assets'
-  | 'query_policy_check';
+  | 'query_policy_check'
+  | 'spark_create_invoice'
+  | 'spark_pay_invoice'
+  | 'spark_deposit_address'
+  | 'x402_sign'
+  | 'x402_get_address';
 
 export interface IPCRequest {
   id: string;

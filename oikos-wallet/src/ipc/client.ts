@@ -365,6 +365,41 @@ export class WalletIPCClient {
     }
   }
 
+  // ── x402 EIP-712 Signing (IPC-bridged) ──
+
+  /**
+   * Sign EIP-712 typed data for x402 (transferWithAuthorization).
+   * Policy-enforced: the Wallet Isolate evaluates the payment amount before signing.
+   */
+  async x402Sign(request: {
+    domain: Record<string, unknown>;
+    types: Record<string, Array<{ name: string; type: string }>>;
+    message: Record<string, unknown>;
+    policyAmount: string;
+    policyRecipient: string;
+    policyChain: string;
+    policySymbol: string;
+  }): Promise<{ signature: string; approved: boolean; error?: string }> {
+    try {
+      const response = await this.send('x402_sign' as IPCRequest['type'], request as unknown as IPCRequest['payload'], 'x402');
+      const p = response.payload as unknown as { signature: string; approved: boolean; error?: string };
+      return p;
+    } catch (err) {
+      return { signature: '', approved: false, error: err instanceof Error ? err.message : 'x402 sign failed' };
+    }
+  }
+
+  /** Get the EVM wallet address for x402 client identity */
+  async x402GetAddress(): Promise<string> {
+    try {
+      const response = await this.send('x402_get_address' as IPCRequest['type'], {} as unknown as IPCRequest['payload']);
+      const p = response.payload as unknown as { address: string };
+      return p.address;
+    } catch {
+      return '';
+    }
+  }
+
   // ── Internal ──
 
   private send(type: IPCRequest['type'], payload: IPCRequest['payload'], source?: ProposalSource): Promise<IPCResponse> {

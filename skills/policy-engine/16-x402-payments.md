@@ -11,10 +11,45 @@ metadata:
 ## IDENTITY
 
 - Protocol: x402 (HTTP 402 Payment Required)
-- Packages: `@x402/fetch`, `@x402/evm`, `@x402/express`, `@x402/core`, `@semanticio/wdk-wallet-evm-x402-facilitator`
-- WDK Integration: `@tetherto/wdk-wallet-evm` (wallet as signer)
-- Actions: X402_PAY_REQUEST, X402_CONFIGURE_SERVER, X402_GET_PAYMENT_STATUS
-- Confirmation Tier: X402_PAY_REQUEST = Tier 1 (below auto-confirm threshold) or Tier 2
+- Packages: `@x402/fetch`, `@x402/evm`, `@x402/express`, `@x402/core`, `@semanticpay/wdk-wallet-evm-x402-facilitator`
+- WDK Integration: `@tetherto/wdk-wallet-evm` — `WalletAccountEvm` satisfies `ClientEvmSigner` directly
+- MCP Tools: `x402_fetch`, `x402_status`
+- IPC Messages: `x402_sign` (EIP-712 typed data → PolicyEngine → WDK sign), `x402_get_address`
+- Facilitator: SemanticPay hosted (`https://x402.semanticpay.io/`) or self-hosted
+- Server Endpoints: `/api/x402/services` (discovery), `/api/x402/price-feed`, `/api/x402/portfolio-analysis`, `/api/x402/strategy`
+- Confirmation Tier: Tier 1 (below auto-confirm threshold) or Tier 2
+
+## OIKOS ARCHITECTURE — IPC-BRIDGED SIGNER
+
+x402 requires EIP-3009 `transferWithAuthorization` signing. In Oikos, the WDK signer lives in the **Wallet Isolate** (Bare Runtime), but the x402 client runs in the **Brain** (Node.js). Process isolation is preserved via an IPC-bridged signer:
+
+```
+Brain (Node.js)                         Wallet Isolate (Bare Runtime)
+     |                                        |
+     |  @x402/fetch detects 402              |
+     |  → calls IPCEvmSigner.signTypedData() |
+     |                                        |
+     |  IPC: x402_sign {                     |
+     |    domain, types, message,            |
+     |    policyAmount, policyRecipient,     |
+     |    policyChain, policySymbol          |
+     |  } ──────────────────────────────────>|
+     |                                        |  PolicyEngine.evaluate()
+     |                                        |  ✓ budget check
+     |                                        |  ✓ amount check
+     |                                        |  ✓ cooldown check
+     |                                        |
+     |                                        |  WDK signTypedData()
+     |  { signature, approved: true }        |
+     |  <──────────────────────────────────── |
+     |                                        |
+     |  @x402/fetch retries with             |
+     |  X-PAYMENT header (signed auth)       |
+     |                                        |
+     |  Facilitator verifies + settles       |
+```
+
+**Key invariant**: The Brain NEVER sees private keys. It sends EIP-712 typed data to the Wallet Isolate via IPC. The Wallet Isolate evaluates policy (amount, recipient, daily budget) before signing. If policy rejects, the signing never happens.
 
 ## WHAT IT DOES
 
@@ -27,12 +62,12 @@ In the Oikos context, x402 enables two critical capabilities:
 
 ## WHAT IT DOES NOT DO
 
-- Does NOT handle non-EVM payments (x402 currently uses EIP-3009 on EVM chains)
-- Does NOT support Bitcoin L1, Lightning, or Spark payments (HTTP 402 is EVM-only for now)
-- Does NOT provide subscription billing or recurring payments
+- Does NOT handle non-EVM payments (x402 uses EIP-3009 on EVM chains; for Bitcoin use Spark Lightning)
+- Does NOT provide subscription billing or recurring payments (use Tempo MPP sessions for that)
 - Does NOT support fiat payments directly (use MoonPay to on-ramp first)
 - Does NOT custody funds — the facilitator submits signed authorizations, never holds tokens
 - Does NOT guarantee the quality or delivery of the purchased resource (that's the server's responsibility)
+- Does NOT bypass PolicyEngine — every x402 signing goes through the same policy evaluation as direct payments
 
 ---
 
@@ -451,3 +486,55 @@ Example services an Oikos agent could sell:
 The agent runs an Express server with x402 middleware. Other agents (or humans) pay per-request in USDT0. The agent earns USDT0 autonomously.
 
 This is the revenue model for sovereign agents: provide useful services → charge micropayments → accumulate USDT0 → reinvest in DeFi (Aave) or trade for BTC on the P2P marketplace.
+
+---
+
+## x402 vs MPP (TEMPO MACHINE PAYMENTS PROTOCOL)
+
+Tempo submitted MPP to the IETF as a competing spec for HTTP 402. Key differences:
+
+| Feature | x402 (Coinbase/WDK) | MPP (Tempo) |
+|---------|---------------------|-------------|
+| Payment methods | EVM only (EIP-3009) | Stablecoins, Stripe, Lightning, cards |
+| Settlement | Per-call on-chain | **Charge** (per-call) OR **Session** (payment channel) |
+| Signing | EIP-712 typed data | Passkey + scoped access key |
+| Scope | Crypto-native | Payment-method agnostic |
+| Facilitator | SemanticPay or self-hosted | Tempo infrastructure |
+| Relationship | Focused | *"You can express x402 in MPP"* |
+
+**Oikos uses x402** because:
+- Works with WDK signing natively (no adapter needed)
+- Tether recommends it for WDK agent wallets
+- Plasma/Stable chains are near-zero-fee for USDT0
+- Process isolation via IPC-bridged signer (stronger than Tempo's scoped access keys)
+- SemanticPay facilitator is free to use
+
+**Tempo's MPP session mode** (payment channels) is interesting for high-frequency API calls. Oikos may support it post-hackathon.
+
+---
+
+## MCP TOOL REFERENCE
+
+### x402_fetch
+Make a paid HTTP request to an x402-enabled endpoint.
+
+```json
+{"tool": "x402_fetch", "args": {"url": "https://api.example.com/data", "method": "GET", "maxPaymentUsd": 0.10}}
+```
+
+Returns: `{ ok, status, data, paid, paymentResult }`
+
+### x402_status
+Check x402 economics — spending, services paid, earnings.
+
+```json
+{"tool": "x402_status", "args": {}}
+```
+
+Returns: `{ enabled, economics: { totalSpent, totalEarned, requestsCompleted, requestsFailed, servicesPaid }, services }`
+
+### Service Discovery
+Other agents can discover your x402 services:
+```
+GET /api/x402/services → { protocol, version, network, asset, payTo, services: [...] }
+```

@@ -60,3 +60,10 @@ policies.json
 
 # Coverage
 coverage/
+
+# QVAC checkpoints and model files
+checkpoints/
+*.gguf
+
+# Guardrail PDFs (converted to .md in skills/)
+docs/guardrails/*.pdf

@@ -17,6 +17,7 @@ const VALID_REQUEST_TYPES = new Set([
     'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
     'query_rgb_assets', 'query_policy_check',
     'spark_create_invoice', 'spark_pay_invoice', 'spark_deposit_address',
+    'x402_sign', 'x402_get_address',
 ]);
 const VALID_YIELD_ACTIONS = new Set(['deposit', 'withdraw']);
 export function isValidTokenSymbol(value) {
@@ -108,6 +109,24 @@ export function validateIPCRequest(raw) {
         case 'query_policy':
         case 'query_audit':
             break; // Optional fields only
+        case 'x402_sign':
+            if (typeof payload['domain'] !== 'object' || payload['domain'] === null)
+                return null;
+            if (typeof payload['types'] !== 'object' || payload['types'] === null)
+                return null;
+            if (typeof payload['message'] !== 'object' || payload['message'] === null)
+                return null;
+            if (typeof payload['policyAmount'] !== 'string' || payload['policyAmount'].length === 0)
+                return null;
+            if (typeof payload['policyRecipient'] !== 'string')
+                return null;
+            if (!isValidChain(payload['policyChain']))
+                return null;
+            if (!isValidTokenSymbol(payload['policySymbol']))
+                return null;
+            break;
+        case 'x402_get_address':
+            break; // No payload needed — returns the EVM wallet address
     }
     // Extract optional source field from envelope
     const source = typeof obj['source'] === 'string' ? obj['source'] : undefined;

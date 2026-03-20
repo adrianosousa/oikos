@@ -99,6 +99,19 @@ export declare class WalletManager implements WalletOperations {
     sparkGetDepositAddress(): Promise<string>;
     /** Get the Spark account (cached at init time for performance). */
     private getSparkAccount;
+    /**
+     * Sign EIP-712 typed data using the EVM wallet account.
+     * Used by x402 for EIP-3009 transferWithAuthorization.
+     * @security Only called after PolicyEngine approval in wallet-isolate main.
+     */
+    signTypedData(typedData: {
+        domain: Record<string, unknown>;
+        types: Record<string, Array<{
+            name: string;
+            type: string;
+        }>>;
+        message: Record<string, unknown>;
+    }): Promise<string>;
     /** Get the WDK account for a given chain. */
     private getAccount;
     /**

@@ -1,50 +1,37 @@
 /**
  * x402 Client — Auto-pay for commodity services via HTTP 402.
  *
- * Intercepts HTTP 402 responses from x402-enabled services,
- * parses payment requirements, creates PaymentProposals that go
- * through the PolicyEngine, and retries with signed authorization.
+ * Uses @x402/fetch with an IPC-bridged signer to automatically:
+ * 1. Detect 402 Payment Required responses
+ * 2. Sign EIP-3009 transferWithAuthorization via Wallet Isolate IPC
+ * 3. Retry with the signed authorization
  *
  * Key invariant: x402 payments flow through the SAME PolicyEngine
- * as all other payment types. The client MUST NOT sign without policy approval.
+ * as all other payment types. The signer proxy sends typed data to
+ * the Wallet Isolate, which evaluates policy before signing.
  *
- * For hackathon: simplified implementation without @x402/fetch dependency.
- * Uses native fetch + manual 402 parsing. Production would use @x402/fetch.
+ * Supports: Plasma (eip155:9745), Stable (eip155:988), Sepolia (eip155:11155111)
+ * Asset: USD₮0 on Plasma/Stable, USDT on Sepolia
  */
 
 import type { WalletIPCClient } from '../ipc/client.js';
+import { IPCEvmSigner } from './signer.js';
 import type {
-  X402PaymentRequired,
   X402Service,
   X402Economics,
 } from './types.js';
-import type { TokenSymbol, Chain, PaymentProposal } from '../ipc/types.js';
-
-/** Map x402 network identifiers to our Chain type */
-const NETWORK_TO_CHAIN: Record<string, Chain> = {
-  'eip155:11155111': 'ethereum', // Sepolia
-  'eip155:1': 'ethereum',
-  'eip155:137': 'polygon',
-  'eip155:42161': 'arbitrum',
-  'eip155:9745': 'ethereum',  // Plasma → route through Ethereum for hackathon
-  'eip155:988': 'ethereum',   // Stable → route through Ethereum for hackathon
-};
-
-/** Map x402 asset identifiers to our TokenSymbol */
-const ASSET_TO_SYMBOL: Record<string, TokenSymbol> = {
-  'USDT': 'USDT',
-  'USD₮0': 'USDT',  // Plasma/Stable native stablecoin
-  'USAT': 'USAT',
-  'XAUT': 'XAUT',
-};
 
 export class X402Client {
   private wallet: WalletIPCClient;
+  private signer: IPCEvmSigner;
   private economics: X402Economics;
   private knownServices: X402Service[] = [];
+  private wrappedFetch: typeof fetch | null = null;
+  private initialized = false;
 
   constructor(wallet: WalletIPCClient) {
     this.wallet = wallet;
+    this.signer = new IPCEvmSigner(wallet);
     this.economics = {
       totalSpent: '0',
       totalEarned: '0',
@@ -55,111 +42,58 @@ export class X402Client {
   }
 
   /**
+   * Initialize the x402 client — must be called before fetch().
+   * Resolves the wallet address and sets up @x402/fetch wrapper.
+   */
+  async init(): Promise<void> {
+    if (this.initialized) return;
+
+    // Resolve wallet address for the signer
+    await this.signer.init();
+
+    try {
+      // Dynamic import of @x402 packages
+      const { x402Client, wrapFetchWithPayment } = await import('@x402/fetch');
+      const { registerExactEvmScheme } = await import('@x402/evm/exact/client');
+
+      const client = new x402Client();
+      registerExactEvmScheme(client, { signer: this.signer as unknown as Parameters<typeof registerExactEvmScheme>[1]['signer'] });
+
+      this.wrappedFetch = wrapFetchWithPayment(globalThis.fetch, client);
+      this.initialized = true;
+      console.error(`[x402] Client initialized — address: ${this.signer.address}`);
+    } catch (err) {
+      console.error('[x402] Failed to initialize @x402/fetch — falling back to manual mode:', err instanceof Error ? err.message : err);
+      this.initialized = true; // Mark as initialized even on failure — fallback mode
+    }
+  }
+
+  /**
    * Fetch a URL with x402 auto-pay.
    *
-   * 1. Makes initial request
-   * 2. If 402 returned, parses payment requirements
-   * 3. Creates PaymentProposal → sends to Wallet via IPC → PolicyEngine evaluates
-   * 4. If approved, retries with X-PAYMENT header
-   * 5. Returns the final response
+   * If @x402/fetch is available:
+   *   Uses proper EIP-3009 transferWithAuthorization flow via facilitator
+   *
+   * If @x402/fetch unavailable:
+   *   Falls back to manual 402 parsing + IPC payment proposal
    */
   async fetch(
     url: string,
     init?: RequestInit,
     maxPaymentUsd = 1.0,
   ): Promise<{ ok: boolean; status: number; data: unknown; paid: boolean; paymentResult?: string }> {
-    // Step 1: Initial request
-    let response: Response;
-    try {
-      response = await globalThis.fetch(url, init);
-    } catch (err) {
-      this.economics.requestsFailed++;
-      const message = err instanceof Error ? err.message : 'Fetch failed';
-      return { ok: false, status: 0, data: { error: message }, paid: false };
+    if (!this.initialized) await this.init();
+
+    // If @x402/fetch wrapper is available, use proper protocol
+    if (this.wrappedFetch) {
+      return this._fetchWithX402(url, init, maxPaymentUsd);
     }
 
-    // Not a 402 — return as-is
-    if (response.status !== 402) {
-      if (response.ok) this.economics.requestsCompleted++;
-      else this.economics.requestsFailed++;
-      const data = await this._parseBody(response);
-      return { ok: response.ok, status: response.status, data, paid: false };
-    }
-
-    // Step 2: Parse 402 payment requirements
-    const paymentReq = this._parse402(response);
-    if (!paymentReq) {
-      this.economics.requestsFailed++;
-      return { ok: false, status: 402, data: { error: 'Unparseable 402 response' }, paid: false };
-    }
-
-    // Safety check: don't pay more than maxPaymentUsd
-    const amountNum = Number(paymentReq.amount) / 1_000_000; // Assume 6 decimals
-    if (amountNum > maxPaymentUsd) {
-      this.economics.requestsFailed++;
-      return {
-        ok: false, status: 402,
-        data: { error: `Payment too high: $${amountNum} > max $${maxPaymentUsd}` },
-        paid: false,
-      };
-    }
-
-    // Step 3: Create payment proposal and send through PolicyEngine
-    const chain = NETWORK_TO_CHAIN[paymentReq.network] ?? 'ethereum';
-    const symbol = ASSET_TO_SYMBOL[paymentReq.asset] ?? 'USDT';
-
-    try {
-      const result = await this.wallet.proposalFromExternal('x402', 'payment', {
-        amount: paymentReq.amount,
-        symbol,
-        chain,
-        to: paymentReq.payTo,
-        reason: `x402 payment for ${url}`,
-        confidence: 0.95,
-        strategy: 'x402-auto-pay',
-        timestamp: Date.now(),
-      } as PaymentProposal);
-
-      if (result.status !== 'executed' || !result.txHash) {
-        this.economics.requestsFailed++;
-        const reason = result.status === 'rejected'
-          ? `Policy rejected: ${result.violations.join(', ')}`
-          : result.error ?? 'Unknown failure';
-        return { ok: false, status: 402, data: { error: reason }, paid: false, paymentResult: result.status };
-      }
-
-      // Step 4: Retry with payment proof
-      const retryResponse = await globalThis.fetch(url, {
-        ...init,
-        headers: {
-          ...(init?.headers ?? {}),
-          'X-PAYMENT': result.txHash,
-          'X-PAYMENT-NETWORK': paymentReq.network,
-        },
-      });
-
-      // Track economics
-      this._trackSpend(url, paymentReq.amount);
-
-      const data = await this._parseBody(retryResponse);
-      if (retryResponse.ok) this.economics.requestsCompleted++;
-      else this.economics.requestsFailed++;
-
-      return {
-        ok: retryResponse.ok,
-        status: retryResponse.status,
-        data,
-        paid: true,
-        paymentResult: result.txHash,
-      };
-    } catch (err) {
-      this.economics.requestsFailed++;
-      const message = err instanceof Error ? err.message : 'Payment failed';
-      return { ok: false, status: 402, data: { error: message }, paid: false };
-    }
+    // Fallback: manual 402 parsing via IPC payment proposal
+    return this._fetchManual(url, init, maxPaymentUsd);
   }
 
-  /** Register a known x402 service (for dashboard display and auto-discovery) */
+  /** Register a known x402 service (for dashboard display) */
   registerService(service: X402Service): void {
     if (!this.knownServices.find(s => s.url === service.url)) {
       this.knownServices.push(service);
@@ -176,34 +110,146 @@ export class X402Client {
     return [...this.knownServices];
   }
 
-  // ── Private ──
-
-  /** Parse a 402 response to extract payment requirements */
-  private _parse402(response: Response): X402PaymentRequired | null {
-    const header = response.headers.get('x-payment-required');
-    if (header) {
-      try {
-        return JSON.parse(header) as X402PaymentRequired;
-      } catch {
-        // Fall through
-      }
-    }
-    return null;
+  /** Get the signer's address */
+  getAddress(): string {
+    return this.signer.address;
   }
 
-  /** Track spending for economics */
-  private _trackSpend(url: string, amount: string): void {
-    const prev = BigInt(this.economics.totalSpent);
-    const spent = BigInt(amount);
-    this.economics.totalSpent = (prev + spent).toString();
+  // ── Proper @x402/fetch flow ──
 
+  private async _fetchWithX402(
+    url: string,
+    init?: RequestInit,
+    _maxPaymentUsd?: number,
+  ): Promise<{ ok: boolean; status: number; data: unknown; paid: boolean; paymentResult?: string }> {
+    try {
+      const response = await this.wrappedFetch!(url, init);
+      const data = await this._parseBody(response);
+
+      if (response.ok) {
+        this.economics.requestsCompleted++;
+        // Check if payment was made (x-payment-response header)
+        const paymentResponse = response.headers.get('x-payment-response');
+        if (paymentResponse) {
+          this._trackSpend(url, '0'); // TODO: extract actual amount from header
+          return { ok: true, status: response.status, data, paid: true, paymentResult: paymentResponse };
+        }
+        return { ok: true, status: response.status, data, paid: false };
+      }
+
+      // If still 402 after wrapper attempted payment, the signing was rejected by policy
+      if (response.status === 402) {
+        this.economics.requestsFailed++;
+        return { ok: false, status: 402, data, paid: false, paymentResult: 'policy_rejected' };
+      }
+
+      this.economics.requestsFailed++;
+      return { ok: false, status: response.status, data, paid: false };
+    } catch (err) {
+      this.economics.requestsFailed++;
+      const message = err instanceof Error ? err.message : 'x402 fetch failed';
+      return { ok: false, status: 0, data: { error: message }, paid: false };
+    }
+  }
+
+  // ── Manual fallback (no @x402/fetch) ──
+
+  private async _fetchManual(
+    url: string,
+    init?: RequestInit,
+    maxPaymentUsd = 1.0,
+  ): Promise<{ ok: boolean; status: number; data: unknown; paid: boolean; paymentResult?: string }> {
+    let response: Response;
+    try {
+      response = await globalThis.fetch(url, init);
+    } catch (err) {
+      this.economics.requestsFailed++;
+      return { ok: false, status: 0, data: { error: err instanceof Error ? err.message : 'Fetch failed' }, paid: false };
+    }
+
+    if (response.status !== 402) {
+      if (response.ok) this.economics.requestsCompleted++;
+      else this.economics.requestsFailed++;
+      return { ok: response.ok, status: response.status, data: await this._parseBody(response), paid: false };
+    }
+
+    // Parse 402 body for payment requirements
+    const body = await this._parseBody(response) as Record<string, unknown>;
+    const accepts = (body['accepts'] as Array<Record<string, unknown>> | undefined) ?? [];
+    if (accepts.length === 0) {
+      this.economics.requestsFailed++;
+      return { ok: false, status: 402, data: { error: 'No payment options in 402 response' }, paid: false };
+    }
+
+    const option = accepts[0]!;
+    const price = option['price'] as Record<string, unknown> | undefined;
+    const amount = String(price?.['amount'] ?? option['maxAmountRequired'] ?? '0');
+    const amountNum = Number(amount) / 1_000_000;
+    if (amountNum > maxPaymentUsd) {
+      this.economics.requestsFailed++;
+      return { ok: false, status: 402, data: { error: `Payment too high: $${amountNum} > max $${maxPaymentUsd}` }, paid: false };
+    }
+
+    // Route through IPC as a payment proposal (fallback mode)
+    try {
+      const payTo = String(option['payTo'] ?? '');
+      const network = String(option['network'] ?? '');
+      const NETWORK_TO_CHAIN: Record<string, string> = {
+        'eip155:11155111': 'ethereum', 'eip155:1': 'ethereum',
+        'eip155:137': 'polygon', 'eip155:42161': 'arbitrum',
+        'eip155:9745': 'ethereum', 'eip155:988': 'ethereum',
+      };
+      const chain = NETWORK_TO_CHAIN[network] ?? 'ethereum';
+
+      const proposal = {
+        amount,
+        symbol: 'USDT' as const,
+        chain: chain as 'ethereum',
+        to: payTo,
+        reason: `x402 payment for ${url}`,
+        confidence: 0.95,
+        strategy: 'x402-auto-pay',
+        timestamp: Date.now(),
+      };
+      const result = await this.wallet.proposalFromExternal('x402', 'payment', proposal as unknown as import('../ipc/types.js').ProposalCommon);
+
+      if (result.status !== 'executed' || !result.txHash) {
+        this.economics.requestsFailed++;
+        return { ok: false, status: 402, data: { error: result.error ?? 'Policy rejected' }, paid: false };
+      }
+
+      // Retry with payment proof
+      const retryResponse = await globalThis.fetch(url, {
+        ...init,
+        headers: { ...(init?.headers ?? {}), 'X-PAYMENT': result.txHash },
+      });
+      const data = await this._parseBody(retryResponse);
+      this._trackSpend(url, amount);
+      if (retryResponse.ok) this.economics.requestsCompleted++;
+      else this.economics.requestsFailed++;
+      return { ok: retryResponse.ok, status: retryResponse.status, data, paid: true, paymentResult: result.txHash };
+    } catch (err) {
+      this.economics.requestsFailed++;
+      return { ok: false, status: 402, data: { error: err instanceof Error ? err.message : 'Payment failed' }, paid: false };
+    }
+  }
+
+  // ── Helpers ──
+
+  private _trackSpend(url: string, amount: string): void {
+    try {
+      const prev = BigInt(this.economics.totalSpent);
+      const spent = BigInt(amount);
+      this.economics.totalSpent = (prev + spent).toString();
+    } catch {
+      // amount might not be a valid BigInt — ignore
+    }
     const domain = new URL(url).hostname;
     if (!this.economics.servicesPaid.includes(domain)) {
       this.economics.servicesPaid.push(domain);
     }
   }
 
-  /** Parse response body safely */
   private async _parseBody(response: Response): Promise<unknown> {
     const contentType = response.headers.get('content-type') ?? '';
     if (contentType.includes('application/json')) {

@@ -320,22 +320,44 @@ async function updateWealth () {
     }).join('')
   }
 
-  // Recent transactions
+  // Recent transactions — combine audit entries (outgoing) + funded balances (incoming)
   var txEl = document.getElementById('w-transactions')
+  var txItems = []
+
+  // Outgoing: from audit log (proposals the agent executed or rejected)
   if (audit && audit.entries) {
-    var txItems = audit.entries.filter(function (e) { return e.status === 'executed' || e.status === 'rejected' })
-    txEl.innerHTML = txItems.length > 0
-      ? txItems.slice(0, 8).map(function (e) {
-        var type = (e.proposalType || 'payment').toLowerCase()
-        var status = (e.status || '').toLowerCase()
-        var amount = e.proposal ? (e.proposal.amount || '') : ''
-        var sym = e.proposal ? (e.proposal.symbol || '') : ''
-        var d = DECS[sym] || 6
-        var humanAmt = amount ? (parseInt(amount, 10) / Math.pow(10, d)).toFixed(d <= 6 ? 2 : 6) : ''
-        return '<li class="feed-item"><div class="feed-indicator ' + (status === 'executed' ? 'fi-success' : 'fi-rejected') + '"></div><div class="feed-body"><div class="feed-summary">' + opBadge(type) + ' ' + status.toUpperCase() + ' ' + humanAmt + ' ' + sym + '</div></div><div class="feed-time">' + timeAgo(e.timestamp) + '</div></li>'
-      }).join('')
-      : '<li class="empty">No transactions yet</li>'
+    audit.entries.filter(function (e) { return e.status === 'executed' || e.status === 'rejected' }).forEach(function (e) {
+      var type = (e.proposalType || 'payment').toLowerCase()
+      var status = (e.status || '').toLowerCase()
+      var amount = e.proposal ? (e.proposal.amount || '') : ''
+      var sym = e.proposal ? (e.proposal.symbol || '') : ''
+      var d = DECS[sym] || 6
+      var humanAmt = amount ? (parseInt(amount, 10) / Math.pow(10, d)).toFixed(d <= 6 ? 2 : 6) : ''
+      txItems.push({
+        ts: e.timestamp || Date.now(),
+        html: '<li class="feed-item"><div class="feed-indicator ' + (status === 'executed' ? 'fi-success' : 'fi-rejected') + '"></div><div class="feed-body"><div class="feed-summary">' + opBadge(type) + ' ' + status.toUpperCase() + ' ' + humanAmt + ' ' + sym + '</div></div><div class="feed-time">' + timeAgo(e.timestamp) + '</div></li>'
+      })
+    })
   }
+
+  // Incoming: funded balances appear as "received" entries (the wallet was funded externally)
+  if (balances && balances.balances) {
+    var fundedItems = allocate(balances.balances).items
+    fundedItems.forEach(function (item) {
+      var amt = parseFloat(item.formatted) || 0
+      if (amt > 0) {
+        var usdStr = item.usd >= 1 ? '$' + item.usd.toFixed(2) : item.usd > 0 ? '$' + item.usd.toFixed(4) : ''
+        txItems.push({
+          ts: new Date().toISOString(),
+          html: '<li class="feed-item"><div class="feed-indicator fi-success"></div><div class="feed-body"><div class="feed-summary"><span style="background:#1a472a;color:#4ade80;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px;">FUNDED</span> ' + item.formatted + ' <span style="color:var(--muted);font-size:11px;">on ' + item.chain + '</span>' + (usdStr ? ' <span style="color:var(--green);font-size:11px;">' + usdStr + '</span>' : '') + '</div></div></li>'
+        })
+      }
+    })
+  }
+
+  txEl.innerHTML = txItems.length > 0
+    ? txItems.slice(0, 10).map(function (t) { return t.html }).join('')
+    : '<li class="empty">No transactions yet</li>'
 }
 
 /* ═══ UPDATE: Swarm ═══ */

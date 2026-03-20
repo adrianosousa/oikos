@@ -273,6 +273,70 @@ async function handleRequest(request, executor, wallet, policy, audit, responder
                     };
                     break;
                 }
+                // ── x402 EIP-712 Signing (policy-enforced) ──
+                case 'x402_sign': {
+                    const req = request.payload;
+                    // Policy check: treat x402 signing as a payment proposal
+                    const fakeProposal = {
+                        amount: req.policyAmount,
+                        symbol: req.policySymbol,
+                        chain: req.policyChain,
+                        reason: `x402 EIP-3009 authorization to ${req.policyRecipient}`,
+                        confidence: 0.95,
+                        strategy: 'x402-auto-pay',
+                        timestamp: Date.now(),
+                    };
+                    const policyResult = policy.evaluate(fakeProposal);
+                    if (!policyResult.approved) {
+                        audit.logPolicyEnforcement(fakeProposal, policyResult.violations, 'x402_sign', 'x402');
+                        response = {
+                            id: request.id,
+                            type: 'x402_signature',
+                            payload: { signature: '', error: `Policy rejected: ${policyResult.violations.join(', ')}`, approved: false },
+                        };
+                        break;
+                    }
+                    // Sign the typed data with WDK
+                    const mgr = wallet;
+                    if (typeof mgr.signTypedData !== 'function') {
+                        response = { id: request.id, type: 'error', payload: { message: 'EVM typed data signing not available (mock wallet)' } };
+                        break;
+                    }
+                    try {
+                        const signature = await mgr.signTypedData({
+                            domain: req.domain,
+                            types: req.types,
+                            message: req.message,
+                        });
+                        // Record execution in policy state + audit
+                        policy.recordExecution(fakeProposal);
+                        audit.logExecutionSuccess(fakeProposal, `sig:${signature.slice(0, 16)}...`, 'x402_sign', 'x402');
+                        response = {
+                            id: request.id,
+                            type: 'x402_signature',
+                            payload: { signature, approved: true },
+                        };
+                    }
+                    catch (err) {
+                        const message = err instanceof Error ? err.message : 'Signing failed';
+                        audit.logExecutionFailure(fakeProposal, message, 'x402_sign', 'x402');
+                        response = {
+                            id: request.id,
+                            type: 'x402_signature',
+                            payload: { signature: '', error: message, approved: false },
+                        };
+                    }
+                    break;
+                }
+                case 'x402_get_address': {
+                    const address = await wallet.getAddress('ethereum');
+                    response = {
+                        id: request.id,
+                        type: 'x402_address',
+                        payload: { address },
+                    };
+                    break;
+                }
                 default: {
                     response = {
                         id: request.id,

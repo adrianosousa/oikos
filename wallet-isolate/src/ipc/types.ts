@@ -148,6 +148,29 @@ export interface SparkPayInvoiceRequest {
   maxFeeSats?: number;
 }
 
+// ── x402 EIP-712 Signing Types ──
+
+/** EIP-712 typed data for x402 signing (transferWithAuthorization) */
+export interface X402SignRequest {
+  domain: {
+    name?: string;
+    version?: string;
+    chainId?: number;
+    verifyingContract?: string;
+    salt?: string;
+  };
+  types: Record<string, Array<{ name: string; type: string }>>;
+  message: Record<string, unknown>;
+  /** Amount in token smallest units — used for policy evaluation */
+  policyAmount: string;
+  /** Recipient address — used for policy evaluation */
+  policyRecipient: string;
+  /** Chain for policy evaluation */
+  policyChain: Chain;
+  /** Symbol for policy evaluation */
+  policySymbol: TokenSymbol;
+}
+
 export type IPCRequestType =
   | 'propose_payment'
   | 'propose_swap'
@@ -168,7 +191,9 @@ export type IPCRequestType =
   | 'query_policy_check'
   | 'spark_create_invoice'
   | 'spark_pay_invoice'
-  | 'spark_deposit_address';
+  | 'spark_deposit_address'
+  | 'x402_sign'
+  | 'x402_get_address';
 
 /** Dry-run policy check result — evaluate without executing or recording */
 export interface PolicyCheckResult {
@@ -185,7 +210,8 @@ export interface IPCRequest {
     | RGBIssueProposal | RGBTransferProposal
     | IdentityRegisterRequest | IdentitySetWalletRequest
     | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery
-    | SparkInvoiceRequest | SparkPayInvoiceRequest;
+    | SparkInvoiceRequest | SparkPayInvoiceRequest
+    | X402SignRequest;
 }
 
 // ── Wallet → Brain Responses ──
@@ -254,6 +280,8 @@ export type IPCResponseType =
   | 'spark_invoice'
   | 'spark_pay_result'
   | 'spark_deposit'
+  | 'x402_signature'
+  | 'x402_address'
   | 'error';
 
 export interface IPCResponse {
@@ -299,6 +327,7 @@ const VALID_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
   'query_rgb_assets', 'query_policy_check',
   'spark_create_invoice', 'spark_pay_invoice', 'spark_deposit_address',
+  'x402_sign', 'x402_get_address',
 ]);
 const VALID_YIELD_ACTIONS: ReadonlySet<string> = new Set(['deposit', 'withdraw']);
 
@@ -378,6 +407,17 @@ export function validateIPCRequest(raw: unknown): IPCRequest | null {
     case 'query_policy':
     case 'query_audit':
       break; // Optional fields only
+    case 'x402_sign':
+      if (typeof payload['domain'] !== 'object' || payload['domain'] === null) return null;
+      if (typeof payload['types'] !== 'object' || payload['types'] === null) return null;
+      if (typeof payload['message'] !== 'object' || payload['message'] === null) return null;
+      if (typeof payload['policyAmount'] !== 'string' || payload['policyAmount'].length === 0) return null;
+      if (typeof payload['policyRecipient'] !== 'string') return null;
+      if (!isValidChain(payload['policyChain'])) return null;
+      if (!isValidTokenSymbol(payload['policySymbol'])) return null;
+      break;
+    case 'x402_get_address':
+      break; // No payload needed — returns the EVM wallet address
   }
 
   // Extract optional source field from envelope
