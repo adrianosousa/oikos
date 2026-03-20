@@ -181,7 +181,7 @@ export class WalletManager implements WalletOperations {
             } else {
               this.sparkAddress = String(rawAddr);
             }
-            console.log(`[wallet-isolate] Spark wallet initialized (${config.network || 'MAINNET'}) addr: ${this.sparkAddress.slice(0, 20)}...`);
+            console.error(`[wallet-isolate] Spark wallet initialized (${config.network || 'MAINNET'}) addr: ${this.sparkAddress.slice(0, 20)}...`);
           } catch (accErr) {
             console.error('[wallet-isolate] Spark getAccount failed:', accErr instanceof Error ? accErr.message : accErr);
           }
