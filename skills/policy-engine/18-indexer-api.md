@@ -20,6 +20,8 @@ x-api-key: your-api-key-here
 
 Configure via `WDK_INDEXER_API_KEY` environment variable.
 
+> **Note**: The indexer API key is **optional** for basic Oikos operation. The wallet functions without it — balances are read from the WDK wallet directly. The indexer is useful for cross-checking on-chain state, verifying counterparty balances, and auditing transaction history. If not configured, indexer-dependent features gracefully degrade.
+
 ## Base URL
 
 ```

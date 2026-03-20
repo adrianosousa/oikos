@@ -34,7 +34,7 @@ Agent (you) ──MCP──→ Dashboard ──IPC──→ Wallet Isolate (keys
 
 You NEVER touch keys. You propose, the wallet evaluates policy and signs.
 
-## Tools (26 total)
+## Tools (28 total, 2 planned)
 
 ### Read-Only (always safe, no policy check)
 
@@ -65,6 +65,8 @@ You NEVER touch keys. You propose, the wallet evaluates policy and signs.
 
 `simulate_proposal` is your safety net. Always use it before high-value operations. Returns `{ wouldApprove, violations[] }`.
 
+> **Note**: The policy-engine docs reference `QUOTE_SWAP`, `QUOTE_BRIDGE` etc. — those are *internal* ActionRequest types used by the engine. As an MCP agent, use `simulate_proposal` for all pre-flight checks. The MCP server translates to the appropriate internal type.
+
 ### Swarm Marketplace
 
 | Tool | What it does | Required args |
@@ -77,7 +79,14 @@ You NEVER touch keys. You propose, the wallet evaluates policy and signs.
 | `swarm_deliver_result` | Deliver file/content after acceptance | `announcementId`, `result`, `filename` (optional) |
 | `swarm_cancel_room` | Cancel room without settling | `announcementId` |
 
-### RGB (Bitcoin-native tokens)
+### x402 Machine Payments
+
+| Tool | What it does | Required args |
+|------|-------------|---------------|
+| `x402_fetch` | Fetch URL with auto-pay (HTTP 402) | `url`, `method` (optional), `body` (optional) |
+| `x402_status` | Economics: total spent, services paid | — |
+
+### RGB (Bitcoin-native tokens) *(planned — not yet available via MCP)*
 
 | Tool | What it does | Required args |
 |------|-------------|---------------|

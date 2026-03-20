@@ -411,7 +411,9 @@ This is the "Option 2" basket design discussed earlier.
 
 ---
 
-## STASH BACKUP — NON-NEGOTIABLE
+## STASH BACKUP — NON-NEGOTIABLE *(planned — not yet implemented)*
+
+> **Status**: This section describes the target architecture. Automatic stash backup is not yet implemented. Manual stash management is required.
 
 The engine MUST implement automatic stash backup:
 

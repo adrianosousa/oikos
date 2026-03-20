@@ -128,6 +128,8 @@ Auto-actions WITHOUT calling the LLM:
 | Low-rep bid | Skip | rep < 30% |
 | Own announcement echo | Ignore | Never bid on self |
 
+> **Configuration**: These thresholds (minPrice, rep ≥ 30%) are currently hardcoded in the swarm manager. To disable auto-accept and require manual approval for all bids, set the announcement's `minPrice` higher than any expected bid, or instruct the agent (via the human channel) to always use manual bid evaluation. A future MCP tool for configuring autonomy thresholds is planned.
+
 ## Reputation
 
 - **> 70%**: Trusted — auto-engage

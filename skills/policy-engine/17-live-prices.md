@@ -13,10 +13,16 @@ Prices: BTC=$73,928, ETH=$2,310, XAUT=$4,950, USDT=$1.00, USAT=$1.00
 ```
 
 This means:
-- The agent ALWAYS has access to current prices
+- The Oikos brain adapter agent ALWAYS has access to current prices (injected into context)
 - No tool call needed for price checks — prices are in the context
 - Prices update every 10 seconds (Bitfinex feed with 5-min cache)
-- The agent should USE these prices for calculations, never say "I don't have real-time data"
+
+**For external agents (OpenClaw, Claude, Cursor) using MCP**: Prices are NOT injected into your context. Query the dashboard API instead:
+```
+GET http://HOST:3420/api/prices
+GET http://HOST:3420/api/prices/history/:symbol
+```
+Do NOT assume you have live prices unless you see them in your system prompt. If unsure, query the API.
 
 ## Supported Assets (Bitfinex Feed)
 

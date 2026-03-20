@@ -21,9 +21,11 @@ metadata:
   hackathon: tether-wdk-edition-2025
 ---
 
-# OIKOS POLICY ENGINE — Master Architecture Document
+# OIKOS POLICY ENGINE — Internal Architecture Reference
 
-> **Purpose**: This document defines the deterministic policy engine that governs all wallet and DeFi operations in Oikos. It is the single source of truth for how an agent — OpenClaw, Ollama, local quantized model, or Claude — interacts with the WDK layer. The agent's LLM is the *interpreter*, never the *decision-maker*. Every operation that touches funds follows a typed, validated, deterministic flow.
+> **Note for agents**: This is an **internal architecture reference** documenting how the policy engine works under the hood. As an agent, you interact with Oikos through **MCP tools** (see `wdk-wallet/SKILL.md`), NOT through ActionRequest objects directly. The MCP server translates your tool calls into ActionRequests internally. Read this document to understand *why* things work the way they do, but use MCP tools for all operations.
+
+> **Purpose**: This document defines the deterministic policy engine that governs all wallet and DeFi operations in Oikos. The agent's LLM is the *interpreter*, never the *decision-maker*. Every operation that touches funds follows a typed, validated, deterministic flow.
 
 > **Design Principle**: Make the system so well-railed that even the dumbest model can use it safely.
 
@@ -224,6 +226,8 @@ IF role == SELLER:
 CRITICAL: The agent's role is set in its config file, NOT inferred from conversation.
 ```
 
+> **Current status**: Role enforcement is defined but **not yet enforced by the install process**. The default `policies.json` does not include a `role` field, which means agents operate without role restrictions. In practice, agents on the swarm can act as both buyer and seller per-announcement (the `category` field on each `swarm_announce` call determines the role per-deal). Strict role enforcement is a future feature for production deployments.
+
 ## 3. ERROR TAXONOMY — TEMPLATED RESPONSES
 
 The LLM does NOT compose error messages. It selects from these templates and fills in the variables.
@@ -277,12 +281,12 @@ Each module has a dedicated skill file with full details. The master file keeps 
 | EVM AA (4337) | `@tetherto/wdk-wallet-evm-erc-4337` | `skills/03-wallet-evm-aa.md` | Gasless transactions via bundler/paymaster |
 | Solana Wallet | `@tetherto/wdk-wallet-solana` | `skills/04-wallet-solana.md` | GET_BALANCE, GET_ADDRESS, SEND_TRANSACTION (SOL) |
 | Spark Wallet | `@tetherto/wdk-wallet-spark` | `skills/05-wallet-spark.md` | Lightning payments, L1-Spark bridge |
-| TON Wallet | `@tetherto/wdk-wallet-ton` | `skills/06-wallet-ton.md` | TON native + Jetton transfers |
-| TON Gasless | `@tetherto/wdk-wallet-ton-gasless` | `skills/07-wallet-ton-gasless.md` | Paymaster-based gasless TON transfers |
-| TRON Wallet | `@tetherto/wdk-wallet-tron` | `skills/08-wallet-tron.md` | TRX + TRC20 transfers |
-| TRON Gas-Free | `@tetherto/wdk-wallet-tron-gasfree` | `skills/09-wallet-tron-gasfree.md` | Gas-free TRC20 transfers |
+| TON Wallet | `@tetherto/wdk-wallet-ton` | *planned* | TON native + Jetton transfers |
+| TON Gasless | `@tetherto/wdk-wallet-ton-gasless` | *planned* | Paymaster-based gasless TON transfers |
+| TRON Wallet | `@tetherto/wdk-wallet-tron` | *planned* | TRX + TRC20 transfers |
+| TRON Gas-Free | `@tetherto/wdk-wallet-tron-gasfree` | *planned* | Gas-free TRC20 transfers |
 | Velora Swap | `@tetherto/wdk-protocol-swap-velora-evm` | `skills/10-swap-velora.md` | QUOTE_SWAP, SWAP |
-| StonFi Swap (TON) | `@tetherto/wdk-protocol-swap-stonfi-ton` | `skills/10b-swap-stonfi-ton.md` | QUOTE_SWAP_TON, SWAP_TON |
+| StonFi Swap (TON) | `@tetherto/wdk-protocol-swap-stonfi-ton` | *planned* | QUOTE_SWAP_TON, SWAP_TON |
 | USDT0 Bridge | `@tetherto/wdk-protocol-bridge-usdt0-evm` | `skills/11-bridge-usdt0.md` | QUOTE_BRIDGE, BRIDGE |
 | Aave Lending | `@tetherto/wdk-protocol-lending-aave-evm` | `skills/12-lending-aave.md` | SUPPLY, WITHDRAW, BORROW, REPAY, GET_ACCOUNT_DATA |
 | MoonPay Fiat | `@tetherto/wdk-protocol-fiat-moonpay` | `skills/13-fiat-moonpay.md` | GET_BUY_URL, GET_SELL_URL |
