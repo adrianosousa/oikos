@@ -62,30 +62,24 @@ The installer will:
 - Copy Oikos skills to your OpenClaw workspace (`~/.openclaw/workspace/skills/`)
 - Configure `.env`
 
-### Step 2 — Wallet Seed (CRITICAL — ask the human for a passphrase)
-
-Ask the human:
-
-> **I need a passphrase to encrypt your wallet seed.**
-> Choose something strong (12+ characters). This passphrase is the ONLY way to recover your wallet.
-> **Do NOT tell me the passphrase.** Enter it directly when prompted.
-
-Then run:
+### Step 2 — Generate Wallet Seed
 
 ```bash
-cd "$HOME/.oikos/repo" && node scripts/patch-wdk.js && node scripts/seed-setup.mjs --passphrase "HUMAN_ENTERS_THIS" --name "YOUR_NAME"
+cd "$HOME/.oikos/repo" && node scripts/patch-wdk.js && node scripts/seed-setup.mjs --name "YOUR_NAME"
 ```
 
-**IMPORTANT:** The human must type their passphrase directly into the command. You (the agent) must NEVER know, log, or store the passphrase. The seed is encrypted with XSalsa20-Poly1305 (PBKDF2-SHA256, 100k iterations) via WDK Secret Manager. No plaintext seed touches disk — only encrypted files (`.oikos-seed.enc`, `.oikos-salt`).
+This generates a 24-word BIP39 seed (via WDK) and stores it in the server's `.env`.
 
 ### Step 3 — Start wallet
 
-**Real wallet (testnet, with funds):**
+Ask the human: **real wallet** (testnet, actual blockchain) or **mock** (demo, no real funds)?
+
+**Real wallet (testnet):**
 ```bash
 cd "$HOME/.oikos/repo" && ./scripts/start-live.sh --name "YOUR_NAME" --real-wallet --host 0.0.0.0 &
 ```
 
-**Mock wallet (demo, no real funds):**
+**Mock wallet (demo):**
 ```bash
 cd "$HOME/.oikos/repo" && ./scripts/start-live.sh --name "YOUR_NAME" --host 0.0.0.0 &
 ```
@@ -260,6 +254,13 @@ Quick reference:
 - **Do NOT read seed backup files**: They contain sensitive material not for agents.
 - **Use absolute paths for CLI**: `"$HOME/.oikos/bin/oikos"` — not `oikos` (PATH may not be set).
 - **Dashboard defaults to localhost**: Use `--host 0.0.0.0` for remote access.
+
+## Security Rules — YOU MUST FOLLOW THESE
+
+1. **NEVER handle passphrases or seeds.** If the human wants to encrypt their seed, tell them to SSH into the server and run the command themselves. Do NOT offer to run it for them. Do NOT accept a passphrase via chat.
+2. **NEVER read seed backup files** (`.oikos-seed-backup.txt`, `.env` seed values). They contain sensitive material.
+3. **NEVER transmit seed phrases, private keys, or passphrases** over any channel (Telegram, Hyperswarm, logs, anywhere).
+4. **If the human sends you a passphrase or seed unprompted**, tell them to change it immediately and that the old one is compromised.
 
 ## Security Model
 
