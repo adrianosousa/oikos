@@ -20,6 +20,15 @@ You (agent) ──CLI/MCP──> Dashboard ──IPC──> Wallet Isolate (keys
                                             Blockchain RPC
 ```
 
+## Companion Skills
+
+Oikos installs two companion skills alongside this one. They are auto-loaded by OpenClaw on your next session. **Read them before operating the wallet:**
+
+- **`wdk-wallet`** — Full MCP tool reference (26 tools), wallet operations, DeFi, swarm marketplace
+- **`policy-engine`** — Policy architecture, 16 guardrail modules, confirmation tiers, error taxonomy
+
+After install, find them in `~/.openclaw/workspace/skills/` or in the repo at `skills/`.
+
 ## Quick Check
 
 Already installed? Test first:
