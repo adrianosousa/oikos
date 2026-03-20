@@ -135,7 +135,14 @@ Ask the human:
 >
 > Want to adjust these? I can open the dashboard for you.
 
-If they want to adjust, open the dashboard at `http://127.0.0.1:3420` — the Policy Engine tab shows all limits and controls.
+If they want to adjust, update the policy file and **restart the wallet** — policies are loaded at startup and are immutable at runtime:
+
+```bash
+# Edit policies.json, then restart:
+cd "$HOME/.oikos/repo" && npm run live -- --name "YOUR_NAME" --real-wallet --host 0.0.0.0 &
+```
+
+**IMPORTANT:** After ANY policy change, the wallet MUST be restarted. Policies are immutable for the lifetime of the process — this is a security guarantee, not a bug.
 
 ### After Setup
 
@@ -249,7 +256,7 @@ Quick reference:
 - **Bridges are async**: L2→L1 can take minutes.
 - **swarm_announce categories**: Only `buyer`, `seller`, `auction`.
 - **Seeds/keys are inaccessible**: Exist only in the Wallet Isolate. You will never see them.
-- **Policies are immutable at runtime**: Only human owner can adjust (Oikos App or dashboard).
+- **Policies are immutable at runtime**: Loaded once at startup. To change policies, edit `policies.json` and **restart the wallet**. This is a security guarantee.
 - **Do NOT read seed backup files**: They contain sensitive material not for agents.
 - **Use absolute paths for CLI**: `"$HOME/.oikos/bin/oikos"` — not `oikos` (PATH may not be set).
 - **Dashboard defaults to localhost**: Use `--host 0.0.0.0` for remote access.
