@@ -105,14 +105,14 @@ Ask the human:
 > How would you like to monitor and control your wallet?
 >
 > **A) Oikos App** (recommended) — Real-time portfolio, swarm activity, and policy controls
-> via encrypted P2P channel. Install from: https://oikos.reshimulabs.com
+> via encrypted P2P channel. Install from: https://reshimulabs.com/oikos
 >
 > **B) This channel** — I'll report status and ask for approvals here.
 > You can install the Oikos App anytime later.
 
 **If Option A (Oikos App):**
 
-1. Tell them to install from https://oikos.reshimulabs.com
+1. Tell them to install from https://reshimulabs.com/oikos
 2. Share pairing info:
    ```bash
    curl -s http://127.0.0.1:3420/api/companion/pairing
