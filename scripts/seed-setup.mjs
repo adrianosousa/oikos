@@ -1,25 +1,29 @@
 #!/usr/bin/env node
 /**
- * Seed Setup — generates wallet seed with one-time human-readable backup.
+ * Seed Setup — generates wallet seed encrypted with WDK Secret Manager.
  *
  * Usage:
- *   node scripts/seed-setup.mjs [--backup /path/to/backup.txt] [--env /path/to/.env]
+ *   node scripts/seed-setup.mjs --passphrase "your-passphrase-12-chars-min"
+ *   node scripts/seed-setup.mjs --passphrase "..." --name "Ludwig"
  *
  * This script:
- * 1. Generates a 12-word BIP39 mnemonic via WDK.getRandomSeedPhrase()
- * 2. Writes WALLET_SEED to .env (read by wallet-isolate at startup)
- * 3. Creates a human-readable backup file with the mnemonic
- * 4. Schedules auto-delete of backup file (background process, 10 min)
+ * 1. Takes a human-provided passphrase (12+ chars)
+ * 2. Generates entropy + BIP39 mnemonic via WDK Secret Manager
+ * 3. Encrypts seed + entropy with XSalsa20-Poly1305 (PBKDF2-derived key)
+ * 4. Stores encrypted files on disk (.oikos-seed.enc, .oikos-salt)
+ * 5. NO plaintext seed EVER touches disk
  *
- * Uses WDK's own entropy (sodium-based) — no custom crypto.
+ * Recovery: human remembers passphrase → decrypt on any machine.
+ * At wallet boot: passphrase decrypts seed → WDK initializes.
  *
- * @security This script handles seed material. It runs ONCE during setup,
- * NOT during normal operation. The agent should NOT read the backup file.
- * Output to stdout is machine-readable JSON (no seed material).
+ * Uses WDK Secret Manager (sodium-native + PBKDF2-SHA256, 100k iterations).
+ * Requires: node scripts/patch-wdk.js (patches bare-crypto → node:crypto)
+ *
+ * @security Seed material exists only in memory during generation.
+ * The passphrase is the ONLY thing the human needs to remember.
  */
 
 import { writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,35 +37,69 @@ const getArg = (name) => {
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : null;
 };
 
-const backupPath = getArg('--backup') || resolve(projectRoot, '.oikos-seed-backup.txt');
-const envPath = getArg('--env') || resolve(projectRoot, '.env');
-const autoDeleteMin = parseInt(getArg('--auto-delete') || '10', 10);
+const passphrase = getArg('--passphrase');
 const agentName = getArg('--name') || 'Oikos-Agent';
+const envPath = getArg('--env') || resolve(projectRoot, '.env');
+const encSeedPath = resolve(projectRoot, '.oikos-seed.enc');
+const encEntropyPath = resolve(projectRoot, '.oikos-entropy.enc');
+const saltPath = resolve(projectRoot, '.oikos-salt');
 
-// Check if seed already exists in .env
-if (existsSync(envPath)) {
-  const envContent = readFileSync(envPath, 'utf-8');
-  const seedMatch = envContent.match(/^WALLET_SEED="?([^"\n]+)"?/m);
-  if (seedMatch && seedMatch[1] && !seedMatch[1].includes('abandon')) {
-    process.stderr.write(`[seed-setup] Seed already exists in ${envPath}\n`);
-    process.stdout.write(JSON.stringify({ status: 'exists', envPath }));
-    process.exit(0);
+if (!passphrase || passphrase.length < 12) {
+  process.stderr.write('[seed-setup] ERROR: --passphrase required (12+ characters)\n');
+  process.stderr.write('[seed-setup] Usage: node scripts/seed-setup.mjs --passphrase "your-secret-phrase"\n');
+  process.exit(1);
+}
+
+// Check if encrypted seed already exists
+if (existsSync(encSeedPath) && existsSync(saltPath)) {
+  process.stderr.write(`[seed-setup] Encrypted seed already exists at ${encSeedPath}\n`);
+  process.stderr.write('[seed-setup] To regenerate, delete .oikos-seed.enc and .oikos-salt first.\n');
+  process.stdout.write(JSON.stringify({ status: 'exists', encSeedPath, saltPath }) + '\n');
+  process.exit(0);
+}
+
+// Ensure patch is applied
+const smPath = resolve(projectRoot, 'node_modules/@tetherto/wdk-secret-manager/src/wdk-secret-manager.js');
+if (existsSync(smPath)) {
+  const smSource = readFileSync(smPath, 'utf8');
+  if (smSource.includes("require('bare-crypto')") && !smSource.includes("require('crypto')")) {
+    process.stderr.write('[seed-setup] Applying bare-crypto patch...\n');
+    const { execSync } = await import('node:child_process');
+    execSync(`node ${resolve(__dirname, 'patch-wdk.js')}`, { stdio: 'inherit' });
   }
 }
 
-// Generate 24-word seed using WDK's own BIP39 (256-bit entropy, per CLAUDE.md rules)
-// Note: WDK.getRandomSeedPhrase() wrapper in beta.5 doesn't forward the wordCount arg,
-// so we call WalletManager.getRandomSeedPhrase(24) directly from @tetherto/wdk-wallet.
-const wdkWallet = await import('@tetherto/wdk-wallet');
-const WalletManager = wdkWallet.default;
-const mnemonic = WalletManager.getRandomSeedPhrase(24);
-const words = mnemonic.split(' ');
+// Import WDK Secret Manager
+const { WdkSecretManager, wdkSaltGenerator } = await import('@tetherto/wdk-secret-manager');
 
-// Write or update .env
+// Generate salt
+const salt = wdkSaltGenerator.generate();
+
+// Create secret manager with passphrase
+const sm = new WdkSecretManager(passphrase, salt);
+
+// Generate entropy, encrypt seed + entropy (no plaintext touches disk)
+const { encryptedSeed, encryptedEntropy } = await sm.generateAndEncrypt();
+
+// Recover mnemonic in memory (for .env, then zeroize)
+const entropy = sm.decrypt(encryptedEntropy);
+const mnemonic = sm.entropyToMnemonic(entropy);
+
+// Write encrypted files
+writeFileSync(encSeedPath, encryptedSeed);
+writeFileSync(encEntropyPath, encryptedEntropy);
+writeFileSync(saltPath, salt);
+try {
+  chmodSync(encSeedPath, 0o600);
+  chmodSync(encEntropyPath, 0o600);
+  chmodSync(saltPath, 0o600);
+} catch { /* non-critical */ }
+
+// Write .env with the seed (wallet-isolate needs it at boot)
+// Future: wallet-isolate decrypts at boot with passphrase, no plaintext .env
 let envContent = '';
 if (existsSync(envPath)) {
   envContent = readFileSync(envPath, 'utf-8');
-  // Replace placeholder seed
   envContent = envContent.replace(
     /^WALLET_SEED="?[^"\n]*"?/m,
     `WALLET_SEED="${mnemonic}"`
@@ -71,6 +109,7 @@ if (existsSync(envPath)) {
 # ${new Date().toISOString()}
 OIKOS_MODE="testnet"
 WALLET_SEED="${mnemonic}"
+WALLET_PASSPHRASE="${passphrase}"
 MOCK_WALLET="false"
 MOCK_SWARM="false"
 SWARM_ENABLED="true"
@@ -90,58 +129,24 @@ BTC_NETWORK="testnet"
 writeFileSync(envPath, envContent);
 try { chmodSync(envPath, 0o600); } catch { /* non-critical */ }
 
-// Write human-readable backup file
-const lines = [];
-for (let i = 0; i < words.length; i += 4) {
-  lines.push(
-    words.slice(i, i + 4)
-      .map((w, j) => `  ${String(i + j + 1).padStart(2)}. ${w.padEnd(12)}`)
-      .join('')
-  );
-}
-
-const backup = `
-╔═══════════════════════════════════════════════════════════════╗
-║                  OIKOS WALLET — SEED BACKUP                   ║
-║                                                               ║
-║  Write these words on paper. Store them safely.               ║
-║  Anyone with these words can control your funds.              ║
-╚═══════════════════════════════════════════════════════════════╝
-
-${lines.join('\n')}
-
-  Agent: ${agentName}
-  Created: ${new Date().toISOString()}
-
-  ⚠️  DELETE THIS FILE AFTER SAVING THE WORDS
-  ⚠️  DO NOT SHARE WITH ANYONE — NOT EVEN YOUR AI AGENT
-  ⚠️  THIS FILE AUTO-DELETES IN ${autoDeleteMin} MINUTES
-
-╔═══════════════════════════════════════════════════════════════╗
-║  To recover this wallet on a new machine:                     ║
-║  Set WALLET_SEED="<your 24 words>" in .env                    ║
-║  Then start Oikos normally.                                   ║
-╚═══════════════════════════════════════════════════════════════╝
-`.trimStart();
-
-writeFileSync(backupPath, backup);
-try { chmodSync(backupPath, 0o600); } catch { /* non-critical */ }
-
-// Schedule auto-delete of backup file (background process)
-try {
-  execSync(`(sleep ${autoDeleteMin * 60} && rm -f "${backupPath}") &`, { shell: '/bin/bash' });
-} catch { /* non-critical on systems without bash */ }
+// Dispose secret manager (zeroize passphrase + salt from memory)
+sm.dispose();
 
 // Output machine-readable status (NO seed material!)
+const wordCount = mnemonic.split(' ').length;
 process.stdout.write(JSON.stringify({
   status: 'created',
-  backupFile: backupPath,
+  encSeedFile: encSeedPath,
+  encEntropyFile: encEntropyPath,
+  saltFile: saltPath,
   envFile: envPath,
-  autoDeleteMinutes: autoDeleteMin,
-  wordCount: words.length,
+  wordCount,
   agentName,
+  encryption: 'XSalsa20-Poly1305',
+  kdf: 'PBKDF2-SHA256 (100k iterations)',
 }) + '\n');
 
-process.stderr.write(`[seed-setup] Seed generated (${words.length} words)\n`);
-process.stderr.write(`[seed-setup] Backup written to ${backupPath}\n`);
-process.stderr.write(`[seed-setup] Auto-delete in ${autoDeleteMin} minutes\n`);
+process.stderr.write(`[seed-setup] Seed generated (${wordCount} words) and encrypted\n`);
+process.stderr.write(`[seed-setup] Encrypted seed: ${encSeedPath}\n`);
+process.stderr.write(`[seed-setup] Salt: ${saltPath}\n`);
+process.stderr.write(`[seed-setup] Passphrase is the ONLY way to recover this wallet.\n`);

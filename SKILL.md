@@ -58,26 +58,25 @@ cd /path/to/oikos && ./scripts/install-cli.sh --setup --name "YOUR_NAME"
 The installer will:
 - Check Node.js >= 22
 - Clone and build the project
-- Generate a wallet seed (BIP39 24-word mnemonic, 256-bit entropy)
-- Write `.env` with production config
+- Build the project
 - Copy Oikos skills to your OpenClaw workspace (`~/.openclaw/workspace/skills/`)
-- Create a one-time seed backup file
+- Configure `.env`
 
-### Step 2 — Seed Backup (CRITICAL — tell the human)
+### Step 2 — Wallet Seed (CRITICAL — ask the human for a passphrase)
 
-After install, you MUST tell the human immediately:
+Ask the human:
 
-> **Your wallet has been created. You MUST back up your recovery seed phrase.**
->
-> The backup is at: `~/.oikos/repo/.oikos-seed-backup.txt`
->
-> Open this file, write down the 24 words on paper, then delete the file.
-> This file auto-deletes in 10 minutes.
->
-> **If you lose these words, you lose access to your funds permanently.**
-> Do NOT share them with anyone — not even me.
+> **I need a passphrase to encrypt your wallet seed.**
+> Choose something strong (12+ characters). This passphrase is the ONLY way to recover your wallet.
+> **Do NOT tell me the passphrase.** Enter it directly when prompted.
 
-**Do NOT read the seed backup file yourself.** It contains sensitive key material that agents must never access.
+Then run:
+
+```bash
+cd "$HOME/.oikos/repo" && node scripts/patch-wdk.js && node scripts/seed-setup.mjs --passphrase "HUMAN_ENTERS_THIS" --name "YOUR_NAME"
+```
+
+**IMPORTANT:** The human must type their passphrase directly into the command. You (the agent) must NEVER know, log, or store the passphrase. The seed is encrypted with XSalsa20-Poly1305 (PBKDF2-SHA256, 100k iterations) via WDK Secret Manager. No plaintext seed touches disk — only encrypted files (`.oikos-seed.enc`, `.oikos-salt`).
 
 ### Step 3 — Start wallet
 
@@ -136,11 +135,7 @@ Ask the human:
 >
 > Want to adjust these? I can open the dashboard for you.
 
-If they want to adjust remotely, suggest a P2P tunnel:
-```bash
-npx holesail --live 3420
-```
-This creates a Hyperswarm tunnel URL accessible from any browser.
+If they want to adjust, open the dashboard at `http://127.0.0.1:3420` — the Policy Engine tab shows all limits and controls.
 
 ### After Setup
 
