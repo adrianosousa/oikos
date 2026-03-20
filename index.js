@@ -223,7 +223,24 @@ async function connectToAgent () {
   console.log('[companion] Topic:', b4a.toString(companionTopic, 'hex').slice(0, 16) + '...')
   console.log('[companion] Looking for agent:', agentPubkey.slice(0, 16) + '...')
 
-  swarm = new Hyperswarm({ keyPair: keypair })
+  const swarmOpts = { keyPair: keypair }
+  const relayHex = env.SWARM_RELAY_PUBKEY || 'e7ab6adb1a18e7d22649691dc65f5789f6fdd25422b0770ab068ee9bbe0a3003'
+  if (relayHex) {
+    try {
+      const relayBuf = b4a.from(relayHex, 'hex')
+      swarmOpts.relayThrough = () => relayBuf
+    } catch { /* skip */ }
+  }
+
+  swarm = new Hyperswarm(swarmOpts)
+
+  // Maintain persistent connection to relay for NAT traversal
+  if (relayHex) {
+    try {
+      swarm.joinPeer(b4a.from(relayHex, 'hex'))
+      console.log('[companion] Joined relay peer:', relayHex.slice(0, 16) + '...')
+    } catch { /* non-fatal */ }
+  }
 
   swarm.on('connection', (socket) => {
     const remotePubkey = socket.remotePublicKey
@@ -356,16 +373,31 @@ const server = http.createServer(async (req, res) => {
   // ── GET endpoints ──
 
   if (url === '/api/health') {
+    // Check wallet reachability via HTTP even if companion channel is down
+    let walletReachable = state.connected
+    if (!walletReachable && walletUrl) {
+      try {
+        const ping = await httpGet(walletUrl + '/api/swarm')
+        walletReachable = !!(ping && ping.enabled !== undefined)
+      } catch (e) { /* not reachable */ }
+    }
     return json(res, {
       status: 'ok',
-      walletConnected: state.connected,
-      swarmEnabled: state.swarm.enabled,
+      walletConnected: walletReachable,
+      swarmEnabled: state.swarm.enabled || walletReachable,
       companionConnected: state.connected,
       eventsBuffered: state.executions.length
     })
   }
 
   if (url === '/api/state') {
+    // Fall back to wallet HTTP when companion not connected
+    if (!state.connected && walletUrl) {
+      try {
+        const data = await httpGet(walletUrl + '/api/state')
+        if (data) return json(res, data)
+      } catch (e) { /* fall through */ }
+    }
     return json(res, {
       status: state.connected ? 'running' : 'disconnected',
       balances: state.balances,
@@ -382,10 +414,23 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/balances') {
+    // Fall back to wallet HTTP when companion not connected
+    if ((!state.balances || state.balances.length === 0) && walletUrl) {
+      try {
+        const data = await httpGet(walletUrl + '/api/balances')
+        if (data) return json(res, data)
+      } catch (e) { /* fall through */ }
+    }
     return json(res, { balances: state.balances })
   }
 
   if (url === '/api/addresses') {
+    if ((!state.addresses || state.addresses.length === 0) && walletUrl) {
+      try {
+        const data = await httpGet(walletUrl + '/api/addresses')
+        if (data) return json(res, data)
+      } catch (e) { /* fall through */ }
+    }
     return json(res, { addresses: state.addresses || [] })
   }
 
@@ -440,6 +485,32 @@ const server = http.createServer(async (req, res) => {
     return json(res, { error: 'Wallet not connected' }, 503)
   }
 
+  if (url === '/api/strategies/toggle' && req.method === 'POST') {
+    if (walletUrl) {
+      try {
+        const body = await readBody(req)
+        const data = await httpPost(walletUrl + '/api/strategies/toggle', body)
+        return json(res, data || { error: 'No response from wallet' })
+      } catch (e) {
+        return json(res, { error: 'Failed to toggle strategy' }, 500)
+      }
+    }
+    return json(res, { error: 'Wallet not connected' }, 503)
+  }
+
+  if (url === '/api/strategies/delete' && req.method === 'POST') {
+    if (walletUrl) {
+      try {
+        const body = await readBody(req)
+        const data = await httpPost(walletUrl + '/api/strategies/delete', body)
+        return json(res, data || { error: 'No response from wallet' })
+      } catch (e) {
+        return json(res, { error: 'Failed to delete strategy' }, 500)
+      }
+    }
+    return json(res, { error: 'Wallet not connected' }, 503)
+  }
+
   if (url.startsWith('/api/audit')) {
     return json(res, { entries: state.executions })
   }
@@ -461,19 +532,39 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/swarm') {
+    // If companion connected, use live state; otherwise fall back to wallet HTTP
+    if (state.connected && state.swarm.enabled) {
+      return json(res, {
+        enabled: state.swarm.enabled,
+        peersConnected: state.swarm.peersConnected,
+        boardPeers: state.swarm.boardPeers || [],
+        announcements: state.swarm.announcementList || [],
+        activeRooms: state.swarm.roomList || [],
+        identity: state.swarm.identity || null,
+        economics: state.swarm.economics || {},
+        recentEvents: []
+      })
+    }
+    if (walletUrl) {
+      try {
+        const data = await httpGet(walletUrl + '/api/swarm')
+        if (data && data.enabled !== undefined) return json(res, data)
+      } catch (e) { /* fall through */ }
+    }
     return json(res, {
       enabled: state.swarm.enabled,
-      peersConnected: state.swarm.peersConnected,
-      boardPeers: state.swarm.boardPeers || [],
-      announcements: state.swarm.announcementList || [],
-      activeRooms: state.swarm.roomList || [],
-      identity: state.swarm.identity || null,
-      economics: state.swarm.economics || {},
-      recentEvents: []
+      peersConnected: 0, boardPeers: [], announcements: [],
+      activeRooms: [], identity: null, economics: {}, recentEvents: []
     })
   }
 
   if (url === '/api/economics') {
+    if (walletUrl && !state.connected) {
+      try {
+        const data = await httpGet(walletUrl + '/api/economics')
+        if (data) return json(res, data)
+      } catch (e) { /* fall through */ }
+    }
     return json(res, { enabled: state.swarm.enabled, economics: state.swarm.economics })
   }
 
@@ -562,6 +653,13 @@ const server = http.createServer(async (req, res) => {
   // ── Chat endpoints (agent-agnostic bridge) ──
 
   if (url.startsWith('/api/agent/chat/history')) {
+    // Fall back to wallet HTTP when companion not connected
+    if (state.chatMessages.length === 0 && walletUrl) {
+      try {
+        const data = await httpGet(walletUrl + url)
+        if (data) return json(res, data)
+      } catch (e) { /* fall through */ }
+    }
     return json(res, { messages: state.chatMessages })
   }
 
@@ -586,6 +684,24 @@ const server = http.createServer(async (req, res) => {
     // Send instruction via protomux and wait for chat_reply
     const sent = sendToAgent({ type: 'instruction', text: message, timestamp: Date.now() })
     if (!sent) {
+      // Companion not connected — fall back to HTTP proxy to wallet brain
+      if (walletUrl) {
+        try {
+          const data = await httpPost(walletUrl + '/api/agent/chat', { message, from })
+          if (data && data.reply) {
+            const agentMsg = {
+              id: data.messageId || ('msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)),
+              text: data.reply,
+              from: 'agent',
+              brainName: data.brainName || 'ollama',
+              timestamp: Date.now()
+            }
+            state.chatMessages.push(agentMsg)
+            if (state.chatMessages.length > 100) state.chatMessages.shift()
+            return json(res, data)
+          }
+        } catch (e) { /* wallet not reachable, fall through to offline */ }
+      }
       const errMsg = {
         id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
         text: 'Agent not connected. Message queued as instruction.',

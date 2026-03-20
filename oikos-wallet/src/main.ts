@@ -186,6 +186,7 @@ async function main(): Promise<void> {
       keypairPath: config.keypairPath,
       topicSeed: config.companionTopicSeed,
       updateIntervalMs: config.companionUpdateIntervalMs,
+      relayPubkey: config.swarmRelayPubkey || undefined,
     }, swarm ?? undefined);
 
     companion.onInstruction((text) => {

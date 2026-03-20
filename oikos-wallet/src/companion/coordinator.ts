@@ -48,6 +48,8 @@ export interface CompanionConfig {
   updateIntervalMs: number;
   /** Injected DHT for testnet */
   dht?: unknown;
+  /** Relay peer pubkey for NAT traversal (hex) */
+  relayPubkey?: string;
 }
 
 export class CompanionCoordinator {
@@ -107,8 +109,26 @@ export class CompanionCoordinator {
 
     const opts: Record<string, unknown> = { keyPair: keypair };
     if (this.config.dht) opts['dht'] = this.config.dht;
+    if (this.config.relayPubkey) {
+      try {
+        const relayBuf = Buffer.from(this.config.relayPubkey, 'hex');
+        // Force relay on every attempt (function form, not raw buffer)
+        // Raw buffer only relays when force=true or dht.randomized=true
+        // Docker NAT triggers neither — connections silently hang
+        opts['relayThrough'] = () => relayBuf;
+      } catch { /* invalid relay pubkey, skip */ }
+    }
 
     this.hyperswarm = new Hyperswarm(opts);
+
+    // Maintain persistent connection to relay node for bridging
+    if (this.config.relayPubkey) {
+      try {
+        const relayBuf = Buffer.from(this.config.relayPubkey, 'hex');
+        this.hyperswarm.joinPeer(relayBuf);
+        console.error(`[companion] Joined relay peer: ${this.config.relayPubkey.slice(0, 16)}...`);
+      } catch { /* relay join failed, non-fatal */ }
+    }
 
     this.hyperswarm.on('connection', (socket: unknown) => {
       this._onConnection(socket);
