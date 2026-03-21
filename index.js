@@ -471,10 +471,8 @@ const server = http.createServer(async (req, res) => {
     if (walletUrl) {
       try {
         const data = await httpGet(walletUrl + '/api/policies')
-        return json(res, data)
-      } catch (e) {
-        return json(res, { policies: state.policies })
-      }
+        if (data && data.policies) return json(res, data)
+      } catch (e) { /* fall through to protomux state */ }
     }
     return json(res, { policies: state.policies })
   }
@@ -496,10 +494,8 @@ const server = http.createServer(async (req, res) => {
     if (walletUrl) {
       try {
         const data = await httpGet(walletUrl + '/api/strategies')
-        return json(res, data)
-      } catch (e) {
-        return json(res, { strategies: [], modules: [] })
-      }
+        if (data && data.strategies) return json(res, data)
+      } catch (e) { /* fall through */ }
     }
     return json(res, { strategies: [], modules: [] })
   }
