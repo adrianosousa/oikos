@@ -222,7 +222,8 @@ async function updateFeed () {
     if (audit && audit.entries) {
       audit.entries.forEach(function (e) {
         var type = (e.proposalType || e.type || 'system').toLowerCase()
-        var status = (e.status || '').toLowerCase()
+        // AuditEntry uses .type (execution_success, policy_enforcement); ExecutionResult uses .status
+        var status = (e.status || (e.type === 'execution_success' ? 'executed' : e.type === 'policy_enforcement' ? 'rejected' : e.type === 'execution_failure' ? 'failed' : '') || '').toLowerCase()
         var indicator = status === 'executed' ? 'fi-success' : status === 'rejected' ? 'fi-rejected' : 'fi-financial'
         if (type === 'feedback') indicator = 'fi-system'
         var amount = e.proposal ? (e.proposal.amount || '') : ''
@@ -233,7 +234,7 @@ async function updateFeed () {
         if (humanAmt) summary += ' ' + humanAmt + ' ' + sym
         if (type === 'swap' && e.proposal) summary += ' &rarr; ' + (e.proposal.toSymbol || '?')
         if (type === 'bridge' && e.proposal) summary += ' ' + (e.proposal.fromChain || '') + ' &rarr; ' + (e.proposal.toChain || '')
-        feedItems.push({ ts: e.timestamp || Date.now(), indicator: indicator, summary: summary, detail: e.reason || ((e.violations || []).join(', ')) || (e.txHash ? 'tx: ' + e.txHash.slice(0, 16) + '...' : '') })
+        feedItems.push({ ts: e.timestamp || Date.now(), indicator: indicator, summary: summary, detail: e.reason || e.error || ((e.violations || []).join(', ')) || (e.txHash ? 'tx: ' + e.txHash.slice(0, 16) + '...' : '') })
       })
     }
     if (swarm && swarm.recentEvents) {
@@ -260,11 +261,12 @@ async function updateAudit () {
     : data.entries.map(function (e) {
       var time = e.timestamp ? new Date(e.timestamp).toLocaleString() : '--'
       var type = e.proposalType || e.type || '--'
-      var status = e.status || '--'
+      // AuditEntry uses .type (execution_success, policy_enforcement); ExecutionResult uses .status
+      var status = e.status || (e.type === 'execution_success' ? 'executed' : e.type === 'policy_enforcement' ? 'rejected' : e.type === 'execution_failure' ? 'failed' : e.type === 'proposal_received' ? 'received' : '--')
       var sc = status === 'executed' ? 'var(--green)' : status === 'rejected' ? 'var(--red)' : 'var(--yellow)'
       var amount = e.proposal ? (e.proposal.amount || '--') : '--'
       var sym = e.proposal ? (e.proposal.symbol || '') : ''
-      var detail = e.reason || ((e.violations || []).join(', ')) || (e.txHash ? 'tx: ' + e.txHash.slice(0, 16) + '...' : '')
+      var detail = e.reason || e.error || ((e.violations || []).join(', ')) || (e.txHash ? 'tx: ' + e.txHash.slice(0, 16) + '...' : '')
       return '<tr><td style="font-size:10px;white-space:nowrap;">' + time + '</td><td>' + opBadge(type) + '</td><td style="color:' + sc + ';font-weight:700;">' + status.toUpperCase() + '</td><td>' + amount + ' ' + sym + '</td><td style="color:var(--muted);font-size:11px;">' + detail + '</td></tr>'
     }).join('')
 }
