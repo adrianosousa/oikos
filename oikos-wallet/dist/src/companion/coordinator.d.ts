@@ -38,6 +38,10 @@ export interface CompanionConfig {
     dht?: unknown;
     /** Relay peer pubkey for NAT traversal (hex) */
     relayPubkey?: string;
+    /** OpenClaw webhook URL for forwarding companion instructions (e.g., http://127.0.0.1:18789/hooks/agent) */
+    hookUrl?: string;
+    /** OpenClaw webhook auth token */
+    hookToken?: string;
 }
 export declare class CompanionCoordinator {
     private stateProvider;
@@ -76,5 +80,11 @@ export declare class CompanionCoordinator {
     private _onConnection;
     private _handleMessage;
     private _pushStateUpdate;
+    /**
+     * Forward a companion instruction to OpenClaw via webhook.
+     * POST /hooks/agent → OpenClaw routes to agent session → reply comes back in response.
+     * The reply is sent back to the Pear app via protomux chat_reply.
+     */
+    private _forwardToHook;
 }
 //# sourceMappingURL=coordinator.d.ts.map

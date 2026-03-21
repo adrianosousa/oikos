@@ -161,6 +161,12 @@ export interface OikosConfig {
   /** State push interval to companion (ms) */
   companionUpdateIntervalMs: number;
 
+  /** OpenClaw webhook URL for forwarding companion instructions */
+  companionHookUrl: string;
+
+  /** OpenClaw webhook auth token */
+  companionHookToken: string;
+
   // ── RGB ──
 
   /** Enable RGB transport bridge */
@@ -247,6 +253,8 @@ export function loadOikosConfig(): OikosConfig {
     companionOwnerPubkey: getEnv('COMPANION_OWNER_PUBKEY', ''),
     companionTopicSeed: getEnv('COMPANION_TOPIC_SEED', 'oikos-companion-default'),
     companionUpdateIntervalMs: parseInt(getEnv('COMPANION_UPDATE_INTERVAL_MS', '5000'), 10),
+    companionHookUrl: getEnv('COMPANION_HOOK_URL', ''),
+    companionHookToken: getEnv('COMPANION_HOOK_TOKEN', ''),
 
     // RGB
     rgbEnabled: getEnv('RGB_ENABLED', 'false') === 'true',

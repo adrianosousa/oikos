@@ -200,6 +200,8 @@ async function main() {
             topicSeed: config.companionTopicSeed,
             updateIntervalMs: config.companionUpdateIntervalMs,
             relayPubkey: config.swarmRelayPubkey || undefined,
+            hookUrl: config.companionHookUrl || undefined,
+            hookToken: config.companionHookToken || undefined,
         }, swarm ?? undefined);
         companion.onInstruction((text) => {
             console.error(`[oikos] Companion instruction: "${text}"`);

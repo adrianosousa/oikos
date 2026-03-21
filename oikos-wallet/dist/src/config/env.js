@@ -110,6 +110,8 @@ export function loadOikosConfig() {
         companionOwnerPubkey: getEnv('COMPANION_OWNER_PUBKEY', ''),
         companionTopicSeed: getEnv('COMPANION_TOPIC_SEED', 'oikos-companion-default'),
         companionUpdateIntervalMs: parseInt(getEnv('COMPANION_UPDATE_INTERVAL_MS', '5000'), 10),
+        companionHookUrl: getEnv('COMPANION_HOOK_URL', ''),
+        companionHookToken: getEnv('COMPANION_HOOK_TOKEN', ''),
         // RGB
         rgbEnabled: getEnv('RGB_ENABLED', 'false') === 'true',
         rgbTransportPort: parseInt(getEnv('RGB_TRANSPORT_PORT', '13100'), 10),

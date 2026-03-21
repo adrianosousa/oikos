@@ -218,6 +218,8 @@ async function main(): Promise<void> {
       topicSeed: config.companionTopicSeed,
       updateIntervalMs: config.companionUpdateIntervalMs,
       relayPubkey: config.swarmRelayPubkey || undefined,
+      hookUrl: config.companionHookUrl || undefined,
+      hookToken: config.companionHookToken || undefined,
     }, swarm ?? undefined);
 
     companion.onInstruction((text) => {

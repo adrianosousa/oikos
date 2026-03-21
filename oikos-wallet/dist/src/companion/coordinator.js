@@ -194,8 +194,14 @@ export class CompanionCoordinator {
                     if (this.onInstructionHandler) {
                         this.onInstructionHandler(msg.text);
                     }
-                    // Forward to brain and send reply back via protomux
-                    if (this.onChatHandler) {
+                    // Route 1: OpenClaw webhook (preferred — instant, no polling)
+                    if (this.config.hookUrl) {
+                        this._forwardToHook(msg.text).catch((err) => {
+                            console.error(`[companion] Hook error: ${err instanceof Error ? err.message : String(err)}`);
+                        });
+                    }
+                    // Route 2: Brain adapter fallback (Ollama/HTTP)
+                    else if (this.onChatHandler) {
                         this.onChatHandler(msg.text).then((result) => {
                             if (result) {
                                 const reply = {
@@ -300,6 +306,51 @@ export class CompanionCoordinator {
                 timestamp: Date.now(),
             };
             this.send(swarmMsg);
+        }
+    }
+    /**
+     * Forward a companion instruction to OpenClaw via webhook.
+     * POST /hooks/agent → OpenClaw routes to agent session → reply comes back in response.
+     * The reply is sent back to the Pear app via protomux chat_reply.
+     */
+    async _forwardToHook(text) {
+        const hookUrl = this.config.hookUrl;
+        if (!hookUrl)
+            return;
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (this.config.hookToken) {
+            headers['Authorization'] = `Bearer ${this.config.hookToken}`;
+        }
+        try {
+            const res = await fetch(hookUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    message: text,
+                    name: 'Oikos Companion',
+                }),
+            });
+            if (!res.ok) {
+                console.error(`[companion] Hook ${res.status}: ${await res.text().catch(() => '')}`);
+                return;
+            }
+            const data = await res.json();
+            const reply = data.response ?? data.reply ?? data.text ?? '';
+            if (reply) {
+                const chatReply = {
+                    type: 'chat_reply',
+                    text: reply,
+                    brainName: 'openclaw',
+                    timestamp: Date.now(),
+                };
+                this.send(chatReply);
+                console.error(`[companion] Hook reply: "${reply.slice(0, 80)}..."`);
+            }
+        }
+        catch (err) {
+            console.error(`[companion] Hook fetch failed: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 }

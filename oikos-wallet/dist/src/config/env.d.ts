@@ -79,6 +79,10 @@ export interface OikosConfig {
     companionTopicSeed: string;
     /** State push interval to companion (ms) */
     companionUpdateIntervalMs: number;
+    /** OpenClaw webhook URL for forwarding companion instructions */
+    companionHookUrl: string;
+    /** OpenClaw webhook auth token */
+    companionHookToken: string;
     /** Enable RGB transport bridge */
     rgbEnabled: boolean;
     /** Port for the RGB transport bridge HTTP server */
