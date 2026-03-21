@@ -40,6 +40,7 @@ export interface CompanionStateProvider {
   getPolicies(): Promise<PolicyStatus[]>;
   getAddresses?(): Promise<Array<{ chain: string; address: string }>>;
   getPrices?(): Promise<Array<{ symbol: string; priceUsd: number; source: string; updatedAt: number }>>;
+  getStrategies?(): Promise<Array<{ filename: string; enabled: boolean; source: string; content: string }>>;
 }
 
 export interface CompanionConfig {
@@ -425,6 +426,14 @@ export class CompanionCoordinator {
           this.send({ type: 'price_update', prices, timestamp: Date.now() });
         }
       } catch { /* pricing may not be ready */ }
+    }
+
+    // Strategy update (filesystem strategies)
+    if (this.stateProvider.getStrategies) {
+      try {
+        const strategies = await this.stateProvider.getStrategies();
+        this.send({ type: 'strategy_update', strategies, timestamp: Date.now() });
+      } catch { /* strategies dir may not exist */ }
     }
 
     // Swarm status (with full data for UI rendering)

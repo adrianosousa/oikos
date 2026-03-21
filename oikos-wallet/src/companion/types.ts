@@ -128,6 +128,13 @@ export interface CompanionStrategyToggle {
   timestamp: number;
 }
 
+/** Strategy list pushed to companion */
+export interface CompanionStrategyUpdate {
+  type: 'strategy_update';
+  strategies: Array<{ filename: string; enabled: boolean; source: string; content: string }>;
+  timestamp: number;
+}
+
 /** Response to a strategy save/toggle request */
 export interface CompanionStrategyResult {
   type: 'strategy_result';
@@ -152,6 +159,7 @@ export type AgentToCompanionMessage =
   | CompanionExecutionNotify
   | CompanionApprovalRequest
   | CompanionChatReply
+  | CompanionStrategyUpdate
   | CompanionStrategyResult;
 
 /** Messages sent FROM the companion TO the agent */

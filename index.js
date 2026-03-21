@@ -64,6 +64,7 @@ const state = {
   identity: {},
   prices: [],
   addresses: [],
+  strategies: [],
   lastUpdate: 0,
 }
 
@@ -219,6 +220,17 @@ function handleAgentMessage (buf) {
         }
         break
       }
+      case 'strategy_update':
+        state.strategies = (msg.strategies || []).map(s => ({
+          id: (s.filename || '').replace('.md', ''),
+          name: ((s.content || '').match(/^#\s+(.+)$/m) || [])[1] || (s.filename || '').replace('.md', ''),
+          filename: s.filename,
+          source: s.source || 'human',
+          enabled: s.enabled,
+          content: s.content,
+          createdAt: '',
+        }))
+        break
       case 'strategy_result': {
         const cb = pendingRequests.get(msg.requestId)
         if (cb) { pendingRequests.delete(msg.requestId); cb(msg) }
@@ -538,6 +550,10 @@ const server = http.createServer(async (req, res) => {
         const data = await httpGet(walletUrl + '/api/strategies')
         if (data && data.strategies) return json(res, data)
       } catch (e) { /* fall through */ }
+    }
+    // Protomux fallback — state.strategies populated by strategy_update messages
+    if (state.strategies.length > 0) {
+      return json(res, { strategies: state.strategies, modules: [] })
     }
     return json(res, { strategies: [], modules: [] })
   }
