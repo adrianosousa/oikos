@@ -128,8 +128,6 @@ export class WalletManager implements WalletOperations {
   private sparkAddress: string = '';  // cached at init — Spark getAddress() is slow
   private initialized = false;
   private rpcUrls: Map<string, string> = new Map();
-  /** Cached signing EVM accounts per chain — constructed directly with seed for DeFi ops */
-  private evmAccounts: Map<string, unknown> = new Map();
 
   /**
    * Initialize the wallet.
@@ -147,17 +145,11 @@ export class WalletManager implements WalletOperations {
 
     for (const config of chains) {
       if (config.chain === 'ethereum' || config.chain === 'polygon' || config.chain === 'arbitrum') {
-        const { default: WalletManagerEvm, WalletAccountEvm } = await import('@tetherto/wdk-wallet-evm');
+        const { default: WalletManagerEvm } = await import('@tetherto/wdk-wallet-evm');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK registerWallet has loose typing
         (wdk as any).registerWallet(config.chain, WalletManagerEvm, {
           provider: config.provider
         });
-        // Create signing account directly (WDK docs pattern) — needed for DeFi + transfers
-        // wdk.getAccount() may return read-only in some beta versions
-        const signingAccount = new WalletAccountEvm(seed, "0'/0/0", {
-          provider: config.provider,
-        });
-        this.evmAccounts.set(config.chain, signingAccount);
         // Store RPC URL for eth_call operations
         if (config.provider) {
           this.rpcUrls.set(config.chain, config.provider);
@@ -305,8 +297,7 @@ export class WalletManager implements WalletOperations {
         return { success: true, txHash: (result as { hash: string }).hash };
       }
 
-      // Use signing account for transactions (not read-only)
-      const account = (chain === 'bitcoin') ? await this.getAccount(chain) : this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
 
       // Native token (ETH, BTC) — simple value transfer
       if (symbol === 'ETH' || symbol === 'BTC') {
@@ -343,7 +334,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
 
       // Resolve token addresses
       const tokenIn = getTokenAddress(chain, fromSymbol);
@@ -376,7 +367,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(fromChain);
+      const account = await this.getAccount(fromChain);
       const address = await account.getAddress();
 
       // Resolve token address on the source chain
@@ -408,7 +399,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
 
       const token = getTokenAddress(chain, symbol);
       if (!token) return { success: false, error: `No token address for ${symbol} on ${chain}` };
@@ -433,7 +424,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
 
       const token = getTokenAddress(chain, symbol);
       if (!token) return { success: false, error: `No token address for ${symbol} on ${chain}` };
@@ -460,7 +451,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
       const calldata = encodeRegister(agentURI);
 
       const tx = await account.sendTransaction({
@@ -501,7 +492,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
       const address = await account.getAddress();
 
       // Build EIP-712 message
@@ -554,7 +545,7 @@ export class WalletManager implements WalletOperations {
     this.ensureInitialized();
 
     try {
-      const account = this.getEvmSigningAccount(chain);
+      const account = await this.getAccount(chain);
       const calldata = encodeGiveFeedback(
         targetAgentId, value, valueDecimals, tag1, tag2, endpoint, feedbackURI, feedbackHash,
       );
@@ -679,7 +670,7 @@ export class WalletManager implements WalletOperations {
     message: Record<string, unknown>;
   }): Promise<string> {
     this.ensureInitialized();
-    const account = this.getEvmSigningAccount('ethereum');
+    const account = await this.getAccount('ethereum');
 
     // WDK WalletAccountEvm has native signTypedData
     if (typeof account.signTypedData === 'function') {
@@ -706,17 +697,6 @@ export class WalletManager implements WalletOperations {
     return this.wdk!.getAccount(chain, 0);
   }
 
-  /**
-   * Get a signing EVM account for DeFi/transfer operations.
-   * Constructed directly with seed phrase (WDK docs pattern) to ensure signing capability.
-   * Falls back to wdk.getAccount() for non-EVM chains.
-   */
-  private getEvmSigningAccount(chain: Chain): WdkAccount {
-    this.ensureInitialized();
-    const account = this.evmAccounts.get(chain);
-    if (!account) throw new Error(`No signing EVM account for chain: ${chain}`);
-    return account as WdkAccount;
-  }
 
   /**
    * Make a raw JSON-RPC eth_call to a contract (read-only, no gas).
