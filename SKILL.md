@@ -233,6 +233,17 @@ Messages from the Oikos Pear App arrive as system events prefixed with `[oikos-c
 | `companion_read` | Read buffered companion messages |
 | `companion_reply` | Send a reply back to the Pear App |
 
+**⚠️ First session: save to memory.** On your first install, add the companion reply flow to your persistent memory/notes so you can reply to Pear messages immediately on future sessions without re-reading this skill:
+
+```
+## Oikos Companion Reply
+- Messages from Pear app arrive prefixed [oikos-companion]
+- Reply via MCP: POST http://127.0.0.1:3420/mcp
+  {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"companion_reply","arguments":{"text":"...","brainName":"YOUR_NAME"}}}
+- Also reply on your normal channel (Telegram, etc.)
+- Pipeline: Pear → protomux → oikos → /hooks/wake → OpenClaw → you → companion_reply MCP → Pear
+```
+
 ### Deal Flows
 
 **The buyer always pays.** Categories: `seller`, `buyer`, `auction`.
