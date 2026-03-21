@@ -246,7 +246,14 @@ async function connectToAgent () {
     const remotePubkey = socket.remotePublicKey
     if (!remotePubkey) return
 
-    console.log('[companion] Connected to:', b4a.toString(remotePubkey, 'hex').slice(0, 16) + '...')
+    const remoteHex = b4a.toString(remotePubkey, 'hex')
+    console.log('[companion] Connected to:', remoteHex.slice(0, 16) + '...')
+
+    // Only open companion channel with the expected agent, not relay or other peers
+    if (remoteHex !== agentPubkey) {
+      console.log('[companion] Ignoring non-agent peer (relay or other):', remoteHex.slice(0, 16) + '...')
+      return
+    }
 
     const mux = Protomux.from(socket)
     const channel = mux.createChannel({

@@ -58,6 +58,7 @@ export class CompanionCoordinator {
   private config: CompanionConfig;
 
   private hyperswarm: Hyperswarm | null = null;
+  private isSharedSwarm = false;
   private companionChannel: { channel: unknown; message: unknown } | null = null;
   private ownerPubkeyBuf: Buffer;
   private companionTopic: Buffer;
@@ -113,6 +114,7 @@ export class CompanionCoordinator {
     if (swarmHyperswarm) {
       console.error('[companion] Reusing swarm Hyperswarm instance (shared UDP socket)');
       this.hyperswarm = swarmHyperswarm;
+      this.isSharedSwarm = true;
     } else {
       const { loadOrCreateKeypair } = await import('../swarm/identity.js');
       const keypair = loadOrCreateKeypair(this.config.keypairPath);
@@ -187,7 +189,8 @@ export class CompanionCoordinator {
   /** Graceful shutdown */
   async stop(): Promise<void> {
     if (this.updateInterval) clearInterval(this.updateInterval);
-    if (this.hyperswarm) await this.hyperswarm.destroy();
+    // Don't destroy shared Hyperswarm — it belongs to the swarm coordinator
+    if (this.hyperswarm && !this.isSharedSwarm) await this.hyperswarm.destroy();
     this.started = false;
     this.connected = false;
     console.error('[companion] Stopped.');
@@ -204,11 +207,9 @@ export class CompanionCoordinator {
     const remotePubkey = sock.remotePublicKey;
     if (!remotePubkey) return;
 
-    // CRITICAL: Only allow the authorized owner
+    // Only open companion channel with the authorized owner
+    // Don't destroy non-owner sockets — they may be swarm peers (shared Hyperswarm)
     if (!b4a.equals(remotePubkey, this.ownerPubkeyBuf)) {
-      console.error(`[companion] Rejected unauthorized: ${remotePubkey.toString('hex').slice(0, 16)}...`);
-      const closeable = socket as { destroy(): void };
-      closeable.destroy();
       return;
     }
 
