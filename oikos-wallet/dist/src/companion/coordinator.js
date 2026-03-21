@@ -334,7 +334,7 @@ export class CompanionCoordinator {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    text,
+                    text: `[oikos-companion] ${text}`,
                     name: 'Oikos Companion',
                 }),
             });
