@@ -82,8 +82,14 @@ export declare class CompanionCoordinator {
     private _pushStateUpdate;
     /**
      * Forward a companion instruction to OpenClaw via webhook.
-     * POST /hooks/agent → OpenClaw routes to agent session → reply comes back in response.
-     * The reply is sent back to the Pear app via protomux chat_reply.
+     *
+     * Two modes:
+     *   /hooks/agent — isolated run, synchronous reply in HTTP response
+     *   /hooks/wake  — injects into main session (full context), reply comes
+     *                  asynchronously via companion_reply MCP tool
+     *
+     * If the response contains a reply, send it back immediately via protomux.
+     * If not (wake mode), the agent will call companion_reply MCP when ready.
      */
     private _forwardToHook;
 }

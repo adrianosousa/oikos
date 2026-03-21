@@ -386,8 +386,14 @@ export class CompanionCoordinator {
 
   /**
    * Forward a companion instruction to OpenClaw via webhook.
-   * POST /hooks/agent → OpenClaw routes to agent session → reply comes back in response.
-   * The reply is sent back to the Pear app via protomux chat_reply.
+   *
+   * Two modes:
+   *   /hooks/agent — isolated run, synchronous reply in HTTP response
+   *   /hooks/wake  — injects into main session (full context), reply comes
+   *                  asynchronously via companion_reply MCP tool
+   *
+   * If the response contains a reply, send it back immediately via protomux.
+   * If not (wake mode), the agent will call companion_reply MCP when ready.
    */
   private async _forwardToHook(text: string): Promise<void> {
     const hookUrl = this.config.hookUrl;
@@ -415,18 +421,26 @@ export class CompanionCoordinator {
         return;
       }
 
-      const data = await res.json() as { response?: string; reply?: string; text?: string };
-      const reply = data.response ?? data.reply ?? data.text ?? '';
+      // Try to parse reply — /hooks/agent returns one, /hooks/wake may not
+      try {
+        const data = await res.json() as { response?: string; reply?: string; text?: string };
+        const reply = data.response ?? data.reply ?? data.text ?? '';
 
-      if (reply) {
-        const chatReply: CompanionChatReply = {
-          type: 'chat_reply',
-          text: reply,
-          brainName: 'openclaw',
-          timestamp: Date.now(),
-        };
-        this.send(chatReply);
-        console.error(`[companion] Hook reply: "${reply.slice(0, 80)}..."`);
+        if (reply) {
+          const chatReply: CompanionChatReply = {
+            type: 'chat_reply',
+            text: reply,
+            brainName: 'openclaw',
+            timestamp: Date.now(),
+          };
+          this.send(chatReply);
+          console.error(`[companion] Hook reply (sync): "${reply.slice(0, 80)}..."`);
+        } else {
+          console.error(`[companion] Hook accepted (async — reply via companion_reply MCP)`);
+        }
+      } catch {
+        // No JSON body — wake mode, reply comes via MCP
+        console.error(`[companion] Hook accepted (async — reply via companion_reply MCP)`);
       }
     } catch (err) {
       console.error(`[companion] Hook fetch failed: ${err instanceof Error ? err.message : String(err)}`);
