@@ -98,6 +98,8 @@ export declare class WalletIPCClient {
     }>;
     /** Pay a Lightning invoice via Spark — uses dedicated IPC message. */
     proposeSparkPayInvoice(proposal: Record<string, unknown>, _source?: ProposalSource): Promise<ExecutionResult>;
+    /** Query Spark transfer history. */
+    querySparkTransfers(direction?: 'incoming' | 'outgoing' | 'all', limit?: number): Promise<unknown[]>;
     /**
      * Sign EIP-712 typed data for x402 (transferWithAuthorization).
      * Policy-enforced: the Wallet Isolate evaluates the payment amount before signing.

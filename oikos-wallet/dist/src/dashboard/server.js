@@ -368,6 +368,18 @@ export function createDashboard(services, port, host = '127.0.0.1') {
             res.status(500).json({ error: 'Failed to query audit log' });
         }
     });
+    /** Spark transfer history */
+    app.get('/api/spark/transfers', async (req, res) => {
+        try {
+            const direction = req.query['direction'] || 'all';
+            const limit = parseInt(String(req.query['limit'] ?? '20'), 10);
+            const transfers = await wallet.querySparkTransfers(direction, limit);
+            res.json({ transfers });
+        }
+        catch (err) {
+            res.status(500).json({ error: 'Failed to query Spark transfers', detail: err instanceof Error ? err.message : String(err) });
+        }
+    });
     /** Swarm state — peers, announcements, rooms */
     app.get('/api/swarm', (_req, res) => {
         if (!services.swarm) {

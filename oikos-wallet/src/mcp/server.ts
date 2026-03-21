@@ -439,6 +439,18 @@ const TOOLS: MCPTool[] = [
       required: ['invoice', 'reason', 'confidence'],
     },
   },
+  {
+    name: 'spark_get_transfers',
+    description: 'Get Spark transfer history. Shows incoming and outgoing transfers.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        direction: { type: 'string', enum: ['incoming', 'outgoing', 'all'], description: 'Filter by direction (default: all)' },
+        limit: { type: 'number', description: 'Max transfers to return (default: 10)' },
+      },
+      required: [],
+    },
+  },
   // ── Strategy Management ──
   {
     name: 'get_active_strategies',
@@ -741,6 +753,7 @@ const handlers: Record<string, ToolHandler> = {
       strategy: 'mcp-tool',
       timestamp: Date.now(),
     }, 'mcp');
+    if (svc.companion && result) svc.companion.notifyExecution(result as import('../ipc/types.js').ExecutionResult);
     return result;
   },
   async spark_create_invoice(params, svc) {
@@ -765,6 +778,15 @@ const handlers: Record<string, ToolHandler> = {
       timestamp: Date.now(),
     }, 'mcp');
     return result;
+  },
+
+  async spark_get_transfers(params, svc) {
+    if (!svc.sparkEnabled) return { enabled: false, error: 'Spark wallet not enabled' };
+    const transfers = await svc.wallet.querySparkTransfers(
+      params['direction'] as 'incoming' | 'outgoing' | 'all' | undefined,
+      params['limit'] as number | undefined,
+    );
+    return { transfers };
   },
 
   // ── Strategy Management Handlers ──

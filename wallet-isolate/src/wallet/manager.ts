@@ -112,6 +112,7 @@ interface SparkAccount {
   payLightningInvoice(opts: { encodedInvoice: string; maxFeeSats?: number }): Promise<{ id: string; status: string }>;
   getSingleUseDepositAddress(): Promise<string>;
   getStaticDepositAddress(): Promise<string>;
+  getTransfers(opts?: Record<string, unknown>): Promise<unknown[]>;
   dispose(): void;
 }
 
@@ -286,8 +287,14 @@ export class WalletManager implements WalletOperations {
     try {
       if (chain === 'spark') {
         const sparkAccount = await this.getSparkAccount();
-        const result = await sparkAccount.sendTransaction({ to, value: amount });
-        return { success: true, txHash: result.hash };
+        const SPARK_TIMEOUT_MS = 15_000;
+        const result = await Promise.race([
+          sparkAccount.sendTransaction({ to, value: amount }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Spark send timed out after 15s')), SPARK_TIMEOUT_MS)
+          ),
+        ]);
+        return { success: true, txHash: (result as { hash: string }).hash };
       }
 
       const account = await this.getAccount(chain);
@@ -626,6 +633,16 @@ export class WalletManager implements WalletOperations {
   async sparkGetDepositAddress(): Promise<string> {
     const sparkAccount = await this.getSparkAccount();
     return sparkAccount.getStaticDepositAddress();
+  }
+
+  /** Get Spark transfer history. */
+  async sparkGetTransfers(direction?: 'incoming' | 'outgoing' | 'all', limit?: number): Promise<unknown[]> {
+    const sparkAccount = await this.getSparkAccount();
+    const opts: Record<string, unknown> = {};
+    if (direction) opts.direction = direction;
+    if (limit) opts.limit = limit;
+    const transfers = await sparkAccount.getTransfers(opts);
+    return Array.isArray(transfers) ? transfers : [];
   }
 
   // ── Private Helpers ──

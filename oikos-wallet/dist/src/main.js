@@ -198,6 +198,32 @@ async function main() {
                 return results.filter((r) => r !== null && !!r.address);
             },
             getPrices: () => pricing.getAllPrices(),
+            getStrategies: async () => {
+                const { existsSync: ex, readdirSync: rd, readFileSync: rf } = await import('node:fs');
+                const { join: j, dirname: dn } = await import('node:path');
+                const { fileURLToPath: fu } = await import('node:url');
+                const scriptDir = dn(fu(import.meta.url));
+                const repoRoot = j(scriptDir, '..', '..');
+                const dirs = [j(repoRoot, 'strategies'), j(process.cwd(), 'strategies'), j(process.cwd(), '..', 'strategies')];
+                const strategies = [];
+                for (const dir of dirs) {
+                    if (!ex(dir))
+                        continue;
+                    for (const file of rd(dir).filter((f) => f.endsWith('.md'))) {
+                        const content = rf(j(dir, file), 'utf-8');
+                        const enabledMatch = content.match(/enabled:\s*(true|false)/i);
+                        const sourceMatch = content.match(/source:\s*(\w+)/i);
+                        strategies.push({
+                            filename: file,
+                            enabled: enabledMatch?.[1] === 'true',
+                            source: sourceMatch?.[1] ?? 'human',
+                            content,
+                        });
+                    }
+                    break; // use first existing dir only
+                }
+                return strategies;
+            },
         };
         companion = new CC(wallet, stateProvider, {
             ownerPubkey: config.companionOwnerPubkey,

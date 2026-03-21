@@ -97,6 +97,8 @@ export declare class WalletManager implements WalletOperations {
     sparkPayInvoice(encodedInvoice: string, maxFeeSats?: number): Promise<TransactionResult>;
     /** Get a deposit address for bridging BTC L1 → Spark L2. */
     sparkGetDepositAddress(): Promise<string>;
+    /** Get Spark transfer history. */
+    sparkGetTransfers(direction?: 'incoming' | 'outgoing' | 'all', limit?: number): Promise<unknown[]>;
     /** Get the Spark account (cached at init time for performance). */
     private getSparkAccount;
     /**

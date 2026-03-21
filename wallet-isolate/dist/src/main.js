@@ -273,6 +273,22 @@ async function handleRequest(request, executor, wallet, policy, audit, responder
                     };
                     break;
                 }
+                case 'spark_get_transfers': {
+                    const mgr = wallet;
+                    if (typeof mgr.sparkGetTransfers !== 'function') {
+                        response = { id: request.id, type: 'error', payload: { message: 'Spark wallet not available' } };
+                        break;
+                    }
+                    const dir = request.payload?.direction;
+                    const lim = request.payload?.limit;
+                    const transfers = await mgr.sparkGetTransfers(dir, lim);
+                    response = {
+                        id: request.id,
+                        type: 'spark_transfers',
+                        payload: { transfers },
+                    };
+                    break;
+                }
                 // ── x402 EIP-712 Signing (policy-enforced) ──
                 case 'x402_sign': {
                     const req = request.payload;

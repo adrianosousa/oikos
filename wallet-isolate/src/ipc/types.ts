@@ -192,6 +192,7 @@ export type IPCRequestType =
   | 'spark_create_invoice'
   | 'spark_pay_invoice'
   | 'spark_deposit_address'
+  | 'spark_get_transfers'
   | 'x402_sign'
   | 'x402_get_address';
 
@@ -280,6 +281,7 @@ export type IPCResponseType =
   | 'spark_invoice'
   | 'spark_pay_result'
   | 'spark_deposit'
+  | 'spark_transfers'
   | 'x402_signature'
   | 'x402_address'
   | 'error';
@@ -326,7 +328,7 @@ const VALID_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'identity_register', 'identity_set_wallet',
   'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
   'query_rgb_assets', 'query_policy_check',
-  'spark_create_invoice', 'spark_pay_invoice', 'spark_deposit_address',
+  'spark_create_invoice', 'spark_pay_invoice', 'spark_deposit_address', 'spark_get_transfers',
   'x402_sign', 'x402_get_address',
 ]);
 const VALID_YIELD_ACTIONS: ReadonlySet<string> = new Set(['deposit', 'withdraw']);

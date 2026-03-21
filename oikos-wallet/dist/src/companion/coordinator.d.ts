@@ -28,6 +28,12 @@ export interface CompanionStateProvider {
         source: string;
         updatedAt: number;
     }>>;
+    getStrategies?(): Promise<Array<{
+        filename: string;
+        enabled: boolean;
+        source: string;
+        content: string;
+    }>>;
 }
 export interface CompanionConfig {
     /** Ed25519 public key of the authorized owner (hex) */
@@ -83,6 +89,9 @@ export declare class CompanionCoordinator {
     stop(): Promise<void>;
     private _onConnection;
     private _handleMessage;
+    private _resolveStrategiesDir;
+    private _handleStrategySave;
+    private _handleStrategyToggle;
     private _pushStateUpdate;
     /**
      * Forward a companion instruction to OpenClaw via webhook.

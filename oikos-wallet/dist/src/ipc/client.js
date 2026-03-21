@@ -287,6 +287,17 @@ export class WalletIPCClient {
             return { status: 'failed', proposalType: 'spark_pay_invoice', proposal: proposal, error: err instanceof Error ? err.message : 'Lightning payment failed', violations: [], timestamp: Date.now() };
         }
     }
+    /** Query Spark transfer history. */
+    async querySparkTransfers(direction, limit) {
+        try {
+            const response = await this.send('spark_get_transfers', { direction, limit });
+            const p = response.payload;
+            return p.transfers || [];
+        }
+        catch {
+            return [];
+        }
+    }
     // ── x402 EIP-712 Signing (IPC-bridged) ──
     /**
      * Sign EIP-712 typed data for x402 (transferWithAuthorization).

@@ -322,6 +322,26 @@ async function handleRequest(
           break;
         }
 
+        case 'spark_get_transfers': {
+          const mgr = wallet as WalletManager;
+          if (typeof mgr.sparkGetTransfers !== 'function') {
+            response = { id: request.id, type: 'error', payload: { message: 'Spark wallet not available' } };
+            break;
+          }
+          const dir = (request.payload as Record<string, unknown>)?.direction as string | undefined;
+          const lim = (request.payload as Record<string, unknown>)?.limit as number | undefined;
+          const transfers = await mgr.sparkGetTransfers(
+            dir as 'incoming' | 'outgoing' | 'all' | undefined,
+            lim
+          );
+          response = {
+            id: request.id,
+            type: 'spark_transfers',
+            payload: { transfers },
+          };
+          break;
+        }
+
         // ── x402 EIP-712 Signing (policy-enforced) ──
 
         case 'x402_sign': {

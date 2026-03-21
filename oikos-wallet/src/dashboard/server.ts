@@ -410,6 +410,18 @@ export function createDashboard(
     }
   });
 
+  /** Spark transfer history */
+  app.get('/api/spark/transfers', async (req, res) => {
+    try {
+      const direction = (req.query['direction'] as string) || 'all';
+      const limit = parseInt(String(req.query['limit'] ?? '20'), 10);
+      const transfers = await wallet.querySparkTransfers(direction as 'incoming' | 'outgoing' | 'all', limit);
+      res.json({ transfers });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to query Spark transfers', detail: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   /** Swarm state — peers, announcements, rooms */
   app.get('/api/swarm', (_req, res) => {
     if (!services.swarm) {

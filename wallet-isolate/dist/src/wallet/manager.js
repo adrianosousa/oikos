@@ -205,7 +205,11 @@ export class WalletManager {
         try {
             if (chain === 'spark') {
                 const sparkAccount = await this.getSparkAccount();
-                const result = await sparkAccount.sendTransaction({ to, value: amount });
+                const SPARK_TIMEOUT_MS = 15_000;
+                const result = await Promise.race([
+                    sparkAccount.sendTransaction({ to, value: amount }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Spark send timed out after 15s')), SPARK_TIMEOUT_MS)),
+                ]);
                 return { success: true, txHash: result.hash };
             }
             const account = await this.getAccount(chain);
@@ -494,6 +498,17 @@ export class WalletManager {
     async sparkGetDepositAddress() {
         const sparkAccount = await this.getSparkAccount();
         return sparkAccount.getStaticDepositAddress();
+    }
+    /** Get Spark transfer history. */
+    async sparkGetTransfers(direction, limit) {
+        const sparkAccount = await this.getSparkAccount();
+        const opts = {};
+        if (direction)
+            opts.direction = direction;
+        if (limit)
+            opts.limit = limit;
+        const transfers = await sparkAccount.getTransfers(opts);
+        return Array.isArray(transfers) ? transfers : [];
     }
     // ── Private Helpers ──
     /** Get the Spark account (cached at init time for performance). */

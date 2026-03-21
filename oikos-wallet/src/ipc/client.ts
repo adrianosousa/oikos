@@ -365,6 +365,17 @@ export class WalletIPCClient {
     }
   }
 
+  /** Query Spark transfer history. */
+  async querySparkTransfers(direction?: 'incoming' | 'outgoing' | 'all', limit?: number): Promise<unknown[]> {
+    try {
+      const response = await this.send('spark_get_transfers' as IPCRequest['type'], { direction, limit } as unknown as IPCRequest['payload']);
+      const p = response.payload as unknown as { transfers: unknown[] };
+      return p.transfers || [];
+    } catch {
+      return [];
+    }
+  }
+
   // ── x402 EIP-712 Signing (IPC-bridged) ──
 
   /**

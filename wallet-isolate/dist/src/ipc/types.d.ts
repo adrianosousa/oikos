@@ -132,7 +132,7 @@ export interface X402SignRequest {
     /** Symbol for policy evaluation */
     policySymbol: TokenSymbol;
 }
-export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'identity_register' | 'identity_set_wallet' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address' | 'x402_sign' | 'x402_get_address';
+export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'identity_register' | 'identity_set_wallet' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address' | 'spark_get_transfers' | 'x402_sign' | 'x402_get_address';
 /** Dry-run policy check result — evaluate without executing or recording */
 export interface PolicyCheckResult {
     wouldApprove: boolean;
@@ -188,7 +188,7 @@ export interface ReputationResult {
     totalValue: string;
     valueDecimals: number;
 }
-export type IPCResponseType = 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'spark_invoice' | 'spark_pay_result' | 'spark_deposit' | 'x402_signature' | 'x402_address' | 'error';
+export type IPCResponseType = 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'spark_invoice' | 'spark_pay_result' | 'spark_deposit' | 'spark_transfers' | 'x402_signature' | 'x402_address' | 'error';
 export interface IPCResponse {
     id: string;
     type: IPCResponseType;

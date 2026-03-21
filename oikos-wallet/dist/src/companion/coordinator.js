@@ -15,6 +15,9 @@ import Protomux from 'protomux';
 import c from 'compact-encoding';
 import b4a from 'b4a';
 import sodium from 'sodium-universal';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 export class CompanionCoordinator {
     stateProvider;
     swarm;
@@ -223,12 +226,74 @@ export class CompanionCoordinator {
                 case 'ping':
                     void this._pushStateUpdate();
                     break;
+                case 'strategy_save':
+                    this._handleStrategySave(msg.requestId, msg.filename, msg.content);
+                    break;
+                case 'strategy_toggle':
+                    this._handleStrategyToggle(msg.requestId, msg.filename, msg.enabled);
+                    break;
                 default:
                     console.error(`[companion] Unknown message type: ${msg.type}`);
             }
         }
         catch {
             console.error('[companion] Failed to parse message');
+        }
+    }
+    _resolveStrategiesDir() {
+        const coordDir = dirname(fileURLToPath(import.meta.url));
+        const repoRoot = join(coordDir, '..', '..', '..');
+        const candidates = [
+            join(repoRoot, 'strategies'),
+            join(process.cwd(), 'strategies'),
+            join(process.cwd(), '..', 'strategies'),
+        ];
+        return candidates.find(d => existsSync(d)) ?? candidates[0];
+    }
+    _handleStrategySave(requestId, filename, content) {
+        try {
+            if (!filename || !content) {
+                this.send({ type: 'strategy_result', requestId, success: false, error: 'filename and content required', timestamp: Date.now() });
+                return;
+            }
+            const strategiesDir = this._resolveStrategiesDir();
+            if (!existsSync(strategiesDir))
+                mkdirSync(strategiesDir, { recursive: true });
+            const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
+            const exists = existsSync(join(strategiesDir, safeName));
+            writeFileSync(join(strategiesDir, safeName), content);
+            console.error(`[companion] ${exists ? 'Updated' : 'Created'} strategy: ${safeName}`);
+            this.send({ type: 'strategy_result', requestId, success: true, filename: safeName, action: exists ? 'updated' : 'created', timestamp: Date.now() });
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[companion] Strategy save error: ${msg}`);
+            this.send({ type: 'strategy_result', requestId, success: false, error: msg, timestamp: Date.now() });
+        }
+    }
+    _handleStrategyToggle(requestId, filename, enabled) {
+        try {
+            if (!filename || enabled === undefined) {
+                this.send({ type: 'strategy_result', requestId, success: false, error: 'filename and enabled required', timestamp: Date.now() });
+                return;
+            }
+            const strategiesDir = this._resolveStrategiesDir();
+            const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
+            const filePath = join(strategiesDir, safeName);
+            if (!existsSync(filePath)) {
+                this.send({ type: 'strategy_result', requestId, success: false, error: `Strategy not found: ${safeName}`, timestamp: Date.now() });
+                return;
+            }
+            let fileContent = readFileSync(filePath, 'utf-8');
+            fileContent = fileContent.replace(/^enabled:\s*(true|false)/m, `enabled: ${enabled}`);
+            writeFileSync(filePath, fileContent);
+            console.error(`[companion] ${enabled ? 'Enabled' : 'Disabled'} strategy: ${safeName}`);
+            this.send({ type: 'strategy_result', requestId, success: true, filename: safeName, action: enabled ? 'enabled' : 'disabled', timestamp: Date.now() });
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[companion] Strategy toggle error: ${msg}`);
+            this.send({ type: 'strategy_result', requestId, success: false, error: msg, timestamp: Date.now() });
         }
     }
     async _pushStateUpdate() {
@@ -284,6 +349,14 @@ export class CompanionCoordinator {
                 }
             }
             catch { /* pricing may not be ready */ }
+        }
+        // Strategy update (filesystem strategies)
+        if (this.stateProvider.getStrategies) {
+            try {
+                const strategies = await this.stateProvider.getStrategies();
+                this.send({ type: 'strategy_update', strategies, timestamp: Date.now() });
+            }
+            catch { /* strategies dir may not exist */ }
         }
         // Swarm status (with full data for UI rendering)
         if (this.swarm) {

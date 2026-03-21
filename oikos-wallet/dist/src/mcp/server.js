@@ -401,6 +401,18 @@ const TOOLS = [
             required: ['invoice', 'reason', 'confidence'],
         },
     },
+    {
+        name: 'spark_get_transfers',
+        description: 'Get Spark transfer history. Shows incoming and outgoing transfers.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                direction: { type: 'string', enum: ['incoming', 'outgoing', 'all'], description: 'Filter by direction (default: all)' },
+                limit: { type: 'number', description: 'Max transfers to return (default: 10)' },
+            },
+            required: [],
+        },
+    },
     // ── Strategy Management ──
     {
         name: 'get_active_strategies',
@@ -473,7 +485,10 @@ const handlers = {
             reason: params['reason'], confidence: params['confidence'],
             strategy: 'mcp-tool', timestamp: Date.now(),
         };
-        return svc.wallet.proposePayment(proposal, 'mcp');
+        const result = await svc.wallet.proposePayment(proposal, 'mcp');
+        if (svc.companion && result)
+            svc.companion.notifyExecution(result);
+        return result;
     },
     async propose_swap(params, svc) {
         const symbol = params['symbol'];
@@ -483,7 +498,10 @@ const handlers = {
             reason: params['reason'], confidence: params['confidence'],
             strategy: 'mcp-tool', timestamp: Date.now(),
         };
-        return svc.wallet.proposeSwap(proposal, 'mcp');
+        const result = await svc.wallet.proposeSwap(proposal, 'mcp');
+        if (svc.companion && result)
+            svc.companion.notifyExecution(result);
+        return result;
     },
     async propose_bridge(params, svc) {
         const symbol = params['symbol'];
@@ -494,7 +512,10 @@ const handlers = {
             reason: params['reason'], confidence: params['confidence'],
             strategy: 'mcp-tool', timestamp: Date.now(),
         };
-        return svc.wallet.proposeBridge(proposal, 'mcp');
+        const result = await svc.wallet.proposeBridge(proposal, 'mcp');
+        if (svc.companion && result)
+            svc.companion.notifyExecution(result);
+        return result;
     },
     async propose_yield(params, svc) {
         const symbol = params['symbol'];
@@ -505,7 +526,10 @@ const handlers = {
             reason: params['reason'], confidence: params['confidence'],
             strategy: 'mcp-tool', timestamp: Date.now(),
         };
-        return svc.wallet.proposeYield(proposal, 'mcp');
+        const result = await svc.wallet.proposeYield(proposal, 'mcp');
+        if (svc.companion && result)
+            svc.companion.notifyExecution(result);
+        return result;
     },
     async policy_status(_params, svc) {
         return { policies: await svc.wallet.queryPolicy() };
@@ -702,6 +726,8 @@ const handlers = {
             strategy: 'mcp-tool',
             timestamp: Date.now(),
         }, 'mcp');
+        if (svc.companion && result)
+            svc.companion.notifyExecution(result);
         return result;
     },
     async spark_create_invoice(params, svc) {
@@ -725,6 +751,12 @@ const handlers = {
             timestamp: Date.now(),
         }, 'mcp');
         return result;
+    },
+    async spark_get_transfers(params, svc) {
+        if (!svc.sparkEnabled)
+            return { enabled: false, error: 'Spark wallet not enabled' };
+        const transfers = await svc.wallet.querySparkTransfers(params['direction'], params['limit']);
+        return { transfers };
     },
     // ── Strategy Management Handlers ──
     async get_active_strategies() {

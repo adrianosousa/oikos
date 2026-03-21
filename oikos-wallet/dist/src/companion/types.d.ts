@@ -132,10 +132,47 @@ export interface CompanionPing {
     type: 'ping';
     timestamp: number;
 }
+/** Request to save a strategy file via protomux */
+export interface CompanionStrategySave {
+    type: 'strategy_save';
+    filename: string;
+    content: string;
+    requestId: string;
+    timestamp: number;
+}
+/** Request to toggle a strategy's enabled state via protomux */
+export interface CompanionStrategyToggle {
+    type: 'strategy_toggle';
+    filename: string;
+    enabled: boolean;
+    requestId: string;
+    timestamp: number;
+}
+/** Strategy list pushed to companion */
+export interface CompanionStrategyUpdate {
+    type: 'strategy_update';
+    strategies: Array<{
+        filename: string;
+        enabled: boolean;
+        source: string;
+        content: string;
+    }>;
+    timestamp: number;
+}
+/** Response to a strategy save/toggle request */
+export interface CompanionStrategyResult {
+    type: 'strategy_result';
+    requestId: string;
+    success: boolean;
+    filename?: string;
+    action?: string;
+    error?: string;
+    timestamp: number;
+}
 /** Messages sent FROM the agent TO the companion */
-export type AgentToCompanionMessage = CompanionBalanceUpdate | CompanionAgentReasoning | CompanionSwarmStatus | CompanionPolicyUpdate | CompanionPriceUpdate | CompanionAddressUpdate | CompanionExecutionNotify | CompanionApprovalRequest | CompanionChatReply;
+export type AgentToCompanionMessage = CompanionBalanceUpdate | CompanionAgentReasoning | CompanionSwarmStatus | CompanionPolicyUpdate | CompanionPriceUpdate | CompanionAddressUpdate | CompanionExecutionNotify | CompanionApprovalRequest | CompanionChatReply | CompanionStrategyUpdate | CompanionStrategyResult;
 /** Messages sent FROM the companion TO the agent */
-export type CompanionToAgentMessage = CompanionInstruction | CompanionApprovalResponse | CompanionPing;
+export type CompanionToAgentMessage = CompanionInstruction | CompanionApprovalResponse | CompanionPing | CompanionStrategySave | CompanionStrategyToggle;
 /** All companion messages */
 export type CompanionMessage = AgentToCompanionMessage | CompanionToAgentMessage;
 //# sourceMappingURL=types.d.ts.map
