@@ -104,7 +104,26 @@
     .bb-left a:hover { color: var(--muted); }
     .bb-left svg { height: 22px; width: auto; }
     .bb-left span { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
-    .bb-center { font-size: 11px; color: var(--dim); font-weight: 600; }
+    .bb-center { font-size: 11px; color: var(--dim); font-weight: 600; position: relative; }
+    .bb-addr-popup {
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      background: var(--bg2); border: 2px solid var(--brand-black); padding: 0.5rem 0.6rem;
+      min-width: 320px; z-index: 100; margin-bottom: 6px;
+    }
+    .bb-addr-popup.hidden { display: none; }
+    .bb-addr-row {
+      display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0; font-size: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bb-addr-row:last-child { border-bottom: none; }
+    .bb-addr-chain { font-weight: 700; text-transform: uppercase; color: var(--muted); min-width: 60px; font-size: 9px; letter-spacing: 0.04em; }
+    .bb-addr-val { font-family: 'JetBrains Mono', monospace; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bb-addr-copy {
+      background: none; border: 1px solid var(--border); color: var(--dim); cursor: pointer;
+      font-size: 9px; padding: 0.15rem 0.35rem; font-family: inherit; font-weight: 700;
+    }
+    .bb-addr-copy:hover { color: var(--green); border-color: var(--green); }
+    .bb-addr-copy.copied { color: var(--green); border-color: var(--green); }
     .bb-right button {
       background: none; border: none; font-size: 16px; cursor: pointer;
       color: var(--muted); font-family: inherit; padding: 2px 6px;
@@ -296,7 +315,7 @@
     .ann-id { font-size: 9px; color: var(--dim); padding: 0.05rem 0.3rem; border: 1px solid var(--border); background: var(--bg); white-space: nowrap; flex-shrink: 0; cursor: pointer; }
     .ann-id:hover { border-color: var(--brand-black); }
     .ann-cat { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 0.05rem 0.35rem; border: 1px solid currentColor; flex-shrink: 0; }
-    .cat-seller { color: var(--green); } .cat-buyer { color: var(--blue); } .cat-auction { color: var(--gold); }
+    .cat-seller { color: var(--green); } .cat-buyer { color: var(--blue); } .cat-auction { color: var(--gold); } .cat-general { color: var(--muted); }
     .ann-desc { font-size: 11px; color: var(--muted); margin: 0.2rem 0; line-height: 1.4; }
     .ann-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0.25rem 0; }
     .ann-tag { font-size: 9px; padding: 0.1rem 0.35rem; background: var(--bg); border: 1px solid var(--border); color: var(--muted); cursor: pointer; text-transform: lowercase; }
@@ -339,11 +358,41 @@
     .strat-desc { font-size: 11px; color: var(--muted); margin-top: 0.3rem; line-height: 1.4; }
     .strat-actions { display: flex; gap: 0.3rem; margin-top: 0.4rem; }
     .strat-toggle {
-      font-size: 10px; font-weight: 700; padding: 0.2rem 0.5rem; cursor: pointer;
-      border: 1px solid currentColor; background: none; font-family: inherit;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 0.15rem 0.4rem; cursor: pointer; font-family: inherit;
+      background: none; border: 1px solid currentColor;
     }
     .strat-toggle-on { color: var(--green); }
     .strat-toggle-off { color: var(--dim); }
+    .strat-action-btn {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 0.15rem 0.4rem; cursor: pointer; font-family: inherit;
+      background: none; border: 1px solid var(--dim); color: var(--muted);
+    }
+    .strat-action-btn:hover { border-color: var(--muted); color: var(--text); }
+    .strat-delete {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 0.15rem 0.4rem; cursor: pointer; font-family: inherit;
+      background: none; border: 1px solid var(--red); color: var(--red);
+    }
+    .strat-delete:hover { background: var(--red); color: #fff; }
+
+    /* Auth bar (collapsible) */
+    .auth-bar {
+      display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem;
+      margin-top: 1rem; cursor: pointer; font-size: 11px; color: var(--muted);
+      border: 1px solid var(--border); background: var(--bg2); user-select: none;
+    }
+    .auth-bar:hover { border-color: var(--dim); }
+    .auth-bar-icon { font-size: 12px; }
+    .auth-bar-label { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; flex: 1; }
+    .auth-bar-chevron { font-size: 8px; color: var(--dim); transition: transform 0.2s; }
+    .auth-bar-chevron.open { transform: rotate(180deg); }
+    .auth-expand {
+      padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-top: none;
+      background: var(--bg2);
+    }
+    .auth-expand.hidden { display: none; }
     .strat-pending { border-color: var(--yellow) !important; }
     .strat-pending .strat-name::before { content: "\u23F8 "; }
     .strat-approval-btns { display: flex; gap: 0.3rem; margin-top: 0.35rem; }
@@ -555,7 +604,7 @@
         <!-- GUARDRAILS: compact, budget-first -->
         <div class="card" style="margin-bottom:0.75rem;">
           <div class="card-title">
-            Guardrails <span class="badge badge-green" id="pol-status">Active</span>
+            Guardrails
             <button class="btn btn-sm" id="pol-edit-btn">Edit</button>
           </div>
           <div id="pol-guardrails"><div class="empty">Loading...</div></div>
@@ -569,30 +618,26 @@
         </div>
         <div id="pol-strategies"><div class="empty">No strategies loaded. Add one to guide your agent's behavior.</div></div>
 
-        <!-- AUTHORIZATION -->
-        <div class="section" style="margin-top:1.25rem;">
-          <span class="section-title">Authorization</span>
-          <span class="section-line"></span>
+        <!-- PASSWORD AUTH (collapsible) -->
+        <div class="auth-bar" id="auth-bar">
+          <span class="auth-bar-icon">&#128274;</span>
+          <span class="auth-bar-label">Transaction Password</span>
+          <span class="badge" id="auth-badge" style="color:var(--dim);font-size:10px;">OFF</span>
+          <span class="auth-bar-chevron" id="auth-chevron">&#9660;</span>
         </div>
-        <div class="card" id="auth-section">
-          <div class="card-title">Passphrase Auth <span class="badge" id="auth-badge" style="color:var(--dim);">Disabled</span></div>
-          <div id="auth-content">
-            <div style="font-size:11px;color:var(--muted);margin-bottom:0.75rem;">
-              Require a passphrase for high-value transactions. The passphrase never reaches the LLM — it's verified locally.
-            </div>
-            <div id="auth-setup-form">
-              <div class="form-group"><label class="form-label">Passphrase</label><input class="form-input" id="auth-passphrase" type="password" placeholder="Min 4 characters" /></div>
-              <div style="display:flex;gap:0.4rem;">
-                <div class="form-group" style="flex:1;"><label class="form-label">Threshold (USDT)</label><input class="form-input" id="auth-threshold" type="number" value="100" /></div>
-                <div class="form-group" style="flex:1;"><label class="form-label">Timeout (min)</label><input class="form-input" id="auth-timeout" type="number" value="15" /></div>
-              </div>
-              <div style="display:flex;gap:0.5rem;">
-                <button class="btn btn-primary btn-sm" id="auth-enable-btn">Enable</button>
-                <button class="btn btn-sm hidden" id="auth-disable-btn">Disable</button>
-              </div>
-              <div class="sim-result hidden" id="auth-result" style="margin-top:0.4rem;"></div>
-            </div>
+        <div class="auth-expand hidden" id="auth-expand">
+          <div style="font-size:10px;color:var(--dim);margin-bottom:0.5rem;line-height:1.4;">
+            Require a password for transactions above a threshold. Verified locally — the LLM never sees it.<br>
+            <em>This is NOT your wallet seed passphrase.</em>
           </div>
+          <div id="auth-setup-form" style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:flex-end;">
+            <div class="form-group" style="flex:2;min-width:120px;margin:0;"><label class="form-label">Password</label><input class="form-input" id="auth-passphrase" type="password" placeholder="Min 4 chars" style="font-size:11px;padding:0.3rem 0.5rem;" /></div>
+            <div class="form-group" style="flex:1;min-width:70px;margin:0;"><label class="form-label">Threshold</label><input class="form-input" id="auth-threshold" type="number" value="100" style="font-size:11px;padding:0.3rem 0.5rem;" /></div>
+            <div class="form-group" style="flex:1;min-width:60px;margin:0;"><label class="form-label">Timeout</label><input class="form-input" id="auth-timeout" type="number" value="15" style="font-size:11px;padding:0.3rem 0.5rem;" /></div>
+            <button class="btn btn-primary btn-sm" id="auth-enable-btn" style="font-size:10px;padding:0.3rem 0.6rem;">Enable</button>
+            <button class="btn btn-sm hidden" id="auth-disable-btn" style="font-size:10px;padding:0.3rem 0.6rem;">Disable</button>
+          </div>
+          <div class="sim-result hidden" id="auth-result" style="margin-top:0.3rem;"></div>
         </div>
 
         <!-- CAPABILITIES (collapsed modules) -->
@@ -625,7 +670,10 @@
           </svg>
         </a>
       </div>
-      <div class="bb-center" id="bb-clock">--:--:--</div>
+      <div class="bb-center" id="bb-addresses" title="Click to show wallet addresses">
+        <span id="bb-addr-label" style="cursor:pointer;font-size:10px;letter-spacing:0.05em;opacity:0.5;">ADDRESSES</span>
+        <div class="bb-addr-popup hidden" id="bb-addr-popup"></div>
+      </div>
       <div class="bb-right"><button id="settings-btn" title="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
     </div>
   </div>
@@ -651,7 +699,7 @@
     <div class="modal-title" style="color:var(--brand-yellow);">🔒 Authorization Required</div>
     <div id="auth-prompt-desc" style="font-size:12px;color:var(--muted);margin-bottom:0.75rem;"></div>
     <div id="auth-prompt-amount" style="font-size:20px;font-weight:800;margin-bottom:0.75rem;"></div>
-    <div class="form-group"><input class="form-input" id="auth-prompt-input" type="password" placeholder="Enter passphrase" autofocus /></div>
+    <div class="form-group"><input class="form-input" id="auth-prompt-input" type="password" placeholder="Enter transaction password" autofocus /></div>
     <div style="display:flex;gap:0.5rem;">
       <button class="btn btn-primary" id="auth-prompt-approve" style="background:var(--green);border-color:var(--green);color:#fff;">Authorize</button>
       <button class="btn" id="auth-prompt-reject" style="color:var(--red);border-color:var(--red);">Reject</button>
@@ -710,10 +758,10 @@
 <div class="modal-overlay hidden" id="strat-add-modal">
   <div class="modal" style="width:560px;">
     <div class="modal-title">Add Strategy <button class="modal-close" id="strat-add-close">&times;</button></div>
-    <div class="form-group"><label class="form-label">Strategy Name</label><input class="form-input" id="strat-name" placeholder="e.g. conservative-yield" /></div>
+    <div class="form-group"><label class="form-label">Strategy Name <span style="color:var(--dim);font-weight:400;">(kebab-case, e.g. yield-optimizer)</span></label><input class="form-input" id="strat-name" placeholder="my-strategy" /></div>
     <div class="form-group">
-      <label class="form-label">Strategy Content (Markdown)</label>
-      <textarea class="form-input" id="strat-content" rows="12" style="min-height:200px;resize:vertical;font-size:11px;" placeholder="# My Strategy&#10;&#10;## Rules&#10;- Keep 40% in stablecoins&#10;- Auto-deposit idle USDT into Aave when > 300&#10;- Rebalance at 10% drift&#10;&#10;## Assets&#10;- USDT, XAUT, ETH, BTC&#10;&#10;## Risk&#10;- Conservative: max 30 USDT auto-bid on swarm"></textarea>
+      <label class="form-label">Strategy Content <span style="color:var(--dim);font-weight:400;">(markdown with YAML frontmatter)</span></label>
+      <textarea class="form-input" id="strat-content" rows="16" style="min-height:260px;resize:vertical;font-size:11px;font-family:'JetBrains Mono',monospace;line-height:1.5;"></textarea>
     </div>
     <div style="display:flex;gap:0.5rem;">
       <button class="btn btn-primary" id="strat-save-btn">Save Strategy</button>

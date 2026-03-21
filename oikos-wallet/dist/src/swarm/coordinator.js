@@ -30,6 +30,10 @@ export class SwarmCoordinator {
         this.config = config;
         this.marketplace = new Marketplace();
     }
+    /** Expose underlying Hyperswarm instance for companion to reuse */
+    getHyperswarm() {
+        return this.discovery?.getSwarmInstance() ?? null;
+    }
     /** Start the swarm: generate identity, join board, begin heartbeat */
     async start() {
         if (this.started)

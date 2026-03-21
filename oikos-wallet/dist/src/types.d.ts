@@ -9,6 +9,7 @@ import type { EventBus } from './events/bus.js';
 import type { PricingService } from './pricing/client.js';
 import type { BrainAdapter, ChatMessage } from './brain/adapter.js';
 import type { X402Client } from './x402/client.js';
+import type { CompanionCoordinator } from './companion/coordinator.js';
 /** Swarm announcement posting options */
 export interface SwarmAnnounceOpts {
     category: 'buyer' | 'seller' | 'auction';
@@ -72,5 +73,7 @@ export interface OikosServices {
     sparkEnabled: boolean;
     /** Passphrase authentication module */
     auth: import('./auth/passphrase.js').PassphraseAuth | null;
+    /** Companion coordinator for Pear app ↔ agent bridging */
+    companion: CompanionCoordinator | null;
 }
 //# sourceMappingURL=types.d.ts.map

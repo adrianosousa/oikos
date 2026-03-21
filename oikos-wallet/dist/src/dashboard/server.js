@@ -20,7 +20,7 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs';
 import { mountMCP, mountRemoteMCP } from '../mcp/server.js';
 import { buildWalletContext } from '../brain/adapter.js';
 import { processActions } from '../brain/actions.js';
@@ -268,6 +268,17 @@ export function createDashboard(services, port, host = '127.0.0.1') {
             res.status(500).json({ error: msg });
         }
     });
+    // Shared strategy dir resolver (same candidates as GET)
+    const scriptDir = dirname(fileURLToPath(import.meta.url));
+    const stratRepoRoot = join(scriptDir, '..', '..', '..');
+    function resolveStrategiesDir() {
+        const candidates = [
+            join(stratRepoRoot, 'strategies'),
+            join(process.cwd(), 'strategies'),
+            join(process.cwd(), '..', 'strategies'),
+        ];
+        return candidates.find(d => existsSync(d)) ?? candidates[0];
+    }
     /** Save a strategy skill file */
     app.post('/api/strategies', (req, res) => {
         try {
@@ -276,12 +287,68 @@ export function createDashboard(services, port, host = '127.0.0.1') {
                 res.status(400).json({ error: 'filename and content required' });
                 return;
             }
-            const strategiesDir = join(process.cwd(), '..', 'strategies');
+            const strategiesDir = resolveStrategiesDir();
             if (!existsSync(strategiesDir))
                 mkdirSync(strategiesDir, { recursive: true });
             const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
             writeFileSync(join(strategiesDir, safeName), content);
             console.error(`[strategies] Saved strategy: ${safeName}`);
+            res.json({ success: true, filename: safeName });
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            res.status(500).json({ error: msg });
+        }
+    });
+    /** Toggle a strategy's enabled state */
+    app.post('/api/strategies/toggle', (req, res) => {
+        try {
+            const { filename, enabled } = req.body;
+            if (!filename || enabled === undefined) {
+                res.status(400).json({ error: 'filename and enabled required' });
+                return;
+            }
+            const strategiesDir = resolveStrategiesDir();
+            const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
+            const filePath = join(strategiesDir, safeName);
+            if (!existsSync(filePath)) {
+                res.status(404).json({ error: `Strategy not found: ${safeName}` });
+                return;
+            }
+            let content = readFileSync(filePath, 'utf-8');
+            const enabledRegex = /enabled:\s*(true|false)/i;
+            if (enabledRegex.test(content)) {
+                content = content.replace(enabledRegex, `enabled: ${enabled}`);
+            }
+            else {
+                content = `enabled: ${enabled}\n` + content;
+            }
+            writeFileSync(filePath, content);
+            console.error(`[strategies] ${enabled ? 'Enabled' : 'Disabled'} strategy: ${safeName}`);
+            res.json({ success: true, filename: safeName, enabled });
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            res.status(500).json({ error: msg });
+        }
+    });
+    /** Delete a strategy file */
+    app.post('/api/strategies/delete', (req, res) => {
+        try {
+            const { filename } = req.body;
+            if (!filename) {
+                res.status(400).json({ error: 'filename required' });
+                return;
+            }
+            const strategiesDir = resolveStrategiesDir();
+            const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
+            const filePath = join(strategiesDir, safeName);
+            if (!existsSync(filePath)) {
+                res.status(404).json({ error: `Strategy not found: ${safeName}` });
+                return;
+            }
+            unlinkSync(filePath);
+            console.error(`[strategies] Deleted strategy: ${safeName}`);
             res.json({ success: true, filename: safeName });
         }
         catch (err) {
@@ -858,9 +925,22 @@ catch(e){r.textContent='Error: '+e.message;r.style.color='#f87171'}}</script></b
                 description: a.description,
                 priceRange: a.priceRange,
                 capabilities: a.capabilities,
+                tags: a.tags ?? [],
                 expiresAt: a.expiresAt,
                 timestamp: a.timestamp,
             })),
+            // Compute tag cloud from announcement tags
+            tags: (() => {
+                const counts = new Map();
+                for (const a of anns) {
+                    for (const t of a.tags ?? []) {
+                        counts.set(t, (counts.get(t) ?? 0) + 1);
+                    }
+                }
+                return [...counts.entries()]
+                    .map(([tag, count]) => ({ tag, count }))
+                    .sort((a, b) => b.count - a.count);
+            })(),
             economics: state.economics,
             timestamp: Date.now(),
         });

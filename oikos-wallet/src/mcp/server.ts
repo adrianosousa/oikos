@@ -17,6 +17,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Request, Response } from 'express';
 import type { OikosServices } from '../types.js';
 import type {
@@ -436,6 +439,59 @@ const TOOLS: MCPTool[] = [
       required: ['invoice', 'reason', 'confidence'],
     },
   },
+  // ── Strategy Management ──
+  {
+    name: 'get_active_strategies',
+    description: 'Get all active strategy files. Returns parsed YAML frontmatter + markdown body for each enabled strategy. Use this before making financial decisions to get current behavioral guidance.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'save_strategy',
+    description: 'Save a new strategy file or update an existing one. Strategy files are YAML-frontmatter + markdown defining behavioral guidance (portfolio targets, swarm rules, DeFi triggers, risk limits). Strategies authored by agents are time-boxed (expires_at) and flagged with source: agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Strategy filename without extension (e.g., "yield-optimizer"). Alphanumeric + dashes only.' },
+        content: { type: 'string', description: 'Full strategy content: YAML frontmatter (---\\nenabled: true\\nsource: agent\\n---) followed by markdown body.' },
+      },
+      required: ['filename', 'content'],
+    },
+  },
+  {
+    name: 'toggle_strategy',
+    description: 'Enable or disable a strategy by filename. Toggles the "enabled:" field in the YAML frontmatter.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Strategy filename without extension (e.g., "conservative-portfolio")' },
+        enabled: { type: 'boolean', description: 'true to enable, false to disable' },
+      },
+      required: ['filename', 'enabled'],
+    },
+  },
+  {
+    name: 'companion_read',
+    description: 'Read pending instructions from the Oikos App (companion). Returns queued messages from the human owner sent via the Pear app P2P channel. Call this to check if your owner sent you any instructions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clear: { type: 'boolean', description: 'If true, clear the queue after reading (default: true)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'companion_reply',
+    description: 'Send a reply to the Oikos App (companion). The reply is delivered via the P2P protomux channel to the human owner\'s Pear app.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Reply text to send to the companion app' },
+        brainName: { type: 'string', description: 'Your agent name (e.g., "ludwig")' },
+      },
+      required: ['text'],
+    },
+  },
 ];
 
 // ── Tool Handlers ──
@@ -701,6 +757,149 @@ const handlers: Record<string, ToolHandler> = {
       timestamp: Date.now(),
     }, 'mcp');
     return result;
+  },
+
+  // ── Strategy Management Handlers ──
+
+  async get_active_strategies() {
+    const mcpDir = dirname(fileURLToPath(import.meta.url));
+    const repoRoot = join(mcpDir, '..', '..', '..');
+    const candidates = [
+      join(repoRoot, 'strategies'),
+      join(process.cwd(), 'strategies'),
+      join(process.cwd(), '..', 'strategies'),
+    ];
+    const strategiesDir = candidates.find(d => existsSync(d));
+    if (!strategiesDir) return { strategies: [], count: 0 };
+
+    const files = readdirSync(strategiesDir).filter(f => f.endsWith('.md'));
+    const strategies = files.map(file => {
+      const raw = readFileSync(join(strategiesDir, file), 'utf-8');
+      // Parse YAML frontmatter
+      const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+      const frontmatter: Record<string, string> = {};
+      let body = raw;
+      if (fmMatch?.[1] && fmMatch[2] !== undefined) {
+        body = fmMatch[2];
+        for (const line of fmMatch[1].split('\n')) {
+          const [k, ...rest] = line.split(':');
+          if (k && rest.length) frontmatter[k.trim()] = rest.join(':').trim();
+        }
+      }
+      // Also detect simple "enabled: true" outside frontmatter
+      const enabledMatch = raw.match(/enabled:\s*(true|false)/i);
+      const enabled = enabledMatch?.[1] ? enabledMatch[1] === 'true' : true;
+      const nameMatch = raw.match(/^#\s+(.+)$/m);
+
+      return {
+        id: file.replace('.md', ''),
+        filename: file,
+        name: nameMatch?.[1] ?? file.replace('.md', ''),
+        enabled,
+        source: frontmatter['source'] ?? (raw.includes('[Agent]') ? 'agent' : 'human'),
+        expires_at: frontmatter['expires_at'] ?? null,
+        tags: frontmatter['tags'] ?? null,
+        confidence: frontmatter['confidence'] ?? null,
+        body,
+      };
+    });
+
+    const active = strategies.filter(s => s.enabled);
+    return { strategies: active, all: strategies, count: active.length };
+  },
+
+  async save_strategy(params) {
+    const filename = params['filename'] as string | undefined;
+    const content = params['content'] as string | undefined;
+    if (!filename || !content) return { error: 'filename and content required' };
+
+    const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
+    const mcpDir = dirname(fileURLToPath(import.meta.url));
+    const repoRoot = join(mcpDir, '..', '..', '..');
+    const candidates = [
+      join(repoRoot, 'strategies'),
+      join(process.cwd(), 'strategies'),
+      join(process.cwd(), '..', 'strategies'),
+    ];
+    const strategiesDir = candidates.find(d => existsSync(d)) ?? candidates[0] as string;
+    if (!existsSync(strategiesDir)) mkdirSync(strategiesDir, { recursive: true });
+
+    const exists = existsSync(join(strategiesDir, safeName));
+    writeFileSync(join(strategiesDir, safeName), content);
+    console.error(`[strategies] ${exists ? 'Updated' : 'Created'} strategy: ${safeName}`);
+    return { success: true, filename: safeName, action: exists ? 'updated' : 'created' };
+  },
+
+  async toggle_strategy(params) {
+    const filename = params['filename'] as string | undefined;
+    const enabled = params['enabled'] as boolean | undefined;
+    if (!filename || enabled === undefined) return { error: 'filename and enabled required' };
+
+    const safeName = filename.replace(/[^a-zA-Z0-9_-]/g, '') + '.md';
+    const mcpDir = dirname(fileURLToPath(import.meta.url));
+    const repoRoot = join(mcpDir, '..', '..', '..');
+    const candidates = [
+      join(repoRoot, 'strategies'),
+      join(process.cwd(), 'strategies'),
+      join(process.cwd(), '..', 'strategies'),
+    ];
+    const strategiesDir = candidates.find(d => existsSync(d));
+    if (!strategiesDir) return { error: 'No strategies directory found' };
+
+    const filePath = join(strategiesDir, safeName);
+    if (!existsSync(filePath)) return { error: `Strategy not found: ${safeName}` };
+
+    let content = readFileSync(filePath, 'utf-8');
+    const enabledRegex = /enabled:\s*(true|false)/i;
+    if (enabledRegex.test(content)) {
+      content = content.replace(enabledRegex, `enabled: ${enabled}`);
+    } else {
+      // Insert at top if no enabled field exists
+      content = `enabled: ${enabled}\n` + content;
+    }
+    writeFileSync(filePath, content);
+    console.error(`[strategies] ${enabled ? 'Enabled' : 'Disabled'} strategy: ${safeName}`);
+    return { success: true, filename: safeName, enabled };
+  },
+
+  async companion_read(params, svc) {
+    const clear = params['clear'] !== false; // default true
+    const instructions = [...svc.instructions];
+    if (clear && instructions.length > 0) {
+      svc.instructions.splice(0, svc.instructions.length);
+    }
+    return {
+      instructions,
+      count: instructions.length,
+      companionConnected: svc.companionConnected,
+    };
+  },
+
+  async companion_reply(params, svc) {
+    const text = String(params['text'] ?? '').trim();
+    if (!text) return { error: 'text required' };
+    const brainName = String(params['brainName'] ?? 'agent');
+
+    if (!svc.companion || !svc.companion.isConnected()) {
+      return { sent: false, reason: 'Companion not connected' };
+    }
+
+    const sent = svc.companion.send({
+      type: 'chat_reply' as const,
+      text,
+      brainName,
+      timestamp: Date.now(),
+    });
+
+    // Also store in chat history so dashboard sees it
+    svc.chatMessages.push({
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text,
+      from: 'agent',
+      timestamp: Date.now(),
+    });
+
+    return { sent, brainName };
   },
 };
 

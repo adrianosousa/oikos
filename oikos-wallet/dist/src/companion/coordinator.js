@@ -20,6 +20,7 @@ export class CompanionCoordinator {
     swarm;
     config;
     hyperswarm = null;
+    isSharedSwarm = false;
     companionChannel = null;
     ownerPubkeyBuf;
     companionTopic;
@@ -51,25 +52,60 @@ export class CompanionCoordinator {
     async start() {
         if (this.started)
             return;
-        const { loadOrCreateKeypair } = await import('../swarm/identity.js');
-        const keypair = loadOrCreateKeypair(this.config.keypairPath);
-        const opts = { keyPair: keypair };
-        if (this.config.dht)
-            opts['dht'] = this.config.dht;
-        this.hyperswarm = new Hyperswarm(opts);
+        // Try to reuse the swarm's Hyperswarm instance (same UDP socket, same DHT connection)
+        // This avoids opening a second UDP port which may be blocked by Docker/NAT
+        const swarmHyperswarm = this.swarm && typeof this.swarm.getHyperswarm === 'function'
+            ? this.swarm.getHyperswarm()
+            : null;
+        if (swarmHyperswarm) {
+            console.error('[companion] Reusing swarm Hyperswarm instance (shared UDP socket)');
+            this.hyperswarm = swarmHyperswarm;
+            this.isSharedSwarm = true;
+        }
+        else {
+            const { loadOrCreateKeypair } = await import('../swarm/identity.js');
+            const keypair = loadOrCreateKeypair(this.config.keypairPath);
+            const opts = { keyPair: keypair };
+            if (this.config.dht)
+                opts['dht'] = this.config.dht;
+            if (this.config.relayPubkey) {
+                try {
+                    const relayBuf = Buffer.from(this.config.relayPubkey, 'hex');
+                    opts['relayThrough'] = () => relayBuf;
+                }
+                catch { /* invalid relay pubkey, skip */ }
+            }
+            this.hyperswarm = new Hyperswarm(opts);
+            // Maintain persistent connection to relay node for bridging
+            if (this.config.relayPubkey) {
+                try {
+                    const relayBuf = Buffer.from(this.config.relayPubkey, 'hex');
+                    this.hyperswarm.joinPeer(relayBuf);
+                    console.error(`[companion] Joined relay peer: ${this.config.relayPubkey.slice(0, 16)}...`);
+                }
+                catch { /* relay join failed, non-fatal */ }
+            }
+        }
         this.hyperswarm.on('connection', (socket) => {
             this._onConnection(socket);
         });
-        const discovery = this.hyperswarm.join(this.companionTopic, {
-            server: true,
-            client: false,
-        });
-        await discovery.flushed();
+        // When sharing the swarm's Hyperswarm, the board topic is already joined.
+        // The companion piggybacks on board connections via protomux — no separate topic needed.
+        if (!this.isSharedSwarm) {
+            const discovery = this.hyperswarm.join(this.companionTopic, {
+                server: true,
+                client: false,
+            });
+            await discovery.flushed();
+            console.error(`[companion] Listening on companion topic: ${this.companionTopic.toString('hex').slice(0, 16)}...`);
+        }
+        else {
+            console.error(`[companion] Piggyback on swarm board (shared Hyperswarm, no separate topic)`);
+        }
         this.updateInterval = setInterval(() => {
             void this._pushStateUpdate();
         }, this.config.updateIntervalMs);
         this.started = true;
-        console.error(`[companion] Listening. Topic: ${this.companionTopic.toString('hex').slice(0, 16)}...`);
         console.error(`[companion] Authorized owner: ${this.config.ownerPubkey.slice(0, 16)}...`);
     }
     /** Send a message to the connected companion */
@@ -102,7 +138,8 @@ export class CompanionCoordinator {
     async stop() {
         if (this.updateInterval)
             clearInterval(this.updateInterval);
-        if (this.hyperswarm)
+        // Don't destroy shared Hyperswarm — it belongs to the swarm coordinator
+        if (this.hyperswarm && !this.isSharedSwarm)
             await this.hyperswarm.destroy();
         this.started = false;
         this.connected = false;
@@ -114,11 +151,9 @@ export class CompanionCoordinator {
         const remotePubkey = sock.remotePublicKey;
         if (!remotePubkey)
             return;
-        // CRITICAL: Only allow the authorized owner
+        // Only open companion channel with the authorized owner
+        // Don't destroy non-owner sockets — they may be swarm peers (shared Hyperswarm)
         if (!b4a.equals(remotePubkey, this.ownerPubkeyBuf)) {
-            console.error(`[companion] Rejected unauthorized: ${remotePubkey.toString('hex').slice(0, 16)}...`);
-            const closeable = socket;
-            closeable.destroy();
             return;
         }
         console.error(`[companion] Owner connected: ${remotePubkey.toString('hex').slice(0, 16)}...`);

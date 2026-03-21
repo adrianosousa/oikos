@@ -177,7 +177,38 @@ async function main(): Promise<void> {
     // State provider backed by wallet IPC (no brain needed)
     const stateProvider: CompanionStateProvider = {
       getBalances: () => wallet.queryBalanceAll(),
-      getPolicies: () => wallet.queryPolicy(),
+      getPolicies: async () => {
+        const policies = await wallet.queryPolicy();
+        // Enrich with rules from config (same as dashboard /api/policies)
+        const { existsSync, readFileSync } = await import('fs');
+        const { join } = await import('path');
+        const configPaths = [
+          join(process.cwd(), 'policies.json'),
+          join(process.cwd(), '..', 'policies.json'),
+        ];
+        for (const cp of configPaths) {
+          if (existsSync(cp)) {
+            try {
+              const cfg = JSON.parse(readFileSync(cp, 'utf-8'));
+              if (cfg.policies) {
+                for (const rp of policies) {
+                  const rec = rp as unknown as Record<string, unknown>;
+                  const match = cfg.policies.find((c: Record<string, unknown>) => c.id === rec['id']);
+                  if (match?.rules && !rec['rules']) {
+                    rec['rules'] = match.rules;
+                    if (match.name) rec['name'] = match.name;
+                  }
+                }
+                if (policies.length > 0 && !(policies[0] as unknown as Record<string, unknown>)['rules'] && cfg.policies[0]?.rules) {
+                  (policies[0] as unknown as Record<string, unknown>)['rules'] = cfg.policies[0].rules;
+                }
+              }
+            } catch { /* ignore parse errors */ }
+            break;
+          }
+        }
+        return policies;
+      },
       getPrices: () => pricing.getAllPrices(),
     };
 
@@ -194,6 +225,14 @@ async function main(): Promise<void> {
       instructions.push({ text, timestamp: Date.now() });
       // Keep last 50
       if (instructions.length > 50) instructions.splice(0, instructions.length - 50);
+      // Store in chat history so MCP agents can see the conversation
+      chatMessages.push({
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text,
+        from: 'human',
+        timestamp: Date.now(),
+      });
+      if (chatMessages.length > 100) chatMessages.splice(0, chatMessages.length - 100);
     });
 
     // Chat handler registered after brain adapter is created (deferred in step 9)
@@ -295,6 +334,7 @@ async function main(): Promise<void> {
     x402: x402Client,
     sparkEnabled,
     auth,
+    companion: companion ?? null,
   };
 
   // 11. Register companion chat handler (now that brain is available)

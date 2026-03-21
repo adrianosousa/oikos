@@ -151,11 +151,7 @@ function showResult (id, text, isError) {
   el.textContent = text; el.style.borderColor = isError ? 'var(--red)' : 'var(--green)'
 }
 
-// ── Bottom bar clock ──
-setInterval(function () {
-  var el = document.getElementById('bb-clock')
-  if (el) el.textContent = new Date().toLocaleTimeString()
-}, 1000)
+// ── Bottom bar (addresses popup is event-driven, no clock needed) ──
 
 /* ═══ PIE CHART ═══ */
 
@@ -390,12 +386,11 @@ async function updateSwarm () {
     document.getElementById('sw-deals-closed').textContent = closed
   }
 
-  // Tag cloud — collect from tags array + category as fallback
+  // Tag cloud — collect from tags array only (don't mix in categories)
   var anns = swarm.announcements || []
   var tagCounts = {}
   anns.forEach(function (a) {
     var tags = a.tags || []
-    if (tags.length === 0 && a.category) tags = [a.category]
     tags.forEach(function (t) { if (t) tagCounts[t] = (tagCounts[t] || 0) + 1 })
   })
   var tagEl = document.getElementById('sw-tags')
@@ -432,12 +427,15 @@ function renderSwarmBoard (anns) {
     ? '<div class="empty">No announcements match</div>'
     : filtered.map(function (a) {
       var id = (a.id || '').slice(0, 8)
-      var cat = a.category || 'seller'
+      var rawCat = a.category || 'general'
+      var cat = (rawCat === 'seller' || rawCat === 'service' || rawCat === 'offer') ? 'seller' :
+                rawCat === 'auction' ? 'auction' :
+                rawCat === 'buyer' ? 'buyer' : 'general'
       var price = (a.priceRange && a.priceRange.min !== undefined && a.priceRange.min !== 'undefined') ? a.priceRange.min + '-' + a.priceRange.max + ' ' + (a.priceRange.symbol || '') : ''
       var tagsHtml = (a.tags || []).map(function (t) { return '<span class="ann-tag" data-tag="' + t + '">' + t + '</span>' }).join('')
       var rep = a.reputation ? ((a.reputation * 100).toFixed(0) + '%') : ''
       return '<div class="ann-item">' +
-        '<div class="ann-top"><div class="ann-title-row"><span class="ann-title">' + escapeHtml(a.title || 'Untitled') + '</span><span class="ann-id">' + id + '</span></div><span class="ann-cat cat-' + cat + '">' + cat + '</span></div>' +
+        '<div class="ann-top"><div class="ann-title-row"><span class="ann-title">' + escapeHtml(a.title || 'Untitled') + '</span><span class="ann-id">' + id + '</span></div><span class="ann-cat cat-' + cat + '">' + cat.toUpperCase() + '</span></div>' +
         (a.description ? '<div class="ann-desc">' + escapeHtml(a.description).slice(0, 200) + '</div>' : '') +
         (tagsHtml ? '<div class="ann-tags">' + tagsHtml + '</div>' : '') +
         '<div class="ann-bottom"><span class="ann-agent">' + escapeHtml(a.agentName || '?') + '</span>' + (rep ? '<span class="ann-rep">' + rep + '</span>' : '') + (price ? '<span class="ann-price">' + price + '</span>' : '') + '<span>' + timeAgo(a.timestamp || Date.now()) + '</span></div>' +
@@ -556,15 +554,16 @@ async function updatePolicies () {
       var srcClass = s.source === 'purchased' ? 'strat-src-purchased' : s.source === 'agent' ? 'strat-src-agent' : 'strat-src-human'
       var isPending = !s.enabled && (s.source === 'purchased' || s.source === 'agent')
       var toggleCls = s.enabled ? 'strat-toggle-on' : 'strat-toggle-off'
-      var toggleLabel = s.enabled ? 'Active' : 'Paused'
       var lines = s.content.split('\n').filter(function (l) { return l.trim() && !l.startsWith('#') && !l.startsWith('---') && !l.startsWith('enabled:') }).slice(0, 2)
       var desc = lines.join(' ').slice(0, 150)
 
       var html = '<div class="strat-item' + (isPending ? ' strat-pending' : '') + '">'
       html += '<div class="strat-header"><div class="strat-left"><span class="strat-name">' + escapeHtml(s.name) + '</span><span class="strat-source ' + srcClass + '">' + s.source + '</span></div>'
-      if (!isPending) html += '<span class="strat-toggle ' + toggleCls + '">' + toggleLabel + '</span>'
-      html += '<button class="btn btn-sm strat-edit-btn" data-filename="' + escapeHtml(s.filename) + '" data-name="' + escapeHtml(s.id) + '" style="margin-left:0.3rem;">Edit</button>'
-      html += '</div>'
+      html += '<div style="display:flex;align-items:center;gap:0.3rem;">'
+      if (!isPending) html += '<button class="strat-toggle ' + toggleCls + '" data-id="' + escapeHtml(s.id) + '" data-enabled="' + (s.enabled ? 'true' : 'false') + '">' + (s.enabled ? 'ON' : 'OFF') + '</button>'
+      html += '<button class="strat-action-btn strat-edit-btn" data-filename="' + escapeHtml(s.filename) + '" data-name="' + escapeHtml(s.id) + '">EDIT</button>'
+      html += '<button class="strat-delete" data-id="' + escapeHtml(s.id) + '" title="Delete strategy">DEL</button>'
+      html += '</div></div>'
       if (desc) html += '<div class="strat-desc">' + escapeHtml(desc) + '</div>'
       if (isPending) {
         html += '<div class="strat-approval-btns"><button class="strat-approve">Approve</button><button class="strat-reject">Reject</button></div>'
@@ -697,10 +696,11 @@ document.getElementById('pol-save-btn').addEventListener('click', async function
   }
 })
 
-// Strategy add modal
+// Strategy add modal — prefill with YAML frontmatter template
 document.getElementById('strat-add-btn').addEventListener('click', function () {
   document.getElementById('strat-name').value = ''
-  document.getElementById('strat-content').value = ''
+  var now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+  document.getElementById('strat-content').value = '---\nenabled: true\nsource: human\nversion: 1.0\ncreated_at: ' + now + '\ntags: []\n---\n\n# Strategy Title\n\n'
   document.getElementById('strat-add-modal').classList.remove('hidden')
 })
 
@@ -749,6 +749,88 @@ document.querySelectorAll('.modal-overlay').forEach(function (el) {
   el.addEventListener('click', function (e) { if (e.target === el) el.classList.add('hidden') })
 })
 
+// Strategy toggle (delegated — ON/OFF)
+document.addEventListener('click', function (e) {
+  var toggle = e.target.closest('.strat-toggle')
+  if (!toggle) return
+  e.stopPropagation()
+  var id = toggle.dataset.id
+  var currentlyEnabled = toggle.dataset.enabled === 'true'
+  var newEnabled = !currentlyEnabled
+  // Optimistic UI
+  toggle.className = 'strat-toggle ' + (newEnabled ? 'strat-toggle-on' : 'strat-toggle-off')
+  toggle.dataset.enabled = newEnabled ? 'true' : 'false'
+  toggle.textContent = newEnabled ? 'ON' : 'OFF'
+  apiPost('/api/strategies/toggle', { filename: id, enabled: newEnabled }).then(function (result) {
+    if (!result || !result.success) {
+      toggle.className = 'strat-toggle ' + (currentlyEnabled ? 'strat-toggle-on' : 'strat-toggle-off')
+      toggle.dataset.enabled = currentlyEnabled ? 'true' : 'false'
+      toggle.textContent = currentlyEnabled ? 'ON' : 'OFF'
+    }
+    updatePolicies()
+  })
+})
+
+// Strategy delete (delegated)
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.strat-delete')
+  if (!btn) return
+  var id = btn.dataset.id
+  if (!confirm('Delete strategy "' + id + '"? This cannot be undone.')) return
+  apiPost('/api/strategies/delete', { filename: id }).then(function (result) {
+    if (result && result.success) updatePolicies()
+  })
+})
+
+// Auth bar collapse/expand
+document.getElementById('auth-bar').addEventListener('click', function () {
+  var expand = document.getElementById('auth-expand')
+  var chevron = document.getElementById('auth-chevron')
+  expand.classList.toggle('hidden')
+  chevron.classList.toggle('open')
+})
+
+// Address popup (bottom bar)
+document.getElementById('bb-addr-label').addEventListener('click', function () {
+  var popup = document.getElementById('bb-addr-popup')
+  if (!popup.classList.contains('hidden')) { popup.classList.add('hidden'); return }
+  // Fetch addresses
+  api('/api/addresses').then(function (data) {
+    if (!data || !data.addresses || data.addresses.length === 0) {
+      popup.innerHTML = '<div style="font-size:10px;color:var(--dim);padding:0.3rem;">No addresses available</div>'
+    } else {
+      popup.innerHTML = data.addresses.map(function (a) {
+        var short = a.address.length > 20 ? a.address.slice(0, 10) + '...' + a.address.slice(-8) : a.address
+        return '<div class="bb-addr-row">' +
+          '<span class="bb-addr-chain">' + escapeHtml(a.chain) + '</span>' +
+          '<span class="bb-addr-val" title="' + escapeHtml(a.address) + '">' + short + '</span>' +
+          '<button class="bb-addr-copy" data-addr="' + escapeHtml(a.address) + '">COPY</button>' +
+          '</div>'
+      }).join('')
+    }
+    popup.classList.remove('hidden')
+  })
+})
+// Close address popup when clicking outside
+document.addEventListener('click', function (e) {
+  var popup = document.getElementById('bb-addr-popup')
+  if (!popup.classList.contains('hidden') && !e.target.closest('#bb-addresses')) {
+    popup.classList.add('hidden')
+  }
+})
+// Copy address
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.bb-addr-copy')
+  if (!btn) return
+  var addr = btn.dataset.addr
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(addr).then(function () {
+      btn.textContent = 'OK'; btn.classList.add('copied')
+      setTimeout(function () { btn.textContent = 'COPY'; btn.classList.remove('copied') }, 1500)
+    })
+  }
+})
+
 /* ═══ PASSPHRASE AUTH ═══ */
 
 // Update auth UI in Policy Engine tab
@@ -761,19 +843,19 @@ async function updateAuthUI () {
   var ppInput = document.getElementById('auth-passphrase')
 
   if (data.enabled) {
-    badge.textContent = data.authenticated ? 'Authenticated' : 'Locked'
+    badge.textContent = data.authenticated ? 'ON' : 'LOCKED'
     badge.style.color = data.authenticated ? 'var(--green)' : 'var(--yellow)'
     enableBtn.classList.add('hidden')
     disableBtn.classList.remove('hidden')
-    ppInput.placeholder = 'Enter current passphrase to disable'
+    ppInput.placeholder = 'Current password to disable'
     document.getElementById('auth-threshold').value = data.threshold
     document.getElementById('auth-timeout').value = data.timeoutMinutes
   } else {
-    badge.textContent = 'Disabled'
+    badge.textContent = 'OFF'
     badge.style.color = 'var(--dim)'
     enableBtn.classList.remove('hidden')
     disableBtn.classList.add('hidden')
-    ppInput.placeholder = 'Min 4 characters'
+    ppInput.placeholder = 'Min 4 chars'
   }
 }
 

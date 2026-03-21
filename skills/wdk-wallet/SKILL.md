@@ -34,7 +34,7 @@ Agent (you) ──MCP──→ Dashboard ──IPC──→ Wallet Isolate (keys
 
 You NEVER touch keys. You propose, the wallet evaluates policy and signs.
 
-## Tools (28 total, 2 planned)
+## Tools (30 total, 2 planned)
 
 ### Read-Only (always safe, no policy check)
 
@@ -85,6 +85,21 @@ You NEVER touch keys. You propose, the wallet evaluates policy and signs.
 |------|-------------|---------------|
 | `x402_fetch` | Fetch URL with auto-pay (HTTP 402) | `url`, `method` (optional), `body` (optional) |
 | `x402_status` | Economics: total spent, services paid | — |
+
+### Companion (Oikos App ↔ Agent Bridge)
+
+| Tool | What it does | Required args |
+|------|-------------|---------------|
+| `companion_read` | Poll pending instructions from the Oikos App | `clear` (optional, default true) |
+| `companion_reply` | Send a reply back to the Oikos App | `text`, `brainName` (optional) |
+
+The human owner uses the Oikos App (Pear Runtime) to send instructions to you via an encrypted P2P channel. Those instructions queue up in the wallet infrastructure. **You must poll `companion_read` periodically** to check for new instructions and respond via `companion_reply`.
+
+```
+Oikos App (human) → protomux P2P → instructions queue
+You (agent)       → companion_read → get instruction
+You (agent)       → companion_reply → protomux P2P → Oikos App (human)
+```
 
 ### RGB (Bitcoin-native tokens) *(planned — not yet available via MCP)*
 

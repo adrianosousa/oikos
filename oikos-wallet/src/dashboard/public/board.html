@@ -240,6 +240,7 @@
   .cat-seller { color: var(--blue); }
   .cat-buyer { color: var(--purple); }
   .cat-auction { color: var(--gold); }
+  .cat-general { color: var(--text-secondary); }
   .ann-desc { font-size: 11px; color: var(--muted); line-height: 1.4; margin-bottom: 0.3rem; }
   .ann-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 0.3rem; }
   .ann-tag {
@@ -498,7 +499,9 @@ function renderAnnouncements(anns) {
 
   list.innerHTML = sorted.map(a => {
     const cat = (a.category === 'seller' || a.category === 'service' || a.category === 'offer') ? 'seller' :
-                a.category === 'auction' ? 'auction' : 'buyer';
+                a.category === 'auction' ? 'auction' :
+                (a.category === 'general' || a.category === 'greeting') ? 'general' :
+                a.category === 'buyer' ? 'buyer' : (a.category || 'general');
     const catLabel = cat.toUpperCase();
     const catCls = 'cat-' + cat;
     const price = a.priceRange && a.priceRange.min != null && a.priceRange.max != null

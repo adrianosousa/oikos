@@ -29,7 +29,7 @@ export declare class WalletManager implements WalletOperations {
      * @security THE CODE PATH THAT MOVES FUNDS FOR PAYMENTS.
      * This must only be called from ProposalExecutor after policy approval.
      */
-    sendTransaction(chain: Chain, to: string, amount: bigint, _symbol: TokenSymbol): Promise<TransactionResult>;
+    sendTransaction(chain: Chain, to: string, amount: bigint, symbol: TokenSymbol): Promise<TransactionResult>;
     /**
      * Swap tokens via Velora DEX protocol.
      * Requires @tetherto/wdk-protocol-swap-velora-evm.

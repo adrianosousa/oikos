@@ -13,6 +13,7 @@
  * Key difference: rgb-c-t has 1 session = 1 connection.
  * Oikos has N board peers + M room peers, all tracked.
  */
+import Hyperswarm from 'hyperswarm';
 import type { AgentKeypair } from './identity.js';
 export interface DiscoveryConfig {
     swarmId: string;
@@ -40,6 +41,8 @@ type ConnectionHandler = (socket: unknown, remotePubkey: Buffer, info: {
 type DisconnectHandler = (remotePubkey: Buffer) => void;
 export declare class SwarmDiscovery {
     private swarm;
+    /** Expose Hyperswarm instance for companion to reuse (same UDP socket, same DHT) */
+    getSwarmInstance(): Hyperswarm;
     private config;
     private boardTopic;
     private boardDiscovery;

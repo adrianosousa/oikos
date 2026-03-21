@@ -109,7 +109,7 @@ export class WalletManager {
                         else {
                             this.sparkAddress = String(rawAddr);
                         }
-                        console.log(`[wallet-isolate] Spark wallet initialized (${config.network || 'MAINNET'}) addr: ${this.sparkAddress.slice(0, 20)}...`);
+                        console.error(`[wallet-isolate] Spark wallet initialized (${config.network || 'MAINNET'}) addr: ${this.sparkAddress.slice(0, 20)}...`);
                     }
                     catch (accErr) {
                         console.error('[wallet-isolate] Spark getAccount failed:', accErr instanceof Error ? accErr.message : accErr);
@@ -200,7 +200,7 @@ export class WalletManager {
      * @security THE CODE PATH THAT MOVES FUNDS FOR PAYMENTS.
      * This must only be called from ProposalExecutor after policy approval.
      */
-    async sendTransaction(chain, to, amount, _symbol) {
+    async sendTransaction(chain, to, amount, symbol) {
         this.ensureInitialized();
         try {
             if (chain === 'spark') {
@@ -209,7 +209,22 @@ export class WalletManager {
                 return { success: true, txHash: result.hash };
             }
             const account = await this.getAccount(chain);
-            const result = await account.sendTransaction({ to, value: amount });
+            // Native token (ETH, BTC) — simple value transfer
+            if (symbol === 'ETH' || symbol === 'BTC') {
+                const result = await account.sendTransaction({ to, value: amount });
+                return { success: true, txHash: result.hash };
+            }
+            // ERC-20 token (USDT, XAUT, USAT, etc.) — call transfer() on token contract
+            const tokenAddress = getTokenAddress(chain, symbol);
+            if (!tokenAddress) {
+                return { success: false, error: `No token contract address for ${symbol} on ${chain}` };
+            }
+            // ERC-20 transfer(address,uint256) via WDK account
+            const iface = new (await import('ethers')).Interface([
+                'function transfer(address to, uint256 amount) returns (bool)'
+            ]);
+            const data = iface.encodeFunctionData('transfer', [to, amount]);
+            const result = await account.sendTransaction({ to: tokenAddress, data, value: 0n });
             return { success: true, txHash: result.hash };
         }
         catch (err) {

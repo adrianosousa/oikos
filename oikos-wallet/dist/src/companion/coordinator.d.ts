@@ -36,12 +36,15 @@ export interface CompanionConfig {
     updateIntervalMs: number;
     /** Injected DHT for testnet */
     dht?: unknown;
+    /** Relay peer pubkey for NAT traversal (hex) */
+    relayPubkey?: string;
 }
 export declare class CompanionCoordinator {
     private stateProvider;
     private swarm;
     private config;
     private hyperswarm;
+    private isSharedSwarm;
     private companionChannel;
     private ownerPubkeyBuf;
     private companionTopic;

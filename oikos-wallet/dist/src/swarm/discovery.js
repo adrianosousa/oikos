@@ -18,6 +18,8 @@ import b4a from 'b4a';
 import { deriveBoardTopic, deriveRoomTopic } from './topic.js';
 export class SwarmDiscovery {
     swarm;
+    /** Expose Hyperswarm instance for companion to reuse (same UDP socket, same DHT) */
+    getSwarmInstance() { return this.swarm; }
     config;
     boardTopic;
     boardDiscovery = null;
