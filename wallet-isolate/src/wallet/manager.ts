@@ -210,6 +210,15 @@ export class WalletManager implements WalletOperations {
       throw new Error('Spark wallet not initialized or address not available');
     }
     const account = await this.getAccount(chain);
+    const BTC_TIMEOUT_MS = 10_000;
+    if (chain === 'bitcoin') {
+      return Promise.race([
+        account.getAddress(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('BTC getAddress timed out')), BTC_TIMEOUT_MS)
+        ),
+      ]);
+    }
     return account.getAddress();
   }
 
@@ -238,7 +247,17 @@ export class WalletManager implements WalletOperations {
       return { chain, symbol, raw: 0n, formatted: formatBalance(0n, symbol) };
     }
 
-    // Native balance (ETH or BTC)
+    // Native balance (ETH or BTC) — timeout guards against Electrum reconnect stalls
+    const BTC_TIMEOUT_MS = 10_000;
+    if (chain === 'bitcoin') {
+      const raw = await Promise.race([
+        account.getBalance(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('BTC balance query timed out')), BTC_TIMEOUT_MS)
+        ),
+      ]);
+      return { chain, symbol, raw, formatted: formatBalance(raw, symbol) };
+    }
     const raw = await account.getBalance();
     return { chain, symbol, raw, formatted: formatBalance(raw, symbol) };
   }
