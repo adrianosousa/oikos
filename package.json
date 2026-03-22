@@ -19,7 +19,10 @@
       "titleBarStyle": "hiddenInset"
     },
     "links": {
-      "internal": "http://127.0.0.1:13421"
+      "internal": "http://127.0.0.1:13421",
+      "internal2": "http://127.0.0.1:13422",
+      "internal3": "http://127.0.0.1:13423",
+      "internal4": "http://127.0.0.1:13424"
     }
   },
   "workspaces": [
