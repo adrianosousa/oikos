@@ -78,6 +78,35 @@ document.querySelectorAll('.nav-item').forEach(function (el) {
   el.addEventListener('click', function () { switchView(el.dataset.view) })
 })
 
+// ── Market Prices modal ──
+document.getElementById('w-prices-btn').addEventListener('click', function () {
+  document.getElementById('prices-modal').classList.remove('hidden')
+})
+document.getElementById('prices-modal-close').addEventListener('click', function () {
+  document.getElementById('prices-modal').classList.add('hidden')
+})
+document.getElementById('prices-modal').addEventListener('click', function (e) {
+  if (e.target === this) this.classList.add('hidden')
+})
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('prices-modal')
+    if (modal && !modal.classList.contains('hidden')) modal.classList.add('hidden')
+  }
+})
+
+// ── Copy wallet address ──
+function copyAddr (btn) {
+  var addr = btn.getAttribute('data-addr')
+  if (!addr) return
+  navigator.clipboard.writeText(addr).then(function () {
+    btn.classList.add('copied')
+    var orig = btn.textContent
+    btn.textContent = 'Copied!'
+    setTimeout(function () { btn.classList.remove('copied'); btn.textContent = orig }, 1500)
+  })
+}
+
 // ── Feed mode toggle ──
 document.querySelectorAll('.feed-toggle').forEach(function (el) {
   el.addEventListener('click', function () {
@@ -129,6 +158,14 @@ function renderMarkdown (text) {
   return html
 }
 
+var CHAIN_DISPLAY = {
+  bitcoin: { name: 'Bitcoin', icon: '\u20bf' },
+  spark: { name: 'Spark (Lightning)', icon: '\u26a1' },
+  ethereum: { name: 'Ethereum (Sepolia)', icon: '\u039e' },
+  arbitrum: { name: 'Arbitrum (Sepolia)', icon: '\u25c6' },
+  polygon: { name: 'Polygon', icon: '\u2b21' }
+}
+
 function renderAssetList (id, items) {
   var el = document.getElementById(id); if (!el) return
   var grouped = {}
@@ -152,48 +189,6 @@ function showResult (id, text, isError) {
 }
 
 // ── Bottom bar (addresses popup is event-driven, no clock needed) ──
-
-/* ═══ PIE CHART ═══ */
-
-function renderPieChart (items) {
-  var canvas = document.getElementById('pie-chart')
-  if (!canvas) return
-  var dpr = window.devicePixelRatio || 1
-  var size = 160
-  canvas.width = size * dpr; canvas.height = size * dpr
-  canvas.style.width = size + 'px'; canvas.style.height = size + 'px'
-  var ctx = canvas.getContext('2d')
-  ctx.scale(dpr, dpr)
-  ctx.clearRect(0, 0, size, size)
-
-  var total = items.reduce(function (s, i) { return s + i.usd }, 0)
-  if (total <= 0) return
-  var cx = size / 2, cy = size / 2, r = size / 2 - 8
-  var start = -Math.PI / 2
-
-  items.forEach(function (i) {
-    var pct = i.usd / total
-    if (pct <= 0) return
-    var end = start + pct * 2 * Math.PI
-    ctx.beginPath()
-    ctx.moveTo(cx, cy)
-    ctx.arc(cx, cy, r, start, end)
-    ctx.closePath()
-    ctx.fillStyle = DOT_COLORS[i.symbol] || COLORS[i.symbol] || '#999'
-    ctx.fill()
-    start = end
-  })
-
-  // Center hole (donut)
-  var bgColor = getComputedStyle(document.body).getPropertyValue('--card').trim()
-  ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, 2 * Math.PI); ctx.fillStyle = bgColor; ctx.fill()
-
-  // Center text
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text').trim()
-  ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillText('$' + total.toFixed(0), cx, cy)
-  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'
-}
 
 var heldAmounts = {}
 
@@ -298,33 +293,141 @@ async function updateAudit () {
 /* ═══ UPDATE: Wealth ═══ */
 
 async function updateWealth () {
-  var [balances, valuation, priceData, audit] = await Promise.all([
-    api('/api/balances'), api('/api/valuation'), api('/api/prices'), api('/api/audit?limit=10')
+  var [balances, valuation, priceData, audit, addrData] = await Promise.all([
+    api('/api/balances'), api('/api/valuation'), api('/api/prices'),
+    api('/api/audit?limit=20'), api('/api/addresses')
   ])
 
-  var pieItems = []
+  // Build address lookup: chain -> address
+  var addrLookup = {}
+  if (addrData && addrData.addresses) {
+    addrData.addresses.forEach(function (a) { if (a && a.chain) addrLookup[a.chain] = a.address })
+  }
+
+  // Portfolio total bar
+  var totalUsd = 0
+  var chainSet = {}
   if (balances && balances.balances) {
     var a = allocate(balances.balances)
     a.items.forEach(function (i) {
       if (!heldAmounts[i.symbol]) heldAmounts[i.symbol] = 0
       heldAmounts[i.symbol] += parseFloat(i.formatted) || 0
+      chainSet[i.chain] = true
     })
-    var total = (valuation && valuation.totalUsd > 0) ? valuation.totalUsd : a.total
-    document.getElementById('w-portfolio-total').innerHTML = '$' + total.toFixed(2) + ' <span class="currency">USD</span>'
-    renderAssetList('w-asset-list', a.items)
-    var chains = {}; a.items.forEach(function (i) { chains[i.chain] = true })
-    document.getElementById('w-chain-count').textContent = Object.keys(chains).length + ' chains'
-    // Group for pie
-    var grouped = {}
-    a.items.forEach(function (i) {
-      if (!grouped[i.symbol]) grouped[i.symbol] = { symbol: i.symbol, usd: 0 }
-      grouped[i.symbol].usd += i.usd
+    totalUsd = (valuation && valuation.totalUsd > 0) ? valuation.totalUsd : a.total
+  }
+  document.getElementById('w-portfolio-total').textContent = '$' + totalUsd.toFixed(2)
+  document.getElementById('w-chain-count').textContent = Object.keys(chainSet).length + ' chains'
+
+  // Group balances by chain -> wallet cards
+  var walletMap = {}
+  if (balances && balances.balances) {
+    var alloc = allocate(balances.balances)
+    alloc.items.forEach(function (i) {
+      if (!walletMap[i.chain]) walletMap[i.chain] = { chain: i.chain, assets: [], totalUsd: 0, address: addrLookup[i.chain] || '', txns: [] }
+      walletMap[i.chain].assets.push(i)
+      walletMap[i.chain].totalUsd += i.usd
     })
-    pieItems = Object.values(grouped).sort(function (a, b) { return b.usd - a.usd })
-    renderPieChart(pieItems)
   }
 
-  // Live prices — grid rows
+  // Assign audit transactions to wallet cards by proposal.chain
+  if (audit && audit.entries) {
+    audit.entries.filter(function (e) { return e.status === 'executed' || e.status === 'rejected' }).forEach(function (e) {
+      var chain = (e.proposal && e.proposal.chain) ? e.proposal.chain : 'ethereum'
+      if (walletMap[chain]) walletMap[chain].txns.push(e)
+    })
+  }
+
+  // Sort wallets by total USD value (highest first)
+  var wallets = Object.values(walletMap).sort(function (a, b) { return b.totalUsd - a.totalUsd })
+
+  // Render wallet cards
+  var gridEl = document.getElementById('w-wallet-grid')
+  if (wallets.length === 0) {
+    gridEl.innerHTML = '<div class="empty" style="padding:2rem;">No wallet balances found</div>'
+  } else {
+    gridEl.innerHTML = wallets.map(function (w) {
+      var cd = CHAIN_DISPLAY[w.chain] || { name: w.chain, icon: '\u26d3' }
+      var addrBtn = w.address
+        ? '<button class="wallet-addr-btn" data-addr="' + escapeHtml(w.address) + '" onclick="copyAddr(this)">' + w.address.slice(0, 6) + '...' + w.address.slice(-4) + '</button>'
+        : ''
+
+      // Asset rows
+      var assetRows = w.assets.sort(function (a, b) { return b.usd - a.usd }).map(function (i) {
+        var dot = DOT_COLORS[i.symbol] || '#999'
+        var usdStr = i.usd >= 1 ? '$' + i.usd.toFixed(2) : i.usd > 0 ? '$' + i.usd.toFixed(4) : '$0.00'
+        return '<div class="wallet-asset-row">' +
+          '<div class="wallet-asset-left">' +
+            '<span class="wallet-asset-dot" style="background:' + dot + ';"></span>' +
+            '<span class="wallet-asset-sym">' + i.symbol + '</span>' +
+            '<span class="wallet-asset-amt">' + i.formatted + '</span>' +
+          '</div>' +
+          '<div class="wallet-asset-right">' +
+            '<span class="wallet-asset-usd">' + usdStr + '</span>' +
+            '<span class="wallet-asset-pct">' + i.pct + '%</span>' +
+          '</div>' +
+        '</div>'
+      }).join('')
+
+      // Recent transactions (max 3)
+      var txHtml = ''
+      if (w.txns.length > 0) {
+        var txRows = w.txns.slice(0, 3).map(function (e) {
+          var type = (e.proposalType || 'payment').toLowerCase()
+          var status = (e.status || '').toLowerCase()
+          var amount = e.proposal ? (e.proposal.amount || '') : ''
+          var sym = e.proposal ? (e.proposal.symbol || '') : ''
+          var d = DECS[sym] || 6
+          var humanAmt = amount ? (parseInt(amount, 10) / Math.pow(10, d)).toFixed(d <= 6 ? 2 : 6) : ''
+          var dotCls = status === 'executed' ? 'success' : 'rejected'
+          return '<div class="wallet-tx-row"><span class="wallet-tx-dot ' + dotCls + '"></span>' + opBadge(type) + ' ' + humanAmt + ' ' + sym + ' <span style="color:var(--dim);font-size:10px;">' + timeAgo(e.timestamp) + '</span></div>'
+        }).join('')
+        txHtml = '<div class="wallet-txns-label">Recent</div><div class="wallet-txns">' + txRows + '</div>'
+      }
+
+      // Funded assets shown as transactions if no audit txns
+      if (w.txns.length === 0 && w.assets.length > 0) {
+        var fundedRows = w.assets.filter(function (i) { return parseFloat(i.formatted) > 0 }).slice(0, 3).map(function (i) {
+          return '<div class="wallet-tx-row"><span class="wallet-tx-dot funded"></span><span style="background:#1a472a;color:#4ade80;padding:1px 5px;font-size:9px;font-weight:700;">FUNDED</span> ' + i.formatted + ' ' + i.symbol + '</div>'
+        }).join('')
+        if (fundedRows) txHtml = '<div class="wallet-txns-label">Recent</div><div class="wallet-txns">' + fundedRows + '</div>'
+      }
+
+      return '<div class="wallet-card">' +
+        '<div class="wallet-card-header">' +
+          '<div class="wallet-card-title"><span class="wallet-card-icon">' + cd.icon + '</span> ' + cd.name + '</div>' +
+          addrBtn +
+        '</div>' +
+        '<div class="wallet-assets">' + assetRows + '</div>' +
+        txHtml +
+      '</div>'
+    }).join('')
+
+    // AAVE Lending card (conditional — only if yield operations exist)
+    if (audit && audit.entries) {
+      var yieldOps = audit.entries.filter(function (e) {
+        return (e.proposalType === 'yield') && e.proposal && (e.status === 'executed' || e.status === 'rejected')
+      })
+      if (yieldOps.length > 0) {
+        var yieldRows = yieldOps.slice(0, 3).map(function (e) {
+          var action = e.proposal.action || 'deposit'
+          var sym = e.proposal.symbol || ''
+          var amount = e.proposal.amount || ''
+          var d = DECS[sym] || 6
+          var humanAmt = amount ? (parseInt(amount, 10) / Math.pow(10, d)).toFixed(d <= 6 ? 2 : 6) : ''
+          var dotCls = e.status === 'executed' ? 'success' : 'rejected'
+          return '<div class="wallet-tx-row"><span class="wallet-tx-dot ' + dotCls + '"></span>' + opBadge('yield') + ' ' + action + ' ' + humanAmt + ' ' + sym + '</div>'
+        }).join('')
+        var protocol = (yieldOps[0].proposal && yieldOps[0].proposal.protocol) || 'AAVE'
+        gridEl.innerHTML += '<div class="wallet-card">' +
+          '<div class="wallet-card-header"><div class="wallet-card-title"><span class="wallet-card-icon">\ud83c\udfe6</span> ' + protocol.toUpperCase() + ' Lending</div></div>' +
+          '<div class="wallet-txns-label">Operations</div><div class="wallet-txns">' + yieldRows + '</div>' +
+        '</div>'
+      }
+    }
+  }
+
+  // Live prices — rendered into modal grid (same logic as before)
   if (priceData && priceData.prices) {
     var held = {}
     if (valuation && valuation.assets) valuation.assets.forEach(function (a) { held[(a.symbol || '').toUpperCase()] = true })
@@ -341,45 +444,6 @@ async function updateWealth () {
       return '<div class="price-row"><div class="price-left"><span class="price-dot" style="background:' + dot + ';"></span><span class="price-sym">' + sym + '</span><span class="price-name">' + name + '</span></div><div class="price-right"><span class="price-usd">' + priceStr + '</span></div></div>'
     }).join('')
   }
-
-  // Recent transactions — combine audit entries (outgoing) + funded balances (incoming)
-  var txEl = document.getElementById('w-transactions')
-  var txItems = []
-
-  // Outgoing: from audit log (proposals the agent executed or rejected)
-  if (audit && audit.entries) {
-    audit.entries.filter(function (e) { return e.status === 'executed' || e.status === 'rejected' }).forEach(function (e) {
-      var type = (e.proposalType || 'payment').toLowerCase()
-      var status = (e.status || '').toLowerCase()
-      var amount = e.proposal ? (e.proposal.amount || '') : ''
-      var sym = e.proposal ? (e.proposal.symbol || '') : ''
-      var d = DECS[sym] || 6
-      var humanAmt = amount ? (parseInt(amount, 10) / Math.pow(10, d)).toFixed(d <= 6 ? 2 : 6) : ''
-      txItems.push({
-        ts: e.timestamp || Date.now(),
-        html: '<li class="feed-item"><div class="feed-indicator ' + (status === 'executed' ? 'fi-success' : 'fi-rejected') + '"></div><div class="feed-body"><div class="feed-summary">' + opBadge(type) + ' ' + status.toUpperCase() + ' ' + humanAmt + ' ' + sym + '</div></div><div class="feed-time">' + timeAgo(e.timestamp) + '</div></li>'
-      })
-    })
-  }
-
-  // Incoming: funded balances appear as "received" entries (the wallet was funded externally)
-  if (balances && balances.balances) {
-    var fundedItems = allocate(balances.balances).items
-    fundedItems.forEach(function (item) {
-      var amt = parseFloat(item.formatted) || 0
-      if (amt > 0) {
-        var usdStr = item.usd >= 1 ? '$' + item.usd.toFixed(2) : item.usd > 0 ? '$' + item.usd.toFixed(4) : ''
-        txItems.push({
-          ts: new Date().toISOString(),
-          html: '<li class="feed-item"><div class="feed-indicator fi-success"></div><div class="feed-body"><div class="feed-summary"><span style="background:#1a472a;color:#4ade80;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px;">FUNDED</span> ' + item.formatted + ' <span style="color:var(--muted);font-size:11px;">on ' + item.chain + '</span>' + (usdStr ? ' <span style="color:var(--green);font-size:11px;">' + usdStr + '</span>' : '') + '</div></div></li>'
-        })
-      }
-    })
-  }
-
-  txEl.innerHTML = txItems.length > 0
-    ? txItems.slice(0, 10).map(function (t) { return t.html }).join('')
-    : '<li class="empty">No transactions yet</li>'
 }
 
 /* ═══ UPDATE: Swarm ═══ */

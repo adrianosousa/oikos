@@ -236,29 +236,88 @@
     .section-count { font-size: 10px; font-weight: 700; padding: 0.1rem 0.4rem; border: 1px solid var(--brand-black); background: var(--brand-yellow); color: var(--brand-black); }
 
     /* ═══ WEALTH LAYOUT ═══ */
-    .wealth-top {
-      display: flex; gap: 0.6rem; margin-bottom: 0.6rem;
-      height: calc(60vh - 100px); min-height: 260px;
+    .wealth-total-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.6rem 1rem; margin-bottom: 0.6rem;
     }
-    .wealth-holdings { flex: 6; display: flex; flex-direction: column; overflow: hidden; }
-    .wealth-txns { flex: 4; display: flex; flex-direction: column; overflow: hidden; }
-    .wealth-txns .feed-list { flex: 1; overflow-y: auto; }
-    .wealth-pie-row {
-      display: flex; align-items: center; gap: 1.25rem; flex: 1; min-height: 0;
+    .wealth-total-left { display: flex; align-items: center; gap: 0.6rem; }
+    .wealth-total-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); }
+    .wealth-total-value { font-size: 22px; font-weight: 800; font-family: var(--mono); }
+    .wealth-total-currency { font-size: 11px; color: var(--dim); font-weight: 700; }
+    .wealth-prices-btn {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.35rem 0.75rem; font-size: 11px; font-weight: 700;
+      background: var(--bg2); border: 2px solid var(--brand-black); color: var(--text);
+      cursor: pointer; font-family: var(--mono);
     }
-    .wealth-pie-row canvas { flex-shrink: 0; }
-    .wealth-asset-list { flex: 1; overflow-y: auto; min-height: 0; }
-    .wealth-asset-list .asset-row { padding: 0.4rem 0; }
-    .wealth-asset-list .asset-chain { display: block; font-size: 9px; line-height: 1.2; }
-    .wealth-asset-list .asset-right { white-space: nowrap; }
-    .wealth-asset-list .asset-usd, .wealth-asset-list .asset-pct { display: inline; }
-    .wealth-prices { overflow: hidden; }
+    .wealth-prices-btn:hover { background: var(--brand-yellow); color: var(--brand-black); }
+    .wallet-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 0.6rem; overflow-y: auto; max-height: calc(100vh - 180px);
+    }
+    .wallet-card {
+      background: var(--card); border: 2px solid var(--brand-black); padding: 0.75rem 1rem;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .wallet-card-header { display: flex; align-items: center; justify-content: space-between; }
+    .wallet-card-title { display: flex; align-items: center; gap: 0.5rem; font-size: 13px; font-weight: 800; }
+    .wallet-card-icon { font-size: 15px; }
+    .wallet-addr-btn {
+      padding: 0.15rem 0.4rem; font-size: 9px; font-weight: 700;
+      background: var(--bg2); border: 1px solid var(--border); color: var(--dim);
+      cursor: pointer; font-family: var(--mono);
+    }
+    .wallet-addr-btn:hover { background: var(--brand-yellow); color: var(--brand-black); border-color: var(--brand-black); }
+    .wallet-addr-btn.copied { background: var(--green); color: #fff; border-color: var(--green); }
+    .wallet-assets { display: flex; flex-direction: column; }
+    .wallet-asset-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.25rem 0; font-size: 12px; border-bottom: 1px solid var(--border);
+    }
+    .wallet-asset-row:last-child { border-bottom: none; }
+    .wallet-asset-left { display: flex; align-items: center; gap: 0.5rem; }
+    .wallet-asset-dot { width: 8px; height: 8px; flex-shrink: 0; }
+    .wallet-asset-sym { font-weight: 700; }
+    .wallet-asset-amt { color: var(--muted); font-size: 11px; margin-left: 0.3rem; }
+    .wallet-asset-right { text-align: right; white-space: nowrap; }
+    .wallet-asset-usd { font-weight: 700; font-size: 11px; }
+    .wallet-asset-pct { font-size: 10px; color: var(--dim); margin-left: 0.3rem; }
+    .wallet-txns-label { font-size: 10px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.2rem; }
+    .wallet-txns { display: flex; flex-direction: column; gap: 0.15rem; }
+    .wallet-tx-row { font-size: 11px; display: flex; align-items: center; gap: 0.4rem; }
+    .wallet-tx-dot { width: 5px; height: 5px; flex-shrink: 0; }
+    .wallet-tx-dot.success { background: var(--green); }
+    .wallet-tx-dot.rejected { background: var(--red); }
+    .wallet-tx-dot.funded { background: var(--blue); }
+
+    /* ═══ MODAL ═══ */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-card {
+      background: var(--card); border: 2px solid var(--brand-black);
+      width: 90%; max-width: 600px; max-height: 80vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-header {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.75rem 1rem; border-bottom: 2px solid var(--brand-black);
+    }
+    .modal-title { font-size: 13px; font-weight: 800; flex: 1; }
+    .modal-close {
+      background: none; border: none; color: var(--text); font-size: 20px;
+      cursor: pointer; padding: 0 0.3rem; line-height: 1;
+    }
+    .modal-close:hover { color: var(--red); }
+
+    /* ═══ PRICES (inside modal) ═══ */
     .price-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 0 1.5rem; max-height: calc(35vh - 80px); overflow-y: auto;
+      gap: 0 1.5rem; overflow-y: auto; padding: 0.5rem 1rem; flex: 1;
     }
-
-    /* ═══ PRICES ═══ */
     .price-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid var(--border); font-size: 12px; }
     .price-row:last-child { border-bottom: none; }
     .price-left { display: flex; align-items: center; gap: 0.5rem; }
@@ -547,28 +606,34 @@
 
       <!-- ═══════ WEALTH ═══════ -->
       <div class="view" id="view-wealth">
-        <div class="wealth-top">
-          <div class="card wealth-holdings">
-            <div class="card-title">Holdings <span class="badge badge-green" id="w-chain-count">--</span></div>
-            <div class="portfolio-total" id="w-portfolio-total">$0.00 <span class="currency">USD</span></div>
-            <div class="wealth-pie-row">
-              <canvas id="pie-chart" width="160" height="160"></canvas>
-              <div id="w-asset-list" class="wealth-asset-list"></div>
-            </div>
+        <!-- Portfolio total bar -->
+        <div class="wealth-total-bar card">
+          <div class="wealth-total-left">
+            <span class="wealth-total-label">Portfolio</span>
+            <span class="wealth-total-value" id="w-portfolio-total">$0.00</span>
+            <span class="wealth-total-currency">USD</span>
+            <span class="badge badge-green" id="w-chain-count">--</span>
           </div>
-          <div class="card wealth-txns">
-            <div class="card-title">Recent Transactions</div>
-            <ul class="feed-list" id="w-transactions" style="overflow-y:auto;">
-              <li class="empty">No transactions yet</li>
-            </ul>
-          </div>
+          <button class="wealth-prices-btn" id="w-prices-btn">
+            <span class="price-src-dot"></span> Market Prices
+          </button>
         </div>
-        <div class="card wealth-prices">
-          <div class="card-title">
-            <span>Market Prices</span>
-            <span class="price-src-label"><span class="price-src-dot"></span> by Bitfinex</span>
+
+        <!-- Wallet cards grid -->
+        <div class="wallet-grid" id="w-wallet-grid">
+          <div class="empty" style="padding:2rem;">Loading wallets...</div>
+        </div>
+
+        <!-- Prices modal -->
+        <div class="modal-overlay hidden" id="prices-modal">
+          <div class="modal-card">
+            <div class="modal-header">
+              <span class="modal-title">Market Prices</span>
+              <span class="price-src-label"><span class="price-src-dot"></span> by Bitfinex</span>
+              <button class="modal-close" id="prices-modal-close">&times;</button>
+            </div>
+            <div class="price-grid" id="w-prices"></div>
           </div>
-          <div class="price-grid" id="w-prices"></div>
         </div>
       </div>
 
