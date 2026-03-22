@@ -17,6 +17,7 @@
 
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { WalletIPCClient } from '../ipc/client.js';
+import type { X402Economics } from './types.js';
 
 // ── Configuration ──
 
@@ -74,6 +75,7 @@ export async function mountX402Server(
   app: Express,
   wallet: WalletIPCClient,
   routes: X402RouteConfig[] = DEFAULT_ROUTES,
+  economics?: X402Economics,
 ): Promise<{ mounted: boolean; routes: string[]; payToAddress: string }> {
   // Get wallet address for receiving payments
   let payToAddress: string;
@@ -87,10 +89,10 @@ export async function mountX402Server(
 
   try {
     // Try proper @x402/express setup
-    return await _mountWithX402Express(app, wallet, routes, payToAddress);
+    return await _mountWithX402Express(app, wallet, routes, payToAddress, economics);
   } catch (err) {
     console.error('[x402-server] @x402/express not available, using manual 402 responses:', err instanceof Error ? err.message : err);
-    return _mountManual402(app, wallet, routes, payToAddress);
+    return _mountManual402(app, wallet, routes, payToAddress, economics);
   }
 }
 
@@ -102,6 +104,7 @@ async function _mountWithX402Express(
   wallet: WalletIPCClient,
   routes: X402RouteConfig[],
   payToAddress: string,
+  economics?: X402Economics,
 ): Promise<{ mounted: boolean; routes: string[]; payToAddress: string }> {
   const { paymentMiddleware, x402ResourceServer } = await import('@x402/express');
   const { ExactEvmScheme } = await import('@x402/evm/exact/server');
@@ -145,8 +148,8 @@ async function _mountWithX402Express(
   // Mount middleware on x402 routes only
   app.use(paymentMiddleware(routeMap as Parameters<typeof paymentMiddleware>[0], resourceServer));
 
-  // Mount actual route handlers
-  _mountRouteHandlers(app, wallet, routes);
+  // Mount actual route handlers (with earnings tracking)
+  _mountRouteHandlers(app, wallet, routes, economics);
 
   const routePaths = routes.map(r => `${r.method} ${r.path}`);
   console.error(`[x402-server] Mounted ${routes.length} x402 routes (facilitator: ${FACILITATOR_URL})`);
@@ -165,6 +168,7 @@ function _mountManual402(
   wallet: WalletIPCClient,
   routes: X402RouteConfig[],
   payToAddress: string,
+  economics?: X402Economics,
 ): { mounted: boolean; routes: string[]; payToAddress: string } {
   for (const route of routes) {
     const handler = (req: Request, res: Response, next: NextFunction) => {
@@ -196,8 +200,8 @@ function _mountManual402(
     else app.post(route.path, handler);
   }
 
-  // Mount actual handlers (after 402 middleware)
-  _mountRouteHandlers(app, wallet, routes);
+  // Mount actual handlers (after 402 middleware, with earnings tracking)
+  _mountRouteHandlers(app, wallet, routes, economics);
 
   const routePaths = routes.map(r => `${r.method} ${r.path}`);
   console.error(`[x402-server] Mounted ${routes.length} x402 routes (manual 402 fallback)`);
@@ -211,9 +215,19 @@ function _mountRouteHandlers(
   app: Express,
   wallet: WalletIPCClient,
   routes: X402RouteConfig[],
+  economics?: X402Economics,
 ): void {
   for (const route of routes) {
     const handler = async (_req: Request, res: Response) => {
+      // Track earnings — if we reached the handler, payment was verified
+      if (economics) {
+        try {
+          const prev = BigInt(economics.totalEarned);
+          const earned = BigInt(route.price);
+          economics.totalEarned = (prev + earned).toString();
+        } catch { /* price not a valid BigInt — ignore */ }
+      }
+
       try {
         if (route.path === '/api/x402/price-feed') {
           // Live prices from the wallet's pricing service

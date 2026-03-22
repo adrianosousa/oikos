@@ -50,6 +50,8 @@ export interface SwarmConfig {
   relayPubkey?: string;
   /** Explicit peer pubkeys (hex) to connect to via joinPeer */
   bootstrapPeers?: string[];
+  /** ERC-8004 on-chain agent ID (if registered). Included in heartbeats for peer discovery. */
+  erc8004AgentId?: string;
 }
 
 export class SwarmCoordinator implements SwarmCoordinatorInterface {
@@ -104,6 +106,11 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       reputation,
       auditHash
     );
+
+    // Attach ERC-8004 on-chain identity if available
+    if (this.config.erc8004AgentId) {
+      this.identity.erc8004AgentId = this.config.erc8004AgentId;
+    }
 
     // 4. Initialize discovery (with relay + bootstrap peers)
     this.discovery = new SwarmDiscovery({
@@ -190,6 +197,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       agentPubkey: this.identity.pubkey,
       agentName: this.identity.name,
       reputation: this.identity.reputation,
+      erc8004AgentId: this.identity.erc8004AgentId,
       category: opts.category,
       title: opts.title,
       description: opts.description,
@@ -576,6 +584,14 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     };
   }
 
+  /** Update ERC-8004 on-chain identity after registration (called from main.ts). */
+  updateErc8004AgentId(agentId: string): void {
+    if (this.identity) {
+      this.identity.erc8004AgentId = agentId;
+    }
+    this.config.erc8004AgentId = agentId;
+  }
+
   /** Register event handler */
   onEvent(handler: (event: SwarmEvent) => void): void {
     this.eventHandlers.push(handler);
@@ -608,6 +624,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       agentName: this.identity.name,
       reputation: this.identity.reputation,
       capabilities: this.identity.capabilities,
+      erc8004AgentId: this.identity.erc8004AgentId,
       timestamp: Date.now(),
     });
 
@@ -635,6 +652,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         name: msg.agentName,
         reputation: msg.reputation,
         capabilities: msg.capabilities,
+        erc8004AgentId: msg.erc8004AgentId,
         lastSeen: Date.now(),
       });
     } else if (msg.type === 'announcement') {
@@ -649,6 +667,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         name: msg.agentName,
         reputation: msg.reputation,
         capabilities: msg.capabilities,
+        erc8004AgentId: msg.erc8004AgentId,
         lastSeen: Date.now(),
       });
     } else if (msg.type === 'board_bid') {

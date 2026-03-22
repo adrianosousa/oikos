@@ -157,25 +157,43 @@ export function encodeGiveFeedback(
 }
 
 /**
+ * Encode a dynamic `address[]` as ABI tail data.
+ * Format: length word + each address as a 32-byte word.
+ */
+export function encodeAddressArray(addresses: string[]): string {
+  const lenWord = encodeUint256(addresses.length);
+  const elements = addresses.map((a) => encodeAddress(a)).join('');
+  return lenWord + elements;
+}
+
+/**
  * Encode `getSummary(uint256 agentId, address[] clients, string tag1, string tag2)`.
  * This is a view call (eth_call, not a transaction).
  *
  * Head: agentId + offset(clients) + offset(tag1) + offset(tag2)
  * Tail: clients_data + tag1_data + tag2_data
+ *
+ * When clientAddresses/tag1/tag2 are not provided, defaults to empty
+ * arrays/strings for backward compatibility.
  */
-export function encodeGetSummary(agentId: string): string {
+export function encodeGetSummary(
+  agentId: string,
+  clientAddresses?: string[],
+  tag1?: string,
+  tag2?: string,
+): string {
   const selector = SELECTORS.getSummary.replace('0x', '');
 
-  // We always pass empty clients array and empty tag filters
-  const emptyArrayData = encodeUint256(0); // length = 0
-  const emptyStringData = encodeStringData('');
+  const clientsData = encodeAddressArray(clientAddresses ?? []);
+  const tag1Data = encodeStringData(tag1 ?? '');
+  const tag2Data = encodeStringData(tag2 ?? '');
 
   // Head: 4 words (128 bytes), dynamic offsets start at 128
   const headSize = 128;
   const clientsOffset = headSize;
-  const clientsDataLen = emptyArrayData.length / 2;
+  const clientsDataLen = clientsData.length / 2;
   const tag1Offset = clientsOffset + clientsDataLen;
-  const tag1DataLen = emptyStringData.length / 2;
+  const tag1DataLen = tag1Data.length / 2;
   const tag2Offset = tag1Offset + tag1DataLen;
 
   const head =
@@ -184,7 +202,7 @@ export function encodeGetSummary(agentId: string): string {
     encodeUint256(tag1Offset) +
     encodeUint256(tag2Offset);
 
-  return '0x' + selector + head + emptyArrayData + emptyStringData + emptyStringData;
+  return '0x' + selector + head + clientsData + tag1Data + tag2Data;
 }
 
 // ── Decoders ──
@@ -220,4 +238,220 @@ export function decodeSummaryResult(hex: string): {
     totalValue: BigInt('0x' + valueHex).toString(),
     valueDecimals: Number(BigInt('0x' + decimalsHex)),
   };
+}
+
+// ── Phase 4: Read Operation Encoders ──
+
+/**
+ * Encode `readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)`.
+ * View call — returns (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked).
+ */
+export function encodeReadFeedback(agentId: string, clientAddress: string, feedbackIndex: number): string {
+  const selector = SELECTORS.readFeedback.replace('0x', '');
+  return '0x' + selector +
+    encodeUint256(agentId) +
+    encodeAddress(clientAddress) +
+    encodeUint256(feedbackIndex);
+}
+
+/**
+ * Decode readFeedback return data.
+ * Returns: (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked)
+ *
+ * For simplicity we decode value + valueDecimals + isRevoked from fixed positions.
+ * tag1 and tag2 are dynamic strings — we skip them in this basic decoder.
+ */
+export function decodeReadFeedbackResult(hex: string): {
+  value: number;
+  valueDecimals: number;
+  isRevoked: boolean;
+} {
+  const clean = hex.replace('0x', '');
+  if (clean.length < 320) {
+    return { value: 0, valueDecimals: 0, isRevoked: false };
+  }
+
+  // word 0: int128 value (we read as int256, safe for our range)
+  const valueHex = clean.slice(0, 64);
+  const valueBig = BigInt('0x' + valueHex);
+  // Handle two's complement for negative values
+  const value = valueBig > BigInt('0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
+    ? Number(valueBig - (1n << 256n))
+    : Number(valueBig);
+
+  // word 1: uint8 valueDecimals
+  const decimalsHex = clean.slice(64, 128);
+  const valueDecimals = Number(BigInt('0x' + decimalsHex));
+
+  // Words 2-4 are offsets for dynamic types (tag1, tag2) + isRevoked
+  // In the ABI layout: value(static) + decimals(static) + offset(tag1) + offset(tag2) + isRevoked(static)
+  // isRevoked is at word 4 (position 256-320)
+  const revokedHex = clean.slice(256, 320);
+  const isRevoked = BigInt('0x' + revokedHex) !== 0n;
+
+  return { value, valueDecimals, isRevoked };
+}
+
+/**
+ * Encode `getClients(uint256 agentId)`.
+ * View call — returns address[] of all feedback givers.
+ */
+export function encodeGetClients(agentId: string): string {
+  const selector = SELECTORS.getClients.replace('0x', '');
+  return '0x' + selector + encodeUint256(agentId);
+}
+
+/**
+ * Decode getClients return data: address[].
+ * Returns array of checksummed addresses.
+ */
+export function decodeAddressArray(hex: string): string[] {
+  const clean = hex.replace('0x', '');
+  if (clean.length < 128) return [];
+
+  // word 0: offset to array data (always 32 = 0x20)
+  // word 1: array length
+  const lengthHex = clean.slice(64, 128);
+  const length = Number(BigInt('0x' + lengthHex));
+  if (length === 0) return [];
+
+  const addresses: string[] = [];
+  for (let i = 0; i < length; i++) {
+    const start = 128 + i * 64;
+    const addrHex = clean.slice(start + 24, start + 64); // last 20 bytes
+    addresses.push('0x' + addrHex);
+  }
+  return addresses;
+}
+
+/**
+ * Encode `getLastIndex(uint256 agentId, address clientAddress)`.
+ * View call — returns uint64.
+ */
+export function encodeGetLastIndex(agentId: string, clientAddress: string): string {
+  const selector = SELECTORS.getLastIndex.replace('0x', '');
+  return '0x' + selector +
+    encodeUint256(agentId) +
+    encodeAddress(clientAddress);
+}
+
+/**
+ * Decode getLastIndex return: uint64.
+ */
+export function decodeUint64(hex: string): number {
+  const clean = hex.replace('0x', '');
+  if (clean.length < 64) return 0;
+  return Number(BigInt('0x' + clean.slice(0, 64)));
+}
+
+/**
+ * Encode `appendResponse(uint256 agentId, address clientAddress, uint64 feedbackIndex,
+ *   string responseURI, bytes32 responseHash)`.
+ * Transaction — agent responds to feedback with evidence.
+ */
+export function encodeAppendResponse(
+  agentId: string,
+  clientAddress: string,
+  feedbackIndex: number,
+  responseURI: string,
+  responseHash: string,
+): string {
+  const selector = SELECTORS.appendResponse.replace('0x', '');
+  const responseURIData = encodeStringData(responseURI);
+
+  // Head: 5 words (160 bytes), dynamic offset for responseURI starts at 160
+  const headSize = 160;
+  const responseURIOffset = headSize;
+
+  const head =
+    encodeUint256(agentId) +
+    encodeAddress(clientAddress) +
+    encodeUint256(feedbackIndex) +
+    encodeUint256(responseURIOffset) +
+    encodeBytes32(responseHash);
+
+  return '0x' + selector + head + responseURIData;
+}
+
+/**
+ * Encode `revokeFeedback(uint256 agentId, uint64 feedbackIndex)`.
+ * Transaction — revoke own feedback.
+ */
+export function encodeRevokeFeedback(agentId: string, feedbackIndex: number): string {
+  const selector = SELECTORS.revokeFeedback.replace('0x', '');
+  return '0x' + selector +
+    encodeUint256(agentId) +
+    encodeUint256(feedbackIndex);
+}
+
+/**
+ * Encode `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`.
+ * Transaction — set extensible key-value metadata on identity.
+ */
+export function encodeSetMetadata(agentId: string, key: string, value: string): string {
+  const selector = SELECTORS.setMetadata.replace('0x', '');
+  const keyData = encodeStringData(key);
+  const valueData = encodeBytesData(value);
+
+  // Head: 3 words (96 bytes)
+  const headSize = 96;
+  const keyOffset = headSize;
+  const keyDataLen = keyData.length / 2;
+  const valueOffset = keyOffset + keyDataLen;
+
+  const head =
+    encodeUint256(agentId) +
+    encodeUint256(keyOffset) +
+    encodeUint256(valueOffset);
+
+  return '0x' + selector + head + keyData + valueData;
+}
+
+/**
+ * Encode `getMetadata(uint256 agentId, string metadataKey)`.
+ * View call — returns bytes.
+ */
+export function encodeGetMetadata(agentId: string, key: string): string {
+  const selector = SELECTORS.getMetadata.replace('0x', '');
+  const keyData = encodeStringData(key);
+
+  // Head: 2 words (64 bytes)
+  const headSize = 64;
+  const keyOffset = headSize;
+
+  const head =
+    encodeUint256(agentId) +
+    encodeUint256(keyOffset);
+
+  return '0x' + selector + head + keyData;
+}
+
+/**
+ * Encode `getResponseCount(uint256 agentId, address clientAddress,
+ *   uint64 feedbackIndex, address[] responders)`.
+ * View call — returns uint64 count of responses.
+ */
+export function encodeGetResponseCount(
+  agentId: string,
+  clientAddress: string,
+  feedbackIndex: number,
+  responders?: string[],
+): string {
+  const selector = SELECTORS.getResponseCount.replace('0x', '');
+
+  const respondersArray = responders ?? [];
+  const respondersData = encodeUint256(respondersArray.length) +
+    respondersArray.map(addr => encodeAddress(addr)).join('');
+
+  // Head: 4 words (128 bytes)
+  const headSize = 128;
+  const respondersOffset = headSize;
+
+  const head =
+    encodeUint256(agentId) +
+    encodeAddress(clientAddress) +
+    encodeUint256(feedbackIndex) +
+    encodeUint256(respondersOffset);
+
+  return '0x' + selector + head + respondersData;
 }

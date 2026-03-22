@@ -132,6 +132,41 @@ export interface IdentitySetWalletRequest {
 export interface ReputationQuery {
   agentId: string;   // uint256 as string
   chain: Chain;
+  tag1?: string;              // Optional category tag filter
+  tag2?: string;              // Optional sub-tag filter
+  clientAddresses?: string[]; // Optional client address filter
+}
+
+/** Read a single on-chain feedback entry. */
+export interface FeedbackReadQuery {
+  agentId: string;
+  clientAddress: string;
+  feedbackIndex: number;
+  chain: Chain;
+}
+
+/** Get all clients who gave feedback for an agent. */
+export interface ClientsQuery {
+  agentId: string;
+  chain: Chain;
+}
+
+/** Append a response to feedback (defend reputation). */
+export interface AppendResponseRequest {
+  agentId: string;
+  clientAddress: string;
+  feedbackIndex: number;
+  responseURI: string;
+  responseHash: string;
+  chain: Chain;
+}
+
+/** Set metadata on the identity NFT. */
+export interface SetMetadataRequest {
+  agentId: string;
+  key: string;
+  valueHex: string;
+  chain: Chain;
 }
 
 // ── IPC Request Envelope ──
@@ -194,7 +229,11 @@ export type IPCRequestType =
   | 'spark_deposit_address'
   | 'spark_get_transfers'
   | 'x402_sign'
-  | 'x402_get_address';
+  | 'x402_get_address'
+  | 'query_feedback'
+  | 'query_clients'
+  | 'identity_append_response'
+  | 'identity_set_metadata';
 
 /** Dry-run policy check result — evaluate without executing or recording */
 export interface PolicyCheckResult {
@@ -211,6 +250,7 @@ export interface IPCRequest {
     | RGBIssueProposal | RGBTransferProposal
     | IdentityRegisterRequest | IdentitySetWalletRequest
     | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery
+    | FeedbackReadQuery | ClientsQuery | AppendResponseRequest | SetMetadataRequest
     | SparkInvoiceRequest | SparkPayInvoiceRequest
     | X402SignRequest;
 }
@@ -267,6 +307,22 @@ export interface ReputationResult {
   valueDecimals: number;
 }
 
+/** Single feedback entry read from on-chain. */
+export interface FeedbackReadResult {
+  agentId: string;
+  clientAddress: string;
+  feedbackIndex: number;
+  value: number;
+  valueDecimals: number;
+  isRevoked: boolean;
+}
+
+/** List of clients who gave feedback. */
+export interface ClientsResult {
+  agentId: string;
+  clients: string[];
+}
+
 export type IPCResponseType =
   | 'execution_result'
   | 'balance'
@@ -284,6 +340,8 @@ export type IPCResponseType =
   | 'spark_transfers'
   | 'x402_signature'
   | 'x402_address'
+  | 'feedback_read'
+  | 'clients_result'
   | 'error';
 
 export interface IPCResponse {
@@ -331,8 +389,9 @@ const VALID_CHAINS: ReadonlySet<string> = new Set(['ethereum', 'polygon', 'bitco
 const VALID_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'propose_payment', 'propose_swap', 'propose_bridge', 'propose_yield', 'propose_feedback',
   'propose_rgb_issue', 'propose_rgb_transfer',
-  'identity_register', 'identity_set_wallet',
+  'identity_register', 'identity_set_wallet', 'identity_append_response', 'identity_set_metadata',
   'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
+  'query_feedback', 'query_clients',
   'query_rgb_assets', 'query_policy_check',
   'spark_create_invoice', 'spark_pay_invoice', 'spark_deposit_address', 'spark_get_transfers',
   'x402_sign', 'x402_get_address',
@@ -402,6 +461,35 @@ export function validateIPCRequest(raw: unknown): IPCRequest | null {
       break;
     case 'query_reputation':
       if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0) return null;
+      if (!isValidChain(payload['chain'])) return null;
+      // Optional filter fields — validate types if present
+      if (payload['tag1'] !== undefined && typeof payload['tag1'] !== 'string') return null;
+      if (payload['tag2'] !== undefined && typeof payload['tag2'] !== 'string') return null;
+      if (payload['clientAddresses'] !== undefined && !Array.isArray(payload['clientAddresses'])) return null;
+      if (Array.isArray(payload['clientAddresses']) && !(payload['clientAddresses'] as unknown[]).every((a) => typeof a === 'string')) return null;
+      break;
+    case 'query_feedback':
+      if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0) return null;
+      if (typeof payload['clientAddress'] !== 'string' || payload['clientAddress'].length === 0) return null;
+      if (typeof payload['feedbackIndex'] !== 'number') return null;
+      if (!isValidChain(payload['chain'])) return null;
+      break;
+    case 'query_clients':
+      if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0) return null;
+      if (!isValidChain(payload['chain'])) return null;
+      break;
+    case 'identity_append_response':
+      if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0) return null;
+      if (typeof payload['clientAddress'] !== 'string' || payload['clientAddress'].length === 0) return null;
+      if (typeof payload['feedbackIndex'] !== 'number') return null;
+      if (typeof payload['responseURI'] !== 'string') return null;
+      if (typeof payload['responseHash'] !== 'string') return null;
+      if (!isValidChain(payload['chain'])) return null;
+      break;
+    case 'identity_set_metadata':
+      if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0) return null;
+      if (typeof payload['key'] !== 'string' || payload['key'].length === 0) return null;
+      if (typeof payload['valueHex'] !== 'string') return null;
       if (!isValidChain(payload['chain'])) return null;
       break;
     case 'query_balance':

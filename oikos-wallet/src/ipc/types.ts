@@ -116,6 +116,9 @@ export interface IdentitySetWalletRequest {
 export interface ReputationQuery {
   agentId: string;
   chain: Chain;
+  tag1?: string;              // Optional category tag filter
+  tag2?: string;              // Optional sub-tag filter
+  clientAddresses?: string[]; // Optional client address filter
 }
 
 export interface IdentityResult {
@@ -130,6 +133,54 @@ export interface ReputationResult {
   feedbackCount: number;
   totalValue: string;
   valueDecimals: number;
+}
+
+/** Read a single on-chain feedback entry. */
+export interface FeedbackReadQuery {
+  agentId: string;
+  clientAddress: string;
+  feedbackIndex: number;
+  chain: Chain;
+}
+
+/** Get all clients who gave feedback for an agent. */
+export interface ClientsQuery {
+  agentId: string;
+  chain: Chain;
+}
+
+/** Append a response to feedback (defend reputation). */
+export interface AppendResponseRequest {
+  agentId: string;
+  clientAddress: string;
+  feedbackIndex: number;
+  responseURI: string;
+  responseHash: string;
+  chain: Chain;
+}
+
+/** Set metadata on the identity NFT. */
+export interface SetMetadataRequest {
+  agentId: string;
+  key: string;
+  valueHex: string;
+  chain: Chain;
+}
+
+/** Single feedback entry read from on-chain. */
+export interface FeedbackReadResult {
+  agentId: string;
+  clientAddress: string;
+  feedbackIndex: number;
+  value: number;
+  valueDecimals: number;
+  isRevoked: boolean;
+}
+
+/** List of clients who gave feedback. */
+export interface ClientsResult {
+  agentId: string;
+  clients: string[];
 }
 
 // ── Response Types (Wallet → Gateway) ──
@@ -195,7 +246,11 @@ export type IPCRequestType =
   | 'spark_pay_invoice'
   | 'spark_deposit_address'
   | 'x402_sign'
-  | 'x402_get_address';
+  | 'x402_get_address'
+  | 'query_feedback'
+  | 'query_clients'
+  | 'identity_append_response'
+  | 'identity_set_metadata';
 
 export interface IPCRequest {
   id: string;

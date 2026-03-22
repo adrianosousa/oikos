@@ -254,6 +254,7 @@
   }
   .ann-agent { color: var(--muted); }
   .ann-agent strong { color: var(--text); }
+  .erc-badge { color: #4a90d9; font-size: 12px; cursor: help; }
   .ann-price { font-weight: 700; color: var(--green); }
   .ann-time { color: var(--dim); font-size: 10px; }
 
@@ -522,7 +523,7 @@ function renderAnnouncements(anns) {
       (a.description ? '<div class="ann-desc">' + esc(a.description) + '</div>' : '') +
       (tags ? '<div class="ann-tags">' + tags + '</div>' : '') +
       '<div class="ann-bottom">' +
-        '<span class="ann-agent">by <strong>' + esc(a.agentName) + '</strong> · rep ' + Math.round(a.reputation * 100) + '%</span>' +
+        '<span class="ann-agent">by <strong>' + esc(a.agentName) + '</strong> · rep ' + Math.round(a.reputation * 100) + '%' + (a.erc8004AgentId ? ' · <span class="erc-badge" title="ERC-8004 verified: #' + a.erc8004AgentId + '">&#x26d3;</span>' : '') + '</span>' +
         (price ? '<span class="ann-price">' + price + '</span>' : '') +
         '<span class="ann-time">' + timeAgo(a.timestamp) + '</span>' +
       '</div>' +

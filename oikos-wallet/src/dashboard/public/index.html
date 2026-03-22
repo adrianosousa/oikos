@@ -450,6 +450,7 @@
     }
     .peer-dot { width: 6px; height: 6px; background: var(--green); }
     .peer-rep { color: var(--green); font-weight: 700; font-size: 10px; }
+    .peer-chain { color: #4a90d9; font-size: 10px; margin-left: 2px; cursor: help; }
     .ann-item { padding: 0.45rem; border-bottom: 1px solid var(--border); font-size: 12px; }
     .ann-item:last-child { border-bottom: none; }
     .ann-cat {
@@ -805,6 +806,14 @@
                 <div class="id-item"><div class="id-label">Agent ID</div><div class="id-value" id="id-agent-id">--</div></div>
                 <div class="id-item"><div class="id-label">Wallet Set</div><div class="id-value" id="id-wallet-set">--</div></div>
                 <div class="id-item"><div class="id-label">On-Chain Rep</div><div class="id-value green" id="id-rep">--</div></div>
+                <div class="id-item"><div class="id-label">Feedback Count</div><div class="id-value" id="id-feedback-count">--</div></div>
+                <div class="id-item"><div class="id-label">Feedback Given</div><div class="id-value" id="id-feedback-given">--</div></div>
+                <div class="id-item"><div class="id-label">Bridge Status</div><div class="id-value" id="id-bridge-status">--</div></div>
+                <div class="id-item"><div class="id-label">Bridge Syncs</div><div class="id-value" id="id-bridge-syncs">--</div></div>
+              </div>
+              <div id="id-categories" class="hidden" style="margin-top:0.5rem;">
+                <div class="id-label" style="margin-bottom:0.3rem;">Reputation by Category</div>
+                <div id="id-cat-list" style="font-size:11px;"></div>
               </div>
             </div>
             <div class="card col-6">
@@ -1216,7 +1225,7 @@ async function updateOverview() {
     }
     var peers = swarm.boardPeers || [];
     document.getElementById('swarm-peers').innerHTML = peers.length > 0
-      ? peers.map(function(p){ return '<span class="peer-chip"><span class="peer-dot"></span>'+p.name+' <span class="peer-rep">'+((p.reputation||0)*100).toFixed(0)+'%</span></span>'; }).join('')
+      ? peers.map(function(p){ return '<span class="peer-chip"><span class="peer-dot"></span>'+p.name+' <span class="peer-rep">'+((p.reputation||0)*100).toFixed(0)+'%</span>'+(p.erc8004AgentId?'<span class="peer-chain" title="ERC-8004: #'+p.erc8004AgentId+'">&#x26d3;</span>':'')+'</span>'; }).join('')
       : '<span style="color:var(--dim);font-size:11px;">No peers</span>';
     var anns = swarm.announcements || [];
     document.getElementById('ann-list').innerHTML = anns.length > 0
@@ -1251,6 +1260,30 @@ async function updateOverview() {
       document.getElementById('id-agent-id').textContent = identity.agentId ? '#'+identity.agentId : '--';
       document.getElementById('id-wallet-set').textContent = identity.walletSet ? 'YES' : 'NO';
       document.getElementById('id-wallet-set').className = 'id-value '+(identity.walletSet?'id-yes':'id-no');
+      // Fetch on-chain reputation details
+      api('/api/reputation/onchain').then(function(rep) {
+        if(rep && rep.registered) {
+          document.getElementById('id-rep').textContent = rep.averageScore != null ? (rep.averageScore*100).toFixed(0)+'%' : '--';
+          document.getElementById('id-feedback-count').textContent = rep.feedbackCount != null ? rep.feedbackCount : '--';
+          // Reputation by category
+          if(rep.categories && rep.categories.length > 0) {
+            var catEl = document.getElementById('id-categories');
+            catEl.classList.remove('hidden');
+            document.getElementById('id-cat-list').innerHTML = rep.categories.map(function(c) {
+              return '<div style="display:flex;justify-content:space-between;padding:0.1rem 0;"><span style="color:var(--muted);">'+c.tag1+'</span><span class="green" style="font-weight:700;">'+((c.averageScore||0)*100).toFixed(0)+'% <span style="color:var(--dim);font-weight:400;">('+c.count+')</span></span></div>';
+            }).join('');
+          }
+        }
+      });
+      // Fetch bridge stats
+      api('/api/reputation/bridge').then(function(bridge) {
+        if(bridge && bridge.enabled !== false) {
+          document.getElementById('id-bridge-status').textContent = bridge.enabled ? 'Active' : 'Inactive';
+          document.getElementById('id-bridge-status').className = 'id-value '+(bridge.enabled?'id-yes':'id-no');
+          document.getElementById('id-feedback-given').textContent = bridge.feedbackSubmitted != null ? bridge.feedbackSubmitted : '--';
+          document.getElementById('id-bridge-syncs').textContent = bridge.syncCount != null ? bridge.syncCount : '--';
+        }
+      });
     } else {
       document.getElementById('id-registered').textContent = 'NO'; document.getElementById('id-registered').className = 'id-value id-no';
     }
@@ -1296,7 +1329,7 @@ async function updateSwarm() {
   var peers = swarm.boardPeers||[];
   document.getElementById('sw-peer-count').textContent = peers.length;
   document.getElementById('sw-peers').innerHTML = peers.length > 0
-    ? peers.map(function(p){ return '<span class="peer-chip"><span class="peer-dot"></span>'+p.name+' <span class="peer-rep">'+((p.reputation||0)*100).toFixed(0)+'%</span></span>'; }).join('')
+    ? peers.map(function(p){ return '<span class="peer-chip"><span class="peer-dot"></span>'+p.name+' <span class="peer-rep">'+((p.reputation||0)*100).toFixed(0)+'%</span>'+(p.erc8004AgentId?'<span class="peer-chain" title="ERC-8004: #'+p.erc8004AgentId+'">&#x26d3;</span>':'')+'</span>'; }).join('')
     : '<div class="empty">No peers</div>';
   var anns = swarm.announcements||[];
   document.getElementById('sw-anns').innerHTML = anns.length > 0

@@ -22,9 +22,19 @@ export const SELECTORS = {
   // IdentityRegistry
   register: '0xf2c298be',        // register(string)
   setAgentWallet: '0x2d1ef5ae',  // setAgentWallet(uint256,address,uint256,bytes)
+  setMetadata: '0x466648da',     // setMetadata(uint256,string,bytes)
+  getMetadata: '0xcb4799f2',     // getMetadata(uint256,string)
+  setAgentURI: '0x0af28bd3',     // setAgentURI(uint256,string)
   // ReputationRegistry
   giveFeedback: '0x3c036a7e',    // giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)
   getSummary: '0x81bbba58',      // getSummary(uint256,address[],string,string)
+  readFeedback: '0x232b0810',    // readFeedback(uint256,address,uint64)
+  readAllFeedback: '0xd9d84224', // readAllFeedback(uint256,address[],string,string,bool)
+  getClients: '0x42dd519c',      // getClients(uint256)
+  getLastIndex: '0xf2d81759',    // getLastIndex(uint256,address)
+  appendResponse: '0xc2349ab2',  // appendResponse(uint256,address,uint64,string,bytes32)
+  revokeFeedback: '0x4ab3ca99',  // revokeFeedback(uint256,uint64)
+  getResponseCount: '0x6e04cacd', // getResponseCount(uint256,address,uint64,address[])
 } as const;
 
 /**

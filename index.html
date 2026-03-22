@@ -327,6 +327,8 @@
 
     .peer-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.5rem; background: var(--bg); border: 1px solid var(--brand-black); font-size: 11px; margin: 0.15rem; }
     .peer-dot { width: 6px; height: 6px; background: var(--green); }
+    .peer-chain { color: #4a90d9; font-size: 10px; margin-left: 2px; cursor: help; }
+    .erc-badge { color: #4a90d9; font-size: 12px; cursor: help; }
     .peer-rep { color: var(--green); font-weight: 700; font-size: 10px; }
 
     /* ═══ POLICY ═══ */
@@ -575,7 +577,9 @@
         <div id="swarm-disabled" class="empty" style="padding:3rem;">Swarm not enabled. Start with SWARM_ENABLED=true.</div>
         <div id="swarm-content" class="hidden">
           <div class="swarm-strip">
-            <div class="ss-item"><span class="ss-label">Rep</span> <span class="ss-value green" id="sw-rep">--</span></div>
+            <div class="ss-item"><span class="ss-label">Rep (off)</span> <span class="ss-value green" id="sw-rep-off">--</span></div>
+            <div class="ss-item"><span class="ss-label">Rep (on)</span> <span class="ss-value blue" id="sw-rep-on">--</span></div>
+            <div class="ss-item"><span class="ss-label">ERC-8004</span> <span class="ss-value" id="sw-erc8004">--</span></div>
             <div class="ss-item"><span class="ss-label">Peers</span> <span class="ss-value blue" id="sw-peer-count">0</span></div>
             <div class="ss-item"><span class="ss-label">Revenue</span> <span class="ss-value green" id="sw-econ-rev">$0</span></div>
             <div class="ss-item"><span class="ss-label">Costs</span> <span class="ss-value red" id="sw-econ-cost">$0</span></div>

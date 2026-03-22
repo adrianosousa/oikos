@@ -324,6 +324,58 @@ async function main(): Promise<void> {
       console.error('[oikos] ERC-8004 bootstrap failed:', err);
     }
     console.error(`[oikos] ERC-8004: ${identity.registered ? `registered (agentId: ${identity.agentId ?? 'unknown'})` : 'disabled'}`);
+
+    // Propagate ERC-8004 agentId to swarm (for heartbeats + peer discovery)
+    if (identity.registered && identity.agentId && swarm?.updateErc8004AgentId) {
+      swarm.updateErc8004AgentId(identity.agentId);
+    }
+  }
+
+  // 7b. Bootstrap ERC-8004 Reputation Bridge (auto-feedback after settlements)
+  let reputationBridge: import('./reputation/bridge.js').ReputationBridge | null = null;
+
+  if (config.erc8004Enabled && identity.registered && swarm) {
+    const { ReputationBridge } = await import('./reputation/bridge.js');
+    const autoFeedback = process.env['AUTO_FEEDBACK_ENABLED'] !== 'false'; // default: true
+
+    // Peer lookup uses the swarm's known peers
+    const peerLookup: import('./reputation/bridge.js').PeerLookup = {
+      getErc8004AgentId: (peerPubkey: string) => {
+        const state = swarm!.getState();
+        const peer = state.boardPeers.find((p: { pubkey: string }) => p.pubkey === peerPubkey);
+        return peer?.erc8004AgentId;
+      },
+      getPeerInfo: (peerPubkey: string) => {
+        const state = swarm!.getState();
+        return state.boardPeers.find((p: { pubkey: string }) => p.pubkey === peerPubkey);
+      },
+    };
+
+    // Get wallet address for feedback file clientAddress
+    let walletAddress = '';
+    try {
+      const addr = await wallet.queryAddress('ethereum');
+      walletAddress = addr.address;
+    } catch { /* ok */ }
+
+    reputationBridge = new ReputationBridge(wallet, {
+      registered: identity.registered,
+      agentId: identity.agentId ?? undefined,
+      walletAddress,
+    }, peerLookup, {
+      enabled: autoFeedback,
+      dashboardBaseUrl: `http://127.0.0.1:${config.dashboardPort}`,
+      rateLimit: 1, // max 1 feedback per peer per hour
+    });
+
+    // Wire settlement events to the bridge
+    swarm.onEvent((event) => {
+      if (event.kind === 'settlement_completed') {
+        void reputationBridge!.onSettlement(event);
+      }
+    });
+
+    console.error(`[oikos] ERC-8004 Reputation Bridge: ${autoFeedback ? 'active' : 'disabled'} (auto-feedback after settlements)`);
   }
 
   // 8. Start RGB transport bridge (if enabled)
@@ -385,6 +437,7 @@ async function main(): Promise<void> {
     x402: x402Client,
     sparkEnabled,
     auth,
+    reputationBridge,
     companion: companion ?? null,
   };
 

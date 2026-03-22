@@ -56,6 +56,8 @@ export interface BoardAnnouncement {
   agentPubkey: string;
   agentName: string;
   reputation: number;
+  /** ERC-8004 on-chain agent ID (if registered). */
+  erc8004AgentId?: string;
   category: AnnouncementCategory;
   title: string;
   description: string;
@@ -72,6 +74,8 @@ export interface BoardHeartbeat {
   agentName: string;
   reputation: number;
   capabilities: AgentCapability[];
+  /** ERC-8004 on-chain agent ID (if registered). */
+  erc8004AgentId?: string;
   timestamp: number;
 }
 
@@ -359,6 +363,8 @@ export interface SwarmPeerInfo {
   reputation: number;
   capabilities: AgentCapability[];
   lastSeen: number;
+  /** ERC-8004 on-chain agent ID (if peer has registered). */
+  erc8004AgentId?: string;
 }
 
 export interface SwarmState {
@@ -396,6 +402,8 @@ export interface SwarmCoordinatorInterface {
   }): boolean;
   /** Cancel a negotiation room (creator only). Room closes without settlement. */
   cancelRoom?(announcementId: string): boolean;
+  /** Update ERC-8004 on-chain identity after registration. */
+  updateErc8004AgentId?(agentId: string): void;
   /** Explicitly connect to a peer by Noise public key (bypasses topic discovery) */
   joinPeer?(pubkeyHex: string): void;
   /** Stop explicitly connecting to a peer */

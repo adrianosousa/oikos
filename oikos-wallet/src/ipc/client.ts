@@ -251,8 +251,12 @@ export class WalletIPCClient {
   }
 
   /** Query on-chain reputation from ERC-8004 ReputationRegistry. */
-  async queryReputation(agentId: string, chain = 'ethereum' as const): Promise<ReputationResult> {
-    const payload: ReputationQuery = { agentId, chain };
+  async queryReputation(
+    agentId: string,
+    chain = 'ethereum' as const,
+    opts?: { tag1?: string; tag2?: string; clientAddresses?: string[] },
+  ): Promise<ReputationResult> {
+    const payload: ReputationQuery = { agentId, chain, ...opts };
     const response = await this.send('query_reputation', payload);
     return response.payload as ReputationResult;
   }

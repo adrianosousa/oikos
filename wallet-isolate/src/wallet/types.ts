@@ -93,7 +93,27 @@ export interface WalletOperations {
   ): Promise<TransactionResult>;
 
   /** Query on-chain reputation from ERC-8004 ReputationRegistry. */
-  getOnChainReputation(chain: Chain, agentId: string): Promise<OnChainReputation>;
+  getOnChainReputation(chain: Chain, agentId: string, opts?: { clients?: string[]; tag1?: string; tag2?: string }): Promise<OnChainReputation>;
+
+  // ── ERC-8004 Read Operations ──
+
+  /** Read a single feedback entry. */
+  readFeedback(chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number): Promise<{ value: number; valueDecimals: number; isRevoked: boolean }>;
+
+  /** Get all addresses that have given feedback for an agent. */
+  getClients(chain: Chain, agentId: string): Promise<string[]>;
+
+  /** Get the last feedback index for a client-agent pair. */
+  getLastIndex(chain: Chain, agentId: string, clientAddress: string): Promise<number>;
+
+  /** Append a response to feedback (agent defends reputation). */
+  appendResponse(chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number, responseURI: string, responseHash: string): Promise<TransactionResult>;
+
+  /** Set metadata on the IdentityRegistry. */
+  setIdentityMetadata(chain: Chain, agentId: string, key: string, valueHex: string): Promise<TransactionResult>;
+
+  /** Get metadata from the IdentityRegistry. */
+  getIdentityMetadata(chain: Chain, agentId: string, key: string): Promise<string>;
 
   // ── RGB Asset Operations ──
 

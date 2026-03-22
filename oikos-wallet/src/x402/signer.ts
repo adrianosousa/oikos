@@ -28,6 +28,9 @@ export class IPCEvmSigner {
   private _address: string = '';
   private _addressPromise: Promise<string> | null = null;
 
+  /** Last amount signed via signTypedData — used by X402Client for spend tracking */
+  lastSignedAmount: string = '0';
+
   constructor(wallet: WalletIPCClient) {
     this.wallet = wallet;
   }
@@ -80,6 +83,7 @@ export class IPCEvmSigner {
     // Extract policy-relevant fields from the EIP-3009 message
     // transferWithAuthorization: from, to, value, validAfter, validBefore, nonce
     const policyAmount = String(value['value'] ?? '0');
+    this.lastSignedAmount = policyAmount;
     const policyRecipient = String(value['to'] ?? '');
 
     // Map chain from domain.chainId

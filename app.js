@@ -395,7 +395,12 @@ async function updateSwarm () {
   document.getElementById('swarm-content').classList.remove('hidden')
   lastSwarmData = swarm
 
-  if (swarm.identity) document.getElementById('sw-rep').textContent = ((swarm.identity.reputation || 0) * 100).toFixed(0) + '%'
+  if (swarm.identity) {
+    document.getElementById('sw-rep-off').textContent = ((swarm.identity.reputation || 0) * 100).toFixed(0) + '%'
+    var onChain = swarm.identity.onChainReputation
+    document.getElementById('sw-rep-on').textContent = onChain && onChain.averageScore != null ? ((onChain.averageScore * 100).toFixed(0) + '%') : '--'
+    document.getElementById('sw-erc8004').textContent = swarm.identity.erc8004AgentId ? '#' + swarm.identity.erc8004AgentId : '--'
+  }
   var peers = swarm.boardPeers || []
   document.getElementById('sw-peer-count').textContent = peers.length
 
@@ -464,7 +469,7 @@ function renderSwarmBoard (anns) {
         '<div class="ann-top"><div class="ann-title-row"><span class="ann-title">' + escapeHtml(a.title || 'Untitled') + '</span><span class="ann-id">' + id + '</span></div><span class="ann-cat cat-' + cat + '">' + cat.toUpperCase() + '</span></div>' +
         (a.description ? '<div class="ann-desc">' + escapeHtml(a.description).slice(0, 200) + '</div>' : '') +
         (tagsHtml ? '<div class="ann-tags">' + tagsHtml + '</div>' : '') +
-        '<div class="ann-bottom"><span class="ann-agent">' + escapeHtml(a.agentName || '?') + '</span>' + (rep ? '<span class="ann-rep">' + rep + '</span>' : '') + (price ? '<span class="ann-price">' + price + '</span>' : '') + '<span>' + timeAgo(a.timestamp || Date.now()) + '</span></div>' +
+        '<div class="ann-bottom"><span class="ann-agent">' + escapeHtml(a.agentName || '?') + '</span>' + (rep ? '<span class="ann-rep">' + rep + '</span>' : '') + (a.erc8004AgentId ? '<span class="erc-badge" title="ERC-8004: #' + a.erc8004AgentId + '">&#x26d3;</span>' : '') + (price ? '<span class="ann-price">' + price + '</span>' : '') + '<span>' + timeAgo(a.timestamp || Date.now()) + '</span></div>' +
         '</div>'
     }).join('')
 }

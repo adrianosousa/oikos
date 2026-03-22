@@ -18,6 +18,11 @@ import { ERC8004_CONTRACTS, TRANSFER_EVENT_TOPIC, EIP712_DOMAIN, SET_AGENT_WALLE
 import {
   encodeRegister, encodeSetAgentWallet, encodeGiveFeedback,
   encodeGetSummary, decodeUint256, decodeSummaryResult,
+  encodeReadFeedback, decodeReadFeedbackResult,
+  encodeGetClients, decodeAddressArray,
+  encodeGetLastIndex, decodeUint64,
+  encodeAppendResponse,
+  encodeSetMetadata, encodeGetMetadata,
 } from '../erc8004/abi-encode.js';
 
 /** Decimals per token for formatting */
@@ -567,11 +572,15 @@ export class WalletManager implements WalletOperations {
    * Query on-chain reputation from the ReputationRegistry via eth_call.
    * This is a read-only call (no gas, no tx).
    */
-  async getOnChainReputation(chain: Chain, agentId: string): Promise<OnChainReputation> {
+  async getOnChainReputation(
+    chain: Chain,
+    agentId: string,
+    opts?: { clients?: string[]; tag1?: string; tag2?: string },
+  ): Promise<OnChainReputation> {
     this.ensureInitialized();
 
     try {
-      const calldata = encodeGetSummary(agentId);
+      const calldata = encodeGetSummary(agentId, opts?.clients, opts?.tag1, opts?.tag2);
       const resultHex = await this.ethCall(
         chain,
         ERC8004_CONTRACTS.reputationRegistry,
@@ -586,6 +595,117 @@ export class WalletManager implements WalletOperations {
     } catch {
       // Read-only query — return defaults on failure
       return { feedbackCount: 0, totalValue: '0', valueDecimals: 0 };
+    }
+  }
+
+  // ── ERC-8004 Read Operations (Phase 4) ──
+
+  /**
+   * Read a single feedback entry from the ReputationRegistry.
+   * View call (no gas).
+   */
+  async readFeedback(
+    chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number
+  ): Promise<{ value: number; valueDecimals: number; isRevoked: boolean }> {
+    this.ensureInitialized();
+    try {
+      const calldata = encodeReadFeedback(agentId, clientAddress, feedbackIndex);
+      const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
+      return decodeReadFeedbackResult(resultHex);
+    } catch {
+      return { value: 0, valueDecimals: 0, isRevoked: false };
+    }
+  }
+
+  /**
+   * Get all addresses that have given feedback for an agent.
+   * View call (no gas).
+   */
+  async getClients(chain: Chain, agentId: string): Promise<string[]> {
+    this.ensureInitialized();
+    try {
+      const calldata = encodeGetClients(agentId);
+      const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
+      return decodeAddressArray(resultHex);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get the last feedback index for a specific client-agent pair.
+   * View call (no gas).
+   */
+  async getLastIndex(chain: Chain, agentId: string, clientAddress: string): Promise<number> {
+    this.ensureInitialized();
+    try {
+      const calldata = encodeGetLastIndex(agentId, clientAddress);
+      const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
+      return decodeUint64(resultHex);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Append a response to feedback (agent defends its reputation).
+   * Transaction — costs gas.
+   */
+  async appendResponse(
+    chain: Chain, agentId: string, clientAddress: string,
+    feedbackIndex: number, responseURI: string, responseHash: string,
+  ): Promise<TransactionResult> {
+    this.ensureInitialized();
+    try {
+      const account = await this.getAccount(chain);
+      const calldata = encodeAppendResponse(agentId, clientAddress, feedbackIndex, responseURI, responseHash);
+      const tx = await account.sendTransaction({
+        to: ERC8004_CONTRACTS.reputationRegistry,
+        value: 0n,
+        data: calldata,
+      });
+      return { success: true, txHash: tx.hash };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown appendResponse error';
+      return { success: false, error: msg };
+    }
+  }
+
+  /**
+   * Set metadata on the IdentityRegistry (extensible key-value store).
+   * Transaction — costs gas.
+   */
+  async setIdentityMetadata(
+    chain: Chain, agentId: string, key: string, valueHex: string,
+  ): Promise<TransactionResult> {
+    this.ensureInitialized();
+    try {
+      const account = await this.getAccount(chain);
+      const calldata = encodeSetMetadata(agentId, key, valueHex);
+      const tx = await account.sendTransaction({
+        to: ERC8004_CONTRACTS.identityRegistry,
+        value: 0n,
+        data: calldata,
+      });
+      return { success: true, txHash: tx.hash };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown setMetadata error';
+      return { success: false, error: msg };
+    }
+  }
+
+  /**
+   * Get metadata from the IdentityRegistry.
+   * View call (no gas).
+   */
+  async getIdentityMetadata(chain: Chain, agentId: string, key: string): Promise<string> {
+    this.ensureInitialized();
+    try {
+      const calldata = encodeGetMetadata(agentId, key);
+      const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.identityRegistry, calldata);
+      return resultHex;
+    } catch {
+      return '0x';
     }
   }
 
@@ -751,7 +871,8 @@ export class MockWalletManager implements WalletOperations {
   private balances: Map<string, bigint> = new Map();
   private initialized = false;
   private nextAgentId = 1;
-  private feedbackStore: Array<{ targetAgentId: string; value: number; valueDecimals: number }> = [];
+  private feedbackStore: Array<{ targetAgentId: string; clientAddress: string; feedbackIndex: number; value: number; valueDecimals: number }> = [];
+  private nextFeedbackIndex = 0;
   private mockRgbAssets: Map<string, { ticker: string; name: string; precision: number; balance: bigint }> = new Map();
   private nextRgbAssetId = 1;
 
@@ -923,12 +1044,14 @@ export class MockWalletManager implements WalletOperations {
     _tag1: string, _tag2: string, _endpoint: string, _feedbackURI: string, _feedbackHash: string,
   ): Promise<TransactionResult> {
     this.ensureInit();
-    this.feedbackStore.push({ targetAgentId, value, valueDecimals });
+    const feedbackIndex = this.nextFeedbackIndex++;
+    const clientAddress = '0x' + 'a'.repeat(40); // Mock client address
+    this.feedbackStore.push({ targetAgentId, clientAddress, feedbackIndex, value, valueDecimals });
     const mockHash = `0xfeedback${Date.now().toString(16)}`;
     return { success: true, txHash: mockHash };
   }
 
-  async getOnChainReputation(_chain: Chain, agentId: string): Promise<OnChainReputation> {
+  async getOnChainReputation(_chain: Chain, agentId: string, _opts?: { clients?: string[]; tag1?: string; tag2?: string }): Promise<OnChainReputation> {
     this.ensureInit();
     const entries = this.feedbackStore.filter(f => f.targetAgentId === agentId);
     if (entries.length === 0) {
@@ -940,6 +1063,49 @@ export class MockWalletManager implements WalletOperations {
       totalValue: String(totalValue),
       valueDecimals: entries[0]?.valueDecimals ?? 0,
     };
+  }
+
+  // ── ERC-8004 Read Operations (Mock) ──
+
+  async readFeedback(_chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number): Promise<{ value: number; valueDecimals: number; isRevoked: boolean }> {
+    this.ensureInit();
+    const entry = this.feedbackStore.find(f => f.targetAgentId === agentId && f.clientAddress === clientAddress && f.feedbackIndex === feedbackIndex);
+    return entry ? { value: entry.value, valueDecimals: entry.valueDecimals, isRevoked: false } : { value: 0, valueDecimals: 0, isRevoked: false };
+  }
+
+  async getClients(_chain: Chain, agentId: string): Promise<string[]> {
+    this.ensureInit();
+    const clients = new Set<string>();
+    for (const f of this.feedbackStore) {
+      if (f.targetAgentId === agentId) clients.add(f.clientAddress);
+    }
+    return Array.from(clients);
+  }
+
+  async getLastIndex(_chain: Chain, agentId: string, clientAddress: string): Promise<number> {
+    this.ensureInit();
+    let maxIndex = 0;
+    for (const f of this.feedbackStore) {
+      if (f.targetAgentId === agentId && f.clientAddress === clientAddress && f.feedbackIndex > maxIndex) {
+        maxIndex = f.feedbackIndex;
+      }
+    }
+    return maxIndex;
+  }
+
+  async appendResponse(_chain: Chain, _agentId: string, _clientAddress: string, _feedbackIndex: number, _responseURI: string, _responseHash: string): Promise<TransactionResult> {
+    this.ensureInit();
+    return { success: true, txHash: `0xmockresponse${Date.now().toString(16)}` };
+  }
+
+  async setIdentityMetadata(_chain: Chain, _agentId: string, _key: string, _valueHex: string): Promise<TransactionResult> {
+    this.ensureInit();
+    return { success: true, txHash: `0xmockmetadata${Date.now().toString(16)}` };
+  }
+
+  async getIdentityMetadata(_chain: Chain, _agentId: string, _key: string): Promise<string> {
+    this.ensureInit();
+    return '0x';
   }
 
   // ── RGB Asset Operations (Mock) ──
