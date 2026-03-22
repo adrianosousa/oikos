@@ -467,6 +467,58 @@ const server = http.createServer(async (req, res) => {
 
   // ── GET endpoints ──
 
+  // ── Companion pairing endpoints ──
+
+  if (url === '/api/companion/pubkey') {
+    return json(res, { pubkey: companionPubkey })
+  }
+
+  if (url === '/api/companion/status') {
+    return json(res, {
+      connected: state.connected,
+      companionPubkey: companionPubkey,
+      agentPubkey: agentPubkey ? agentPubkey : null,
+      agentPubkeyShort: agentPubkey ? agentPubkey.slice(0, 16) + '...' : null
+    })
+  }
+
+  if (url === '/api/companion/pair' && req.method === 'POST') {
+    try {
+      const body = await readBody(req)
+      const pk = (body.agentPubkey || '').trim()
+      if (!pk || !/^[0-9a-fA-F]{64}$/.test(pk)) {
+        return json(res, { error: 'Invalid pubkey. Must be 64 hex chars.' }, 400)
+      }
+      // Write to persistent file
+      const agentPubkeyPath = path.join(home, '.oikos', 'agent-pubkey.txt')
+      const dir = path.dirname(agentPubkeyPath)
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(agentPubkeyPath, pk)
+      agentPubkey = pk
+      console.log('[companion] Paired with agent:', pk.slice(0, 16) + '...')
+      // Trigger connection (non-blocking)
+      connectToAgent().catch((err) => console.log('[companion] Connect error:', err.message || err))
+      return json(res, { success: true, agentPubkey: pk })
+    } catch (e) {
+      return json(res, { error: 'Failed to pair: ' + (e.message || String(e)) }, 500)
+    }
+  }
+
+  if (url === '/api/companion/unpair' && req.method === 'POST') {
+    try {
+      const agentPubkeyPath = path.join(home, '.oikos', 'agent-pubkey.txt')
+      if (fs.existsSync(agentPubkeyPath)) fs.unlinkSync(agentPubkeyPath)
+      agentPubkey = null
+      if (swarm) { swarm.destroy(); swarm = null }
+      state.connected = false
+      companionMessage = null
+      console.log('[companion] Unpaired. Running in offline mode.')
+      return json(res, { success: true })
+    } catch (e) {
+      return json(res, { error: 'Failed to unpair: ' + (e.message || String(e)) }, 500)
+    }
+  }
+
   if (url === '/api/health') {
     // Check wallet reachability via HTTP even if companion channel is down
     let walletReachable = state.connected

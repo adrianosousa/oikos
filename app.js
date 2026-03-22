@@ -1008,6 +1008,102 @@ async function updateCurrentView () {
   await updateChat()
 }
 
+/* ═══ PAIRING ═══ */
+async function checkPairing () {
+  var status = await api('/api/companion/status')
+  if (!status) return false
+  var modal = document.getElementById('pairing-modal')
+  if (!modal) return false
+
+  // Show own pubkey
+  var ownInput = document.getElementById('pairing-own-pubkey')
+  if (ownInput && status.companionPubkey) ownInput.value = status.companionPubkey
+
+  // If already paired and connected, hide modal
+  if (status.agentPubkey && status.connected) {
+    modal.classList.add('hidden')
+    return true
+  }
+
+  // If paired but not yet connected, show status
+  if (status.agentPubkey && !status.connected) {
+    var agentInput = document.getElementById('pairing-agent-pubkey')
+    if (agentInput) agentInput.value = status.agentPubkey
+    var statusEl = document.getElementById('pairing-status')
+    if (statusEl) statusEl.textContent = 'Connecting to ' + status.agentPubkeyShort + '...'
+    modal.classList.remove('hidden')
+    return false
+  }
+
+  // Not paired — show modal
+  modal.classList.remove('hidden')
+  return false
+}
+
+function initPairing () {
+  var copyBtn = document.getElementById('pairing-copy-btn')
+  if (copyBtn) {
+    copyBtn.onclick = function () {
+      var input = document.getElementById('pairing-own-pubkey')
+      if (input) {
+        navigator.clipboard.writeText(input.value).then(function () {
+          copyBtn.textContent = 'Copied!'
+          setTimeout(function () { copyBtn.textContent = 'Copy' }, 1500)
+        }).catch(function () {
+          input.select()
+        })
+      }
+    }
+  }
+
+  var connectBtn = document.getElementById('pairing-connect-btn')
+  if (connectBtn) {
+    connectBtn.onclick = async function () {
+      var input = document.getElementById('pairing-agent-pubkey')
+      var statusEl = document.getElementById('pairing-status')
+      var resultEl = document.getElementById('pairing-result')
+      if (!input || !input.value.trim()) {
+        if (statusEl) statusEl.textContent = 'Paste the agent pubkey first.'
+        return
+      }
+      var pk = input.value.trim()
+      if (!/^[0-9a-fA-F]{64}$/.test(pk)) {
+        if (statusEl) { statusEl.textContent = 'Invalid pubkey — must be 64 hex characters.'; statusEl.style.color = 'var(--red)' }
+        return
+      }
+      connectBtn.disabled = true
+      if (statusEl) { statusEl.textContent = 'Pairing...'; statusEl.style.color = 'var(--muted)' }
+      var res = await apiPost('/api/companion/pair', { agentPubkey: pk })
+      if (res && res.success) {
+        if (statusEl) { statusEl.textContent = 'Paired! Connecting...'; statusEl.style.color = 'var(--green)' }
+        // Poll for connection
+        var attempts = 0
+        var poller = setInterval(async function () {
+          attempts++
+          var s = await api('/api/companion/status')
+          if (s && s.connected) {
+            clearInterval(poller)
+            var modal = document.getElementById('pairing-modal')
+            if (modal) modal.classList.add('hidden')
+            if (statusEl) statusEl.textContent = ''
+            connectBtn.disabled = false
+            await updateCurrentView()
+          } else if (attempts > 20) {
+            clearInterval(poller)
+            if (statusEl) { statusEl.textContent = 'Connected but agent not found yet. It will connect automatically.'; statusEl.style.color = 'var(--yellow)' }
+            connectBtn.disabled = false
+            var modal = document.getElementById('pairing-modal')
+            if (modal) modal.classList.add('hidden')
+          }
+        }, 1500)
+      } else {
+        if (statusEl) { statusEl.textContent = (res && res.error) || 'Pairing failed.'; statusEl.style.color = 'var(--red)' }
+        connectBtn.disabled = false
+      }
+    }
+  }
+}
+
 /* ═══ BOOT ═══ */
 async function boot () {
   console.log('[app] Booting Oikos App...')
@@ -1021,10 +1117,24 @@ async function boot () {
     if (content) content.innerHTML = '<div style="padding:3rem;text-align:center;"><div style="font-size:1.5rem;font-weight:700;color:var(--red);margin-bottom:1rem;">Internal Error</div><div style="color:var(--muted);">Internal API not available. Try restarting the app.</div></div>'
     return
   }
+
+  // Init pairing UI
+  initPairing()
+  var paired = await checkPairing()
+
   await fetchPrices()
   await updateCurrentView()
   setInterval(updateCurrentView, 2500)
   setInterval(fetchPrices, 10000)
+
+  // If not paired, keep checking until connection established
+  if (!paired) {
+    var pairingPoller = setInterval(async function () {
+      var ok = await checkPairing()
+      if (ok) clearInterval(pairingPoller)
+    }, 3000)
+  }
+
   console.log('[app] Oikos App ready.')
 }
 
