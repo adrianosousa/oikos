@@ -35,6 +35,8 @@ import {
   computeAuditHash,
   reputationFromAuditEntries,
 } from './reputation.js';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 export interface SwarmConfig {
   swarmId: string;
@@ -52,6 +54,10 @@ export interface SwarmConfig {
   bootstrapPeers?: string[];
   /** ERC-8004 on-chain agent ID (if registered). Included in heartbeats for peer discovery. */
   erc8004AgentId?: string;
+  /** Directory for persisting coordinator state (announcements). Defaults to cwd. */
+  dataDir?: string;
+  /** How long a room can stay in negotiating/accepted/executing before auto-cancel (default: 30 min) */
+  staleRoomTimeoutMs?: number;
 }
 
 export class SwarmCoordinator implements SwarmCoordinatorInterface {
@@ -176,6 +182,20 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     }, this.config.heartbeatIntervalMs);
 
     this.started = true;
+
+    // 9. Rehydrate persisted own announcements
+    const persisted = this._loadOwnAnnouncements();
+    for (const ann of persisted) {
+      ann.expiresAt = Date.now() + this.config.announcementTtlMs;
+      if (!this.announcements.find(a => a.id === ann.id)) {
+        this.announcements.push(ann);
+        this.marketplace.createRoom(ann);
+      }
+    }
+    if (persisted.length > 0) {
+      console.error(`[swarm] Rehydrated ${persisted.length} persisted announcement(s)`);
+    }
+
     console.error(`[swarm] Started. Identity: ${this.identity.name} (${this.identity.pubkey.slice(0, 12)}...)`);
   }
 
@@ -211,8 +231,9 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     // Broadcast on board channel
     this.channels.broadcastBoard(announcement);
 
-    // Track locally
+    // Track locally and persist
     this.announcements.push(announcement);
+    this._persistOwnAnnouncements();
 
     // Create room for this announcement
     this.marketplace.createRoom(announcement);
@@ -246,6 +267,7 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     if (idx === -1) return false;
 
     this.announcements.splice(idx, 1);
+    this._persistOwnAnnouncements();
 
     // Broadcast removal to peers
     if (this.channels) {
@@ -477,12 +499,18 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     let toAddress: string;
     if (creatorPays) {
       // Creator pays bidder — use bidder's wallet address from their bid
-      toAddress = room.acceptedBid.paymentAddress
-        ?? room.acceptedBid.bidderPubkey.slice(0, 42); // fallback: pubkey prefix
+      if (!room.acceptedBid.paymentAddress) {
+        console.error(`[swarm] Payment failed: bidder did not provide a payment address for room ${announcementId.slice(0, 8)}`);
+        return;
+      }
+      toAddress = room.acceptedBid.paymentAddress;
     } else {
       // Bidder pays creator — use creator's wallet address from the accept message
-      toAddress = room.paymentAddress
-        ?? room.announcement.agentPubkey.slice(0, 42); // fallback: pubkey prefix
+      if (!room.paymentAddress) {
+        console.error(`[swarm] Payment failed: creator did not provide a payment address for room ${announcementId.slice(0, 8)}`);
+        return;
+      }
+      toAddress = room.paymentAddress;
     }
 
     // Determine chain from negotiation data
@@ -639,6 +667,9 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
         this.channels.broadcastBoard(ann);
       }
     }
+
+    // Reap stale rooms (piggybacks on heartbeat interval)
+    this._reapStaleRooms();
   }
 
   /** Handle incoming board message */
@@ -767,5 +798,57 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
       message: msg,
       fromPubkey: fromPubkey.toString('hex'),
     });
+  }
+
+  // ── Announcement Persistence ──
+
+  private get _announcementsPath(): string {
+    const dir = this.config.dataDir ?? process.cwd();
+    return join(dir, '.oikos-announcements.json');
+  }
+
+  private _persistOwnAnnouncements(): void {
+    if (!this.identity) return;
+    const own = this.announcements.filter(a => a.agentPubkey === this.identity!.pubkey);
+    try {
+      writeFileSync(this._announcementsPath, JSON.stringify(own, null, 2));
+    } catch (err) {
+      console.error('[swarm] Failed to persist announcements:', err);
+    }
+  }
+
+  private _loadOwnAnnouncements(): BoardAnnouncement[] {
+    try {
+      if (!existsSync(this._announcementsPath)) return [];
+      return JSON.parse(readFileSync(this._announcementsPath, 'utf-8')) as BoardAnnouncement[];
+    } catch {
+      return [];
+    }
+  }
+
+  // ── Stale Room Reaper ──
+
+  private _reapStaleRooms(): void {
+    const timeout = this.config.staleRoomTimeoutMs ?? 30 * 60 * 1000;
+    const now = Date.now();
+    for (const room of this.marketplace.getActiveRooms()) {
+      const age = now - room.createdAt;
+      if (age > timeout && (room.status === 'negotiating' || room.status === 'accepted' || room.status === 'executing')) {
+        console.error(`[swarm] Auto-cancelling stale room ${room.announcementId.slice(0, 8)} (status: ${room.status}, age: ${Math.round(age / 60000)}m)`);
+        this.marketplace.cancelRoom(room.announcementId);
+        this._emit({
+          kind: 'room_message',
+          roomId: room.announcementId,
+          message: {
+            type: 'reject',
+            announcementId: room.announcementId,
+            rejectedBidderPubkey: '',
+            reason: 'Room auto-cancelled: stale timeout',
+            timestamp: now,
+          },
+          fromPubkey: this.identity?.pubkey ?? '',
+        });
+      }
+    }
   }
 }

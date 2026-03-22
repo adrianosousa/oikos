@@ -24,6 +24,12 @@ export interface SwarmConfig {
     relayPubkey?: string;
     /** Explicit peer pubkeys (hex) to connect to via joinPeer */
     bootstrapPeers?: string[];
+    /** ERC-8004 on-chain agent ID (if registered). Included in heartbeats for peer discovery. */
+    erc8004AgentId?: string;
+    /** Directory for persisting coordinator state (announcements). Defaults to cwd. */
+    dataDir?: string;
+    /** How long a room can stay in negotiating/accepted/executing before auto-cancel (default: 30 min) */
+    staleRoomTimeoutMs?: number;
 }
 export declare class SwarmCoordinator implements SwarmCoordinatorInterface {
     private wallet;
@@ -84,6 +90,8 @@ export declare class SwarmCoordinator implements SwarmCoordinatorInterface {
     leavePeer(pubkeyHex: string): void;
     /** Get current swarm state (for dashboard) */
     getState(): SwarmState;
+    /** Update ERC-8004 on-chain identity after registration (called from main.ts). */
+    updateErc8004AgentId(agentId: string): void;
     /** Register event handler */
     onEvent(handler: (event: SwarmEvent) => void): void;
     /** Graceful shutdown */
@@ -99,5 +107,9 @@ export declare class SwarmCoordinator implements SwarmCoordinatorInterface {
     private _handleRoomMessage;
     /** Handle incoming feed message */
     private _handleFeedMessage;
+    private get _announcementsPath();
+    private _persistOwnAnnouncements;
+    private _loadOwnAnnouncements;
+    private _reapStaleRooms;
 }
 //# sourceMappingURL=coordinator.d.ts.map

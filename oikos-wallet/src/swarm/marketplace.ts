@@ -20,6 +20,7 @@ import type {
   BoardAnnouncement,
   RoomMessage,
   RoomBid,
+  RoomCounterOffer,
   RoomAccept,
   RoomPaymentConfirm,
   SwarmEconomics,
@@ -43,6 +44,7 @@ export class Marketplace {
       role: 'creator',
       status: 'open',
       bids: [],
+      counterOffers: [],
       createdAt: Date.now(),
     };
 
@@ -62,6 +64,7 @@ export class Marketplace {
       role: 'bidder',
       status: 'negotiating',
       bids: [],
+      counterOffers: [],
       createdAt: Date.now(),
     };
 
@@ -90,7 +93,7 @@ export class Marketplace {
         break;
 
       case 'counter_offer':
-        // Counter offers just adjust expectations — no state change
+        room.counterOffers.push(msg as RoomCounterOffer);
         break;
 
       case 'accept': {
@@ -126,6 +129,7 @@ export class Marketplace {
         break;
 
       case 'payment_confirm': {
+        if (room.status === 'settled') break; // idempotency guard
         const confirm = msg as RoomPaymentConfirm;
         room.paymentTxHash = confirm.txHash;
         room.status = 'settled';
@@ -135,15 +139,20 @@ export class Marketplace {
     }
   }
 
-  /** Get the best bid for a room (lowest price) */
+  /** Get the best bid for a room (highest for seller/auction, lowest for buyer) */
   getBestBid(roomId: string): RoomBid | undefined {
     const room = this.rooms.get(roomId);
     if (!room || room.bids.length === 0) return undefined;
 
+    const wantHighest = room.announcement.category === 'seller'
+                     || room.announcement.category === 'auction';
+
     return room.bids.reduce((best, bid) => {
       const bestPrice = parseFloat(best.price);
       const bidPrice = parseFloat(bid.price);
-      return bidPrice < bestPrice ? bid : best;
+      return wantHighest
+        ? (bidPrice > bestPrice ? bid : best)
+        : (bidPrice < bestPrice ? bid : best);
     });
   }
 
@@ -183,7 +192,7 @@ export class Marketplace {
   /** Mark a room as settled after payment confirmation */
   settleRoom(roomId: string, txHash: string): void {
     const room = this.rooms.get(roomId);
-    if (!room) return;
+    if (!room || room.status === 'settled') return; // idempotency guard
 
     room.paymentTxHash = txHash;
     room.status = 'settled';

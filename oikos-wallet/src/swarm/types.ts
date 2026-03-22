@@ -327,6 +327,7 @@ export interface ActiveRoom {
   role: 'creator' | 'bidder';
   status: RoomStatus;
   bids: RoomBid[];
+  counterOffers: RoomCounterOffer[];
   acceptedBid?: RoomBid;
   agreedPrice?: string;
   agreedSymbol?: string;

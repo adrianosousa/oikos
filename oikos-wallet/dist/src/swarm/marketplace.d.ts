@@ -23,7 +23,7 @@ export declare class Marketplace {
     joinRoom(announcement: BoardAnnouncement): ActiveRoom;
     /** Process an incoming room message */
     handleRoomMessage(roomId: string, msg: RoomMessage): void;
-    /** Get the best bid for a room (lowest price) */
+    /** Get the best bid for a room (highest for seller/auction, lowest for buyer) */
     getBestBid(roomId: string): RoomBid | undefined;
     /** Accept a bid in a room I created */
     acceptBid(roomId: string, bidderPubkey: string, paymentAddress: string, paymentChain: string): RoomAccept | undefined;

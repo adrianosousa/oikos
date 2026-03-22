@@ -31,6 +31,7 @@ export class Marketplace {
             role: 'creator',
             status: 'open',
             bids: [],
+            counterOffers: [],
             createdAt: Date.now(),
         };
         this.rooms.set(announcement.id, room);
@@ -48,6 +49,7 @@ export class Marketplace {
             role: 'bidder',
             status: 'negotiating',
             bids: [],
+            counterOffers: [],
             createdAt: Date.now(),
         };
         this.rooms.set(announcement.id, room);
@@ -71,7 +73,7 @@ export class Marketplace {
                 }
                 break;
             case 'counter_offer':
-                // Counter offers just adjust expectations — no state change
+                room.counterOffers.push(msg);
                 break;
             case 'accept': {
                 // Deduplicate: only process first accept
@@ -100,6 +102,8 @@ export class Marketplace {
                 // Seller is requesting payment — triggers coordinator to submit
                 break;
             case 'payment_confirm': {
+                if (room.status === 'settled')
+                    break; // idempotency guard
                 const confirm = msg;
                 room.paymentTxHash = confirm.txHash;
                 room.status = 'settled';
@@ -108,15 +112,19 @@ export class Marketplace {
             }
         }
     }
-    /** Get the best bid for a room (lowest price) */
+    /** Get the best bid for a room (highest for seller/auction, lowest for buyer) */
     getBestBid(roomId) {
         const room = this.rooms.get(roomId);
         if (!room || room.bids.length === 0)
             return undefined;
+        const wantHighest = room.announcement.category === 'seller'
+            || room.announcement.category === 'auction';
         return room.bids.reduce((best, bid) => {
             const bestPrice = parseFloat(best.price);
             const bidPrice = parseFloat(bid.price);
-            return bidPrice < bestPrice ? bid : best;
+            return wantHighest
+                ? (bidPrice > bestPrice ? bid : best)
+                : (bidPrice < bestPrice ? bid : best);
         });
     }
     /** Accept a bid in a room I created */
@@ -147,8 +155,8 @@ export class Marketplace {
     /** Mark a room as settled after payment confirmation */
     settleRoom(roomId, txHash) {
         const room = this.rooms.get(roomId);
-        if (!room)
-            return;
+        if (!room || room.status === 'settled')
+            return; // idempotency guard
         room.paymentTxHash = txHash;
         room.status = 'settled';
         this._updateEconomics(room);

@@ -12,6 +12,8 @@ import { ChannelManager } from './channels.js';
 import { Marketplace } from './marketplace.js';
 import { loadOrCreateKeypair, buildIdentity } from './identity.js';
 import { computeReputation, computeAuditHash, reputationFromAuditEntries, } from './reputation.js';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 export class SwarmCoordinator {
     wallet;
     config;
@@ -54,6 +56,10 @@ export class SwarmCoordinator {
         }
         // 3. Build identity
         this.identity = buildIdentity(this.keypair, this.config.agentName, this.config.capabilities, reputation, auditHash);
+        // Attach ERC-8004 on-chain identity if available
+        if (this.config.erc8004AgentId) {
+            this.identity.erc8004AgentId = this.config.erc8004AgentId;
+        }
         // 4. Initialize discovery (with relay + bootstrap peers)
         this.discovery = new SwarmDiscovery({
             swarmId: this.config.swarmId,
@@ -108,6 +114,18 @@ export class SwarmCoordinator {
             this._sendHeartbeat();
         }, this.config.heartbeatIntervalMs);
         this.started = true;
+        // 9. Rehydrate persisted own announcements
+        const persisted = this._loadOwnAnnouncements();
+        for (const ann of persisted) {
+            ann.expiresAt = Date.now() + this.config.announcementTtlMs;
+            if (!this.announcements.find(a => a.id === ann.id)) {
+                this.announcements.push(ann);
+                this.marketplace.createRoom(ann);
+            }
+        }
+        if (persisted.length > 0) {
+            console.error(`[swarm] Rehydrated ${persisted.length} persisted announcement(s)`);
+        }
         console.error(`[swarm] Started. Identity: ${this.identity.name} (${this.identity.pubkey.slice(0, 12)}...)`);
     }
     /** Post an announcement to the board */
@@ -121,6 +139,7 @@ export class SwarmCoordinator {
             agentPubkey: this.identity.pubkey,
             agentName: this.identity.name,
             reputation: this.identity.reputation,
+            erc8004AgentId: this.identity.erc8004AgentId,
             category: opts.category,
             title: opts.title,
             description: opts.description,
@@ -132,8 +151,9 @@ export class SwarmCoordinator {
         };
         // Broadcast on board channel
         this.channels.broadcastBoard(announcement);
-        // Track locally
+        // Track locally and persist
         this.announcements.push(announcement);
+        this._persistOwnAnnouncements();
         // Create room for this announcement
         this.marketplace.createRoom(announcement);
         // Join the room DHT topic so bidders can find us even without board connection
@@ -161,6 +181,7 @@ export class SwarmCoordinator {
         if (idx === -1)
             return false;
         this.announcements.splice(idx, 1);
+        this._persistOwnAnnouncements();
         // Broadcast removal to peers
         if (this.channels) {
             this.channels.broadcastBoard({
@@ -357,13 +378,19 @@ export class SwarmCoordinator {
         let toAddress;
         if (creatorPays) {
             // Creator pays bidder — use bidder's wallet address from their bid
-            toAddress = room.acceptedBid.paymentAddress
-                ?? room.acceptedBid.bidderPubkey.slice(0, 42); // fallback: pubkey prefix
+            if (!room.acceptedBid.paymentAddress) {
+                console.error(`[swarm] Payment failed: bidder did not provide a payment address for room ${announcementId.slice(0, 8)}`);
+                return;
+            }
+            toAddress = room.acceptedBid.paymentAddress;
         }
         else {
             // Bidder pays creator — use creator's wallet address from the accept message
-            toAddress = room.paymentAddress
-                ?? room.announcement.agentPubkey.slice(0, 42); // fallback: pubkey prefix
+            if (!room.paymentAddress) {
+                console.error(`[swarm] Payment failed: creator did not provide a payment address for room ${announcementId.slice(0, 8)}`);
+                return;
+            }
+            toAddress = room.paymentAddress;
         }
         // Determine chain from negotiation data
         const paymentChain = (creatorPays
@@ -456,6 +483,13 @@ export class SwarmCoordinator {
             economics: this.marketplace.getEconomics(),
         };
     }
+    /** Update ERC-8004 on-chain identity after registration (called from main.ts). */
+    updateErc8004AgentId(agentId) {
+        if (this.identity) {
+            this.identity.erc8004AgentId = agentId;
+        }
+        this.config.erc8004AgentId = agentId;
+    }
     /** Register event handler */
     onEvent(handler) {
         this.eventHandlers.push(handler);
@@ -487,6 +521,7 @@ export class SwarmCoordinator {
             agentName: this.identity.name,
             reputation: this.identity.reputation,
             capabilities: this.identity.capabilities,
+            erc8004AgentId: this.identity.erc8004AgentId,
             timestamp: Date.now(),
         });
         // Re-broadcast own announcements and auto-renew their TTL.
@@ -500,6 +535,8 @@ export class SwarmCoordinator {
                 this.channels.broadcastBoard(ann);
             }
         }
+        // Reap stale rooms (piggybacks on heartbeat interval)
+        this._reapStaleRooms();
     }
     /** Handle incoming board message */
     _handleBoardMessage(msg, fromPubkey) {
@@ -511,6 +548,7 @@ export class SwarmCoordinator {
                 name: msg.agentName,
                 reputation: msg.reputation,
                 capabilities: msg.capabilities,
+                erc8004AgentId: msg.erc8004AgentId,
                 lastSeen: Date.now(),
             });
         }
@@ -525,6 +563,7 @@ export class SwarmCoordinator {
                 name: msg.agentName,
                 reputation: msg.reputation,
                 capabilities: msg.capabilities,
+                erc8004AgentId: msg.erc8004AgentId,
                 lastSeen: Date.now(),
             });
         }
@@ -624,6 +663,56 @@ export class SwarmCoordinator {
             message: msg,
             fromPubkey: fromPubkey.toString('hex'),
         });
+    }
+    // ── Announcement Persistence ──
+    get _announcementsPath() {
+        const dir = this.config.dataDir ?? process.cwd();
+        return join(dir, '.oikos-announcements.json');
+    }
+    _persistOwnAnnouncements() {
+        if (!this.identity)
+            return;
+        const own = this.announcements.filter(a => a.agentPubkey === this.identity.pubkey);
+        try {
+            writeFileSync(this._announcementsPath, JSON.stringify(own, null, 2));
+        }
+        catch (err) {
+            console.error('[swarm] Failed to persist announcements:', err);
+        }
+    }
+    _loadOwnAnnouncements() {
+        try {
+            if (!existsSync(this._announcementsPath))
+                return [];
+            return JSON.parse(readFileSync(this._announcementsPath, 'utf-8'));
+        }
+        catch {
+            return [];
+        }
+    }
+    // ── Stale Room Reaper ──
+    _reapStaleRooms() {
+        const timeout = this.config.staleRoomTimeoutMs ?? 30 * 60 * 1000;
+        const now = Date.now();
+        for (const room of this.marketplace.getActiveRooms()) {
+            const age = now - room.createdAt;
+            if (age > timeout && (room.status === 'negotiating' || room.status === 'accepted' || room.status === 'executing')) {
+                console.error(`[swarm] Auto-cancelling stale room ${room.announcementId.slice(0, 8)} (status: ${room.status}, age: ${Math.round(age / 60000)}m)`);
+                this.marketplace.cancelRoom(room.announcementId);
+                this._emit({
+                    kind: 'room_message',
+                    roomId: room.announcementId,
+                    message: {
+                        type: 'reject',
+                        announcementId: room.announcementId,
+                        rejectedBidderPubkey: '',
+                        reason: 'Room auto-cancelled: stale timeout',
+                        timestamp: now,
+                    },
+                    fromPubkey: this.identity?.pubkey ?? '',
+                });
+            }
+        }
     }
 }
 //# sourceMappingURL=coordinator.js.map
