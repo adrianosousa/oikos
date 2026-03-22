@@ -1176,12 +1176,23 @@ function initPairing () {
 /* ═══ BOOT ═══ */
 async function boot () {
   console.log('[app] Booting Oikos App...')
-  // Read port from config file written by index.js at startup
-  API_BASE = 'http://127.0.0.1:' + (window.__OIKOS_PORT || '13421')
-  console.log('[app] API_BASE:', API_BASE)
+  // Discover internal API — scan ports until we find our server
+  var ports = [13421, 13422, 13423, 13424]
   var ready = false
-  for (var i = 0; i < 10; i++) {
-    try { var res = await fetch(API_BASE + '/api/health'); if (res.ok) { ready = true; break } } catch (e) {}
+  for (var attempt = 0; attempt < 15; attempt++) {
+    for (var p = 0; p < ports.length; p++) {
+      try {
+        var candidate = 'http://127.0.0.1:' + ports[p]
+        var res = await fetch(candidate + '/api/health')
+        if (res.ok) {
+          API_BASE = candidate
+          ready = true
+          console.log('[app] API_BASE:', API_BASE)
+          break
+        }
+      } catch (e) {}
+    }
+    if (ready) break
     await new Promise(function (resolve) { setTimeout(resolve, 300) })
   }
   if (!ready) {

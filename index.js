@@ -519,6 +519,10 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url === '/api/config') {
+    return json(res, { port: INTERNAL_PORT })
+  }
+
   if (url === '/api/health') {
     // Check wallet reachability via HTTP even if companion channel is down
     let walletReachable = state.connected
@@ -1009,9 +1013,9 @@ server.listen(INTERNAL_PORT, '127.0.0.1', () => {
 
 // ── 5. Write port config + Start Electron renderer ──
 
-// Write port config for app.js (Pear loads HTML from filesystem, not HTTP)
-fs.writeFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'oikos-port.js'),
-  `window.__OIKOS_PORT = ${INTERNAL_PORT};\n`)
+// Write port config for app.js (Pear app dir is read-only, write to oikosHome)
+if (!fs.existsSync(oikosHome)) fs.mkdirSync(oikosHome, { recursive: true })
+fs.writeFileSync(path.join(oikosHome, 'port.json'), JSON.stringify({ port: INTERNAL_PORT }))
 
 const bridge = new Bridge()
 await bridge.ready()
