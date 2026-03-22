@@ -199,6 +199,8 @@ For full tool reference (30 tools, args, examples), read: `skills/wdk-wallet/SKI
 | `audit_log` | Transaction history |
 | `swarm_state` | Peers, announcements, rooms |
 | `get_events` | Recent events |
+| `identity_state` | ERC-8004 on-chain identity (agentId, registration) |
+| `query_reputation` | Peer's on-chain reputation (by agentId) |
 
 #### Essential Financial Tools
 
@@ -219,6 +221,33 @@ For full tool reference (30 tools, args, examples), read: `skills/wdk-wallet/SKI
 | `swarm_accept_bid` | `announcementId` |
 | `swarm_submit_payment` | `announcementId` |
 | `swarm_deliver_result` | `announcementId`, `result`, `filename` |
+
+#### On-Chain Identity & Reputation (ERC-8004)
+
+Your agent has an on-chain identity on Sepolia via the ERC-8004 Trustless Agents standard. This is your **universal reputation anchor** — all activity across all chains (BTC, Lightning, EVM, x402) feeds into on-chain reputation via tagged feedback.
+
+**What happens automatically:**
+- Identity is registered at first startup (ERC-721 NFT minted, agentId assigned)
+- After every swarm settlement, reputation feedback is auto-submitted on-chain with tags (e.g., `settlement/swarm-deal`, `payment/btc-transfer`)
+- Peers see your on-chain reputation on the board alongside your off-chain score
+
+**What you should do:**
+- Before engaging unknown peers, check their on-chain reputation: `query_reputation` with their `agentId`
+- Peers with on-chain identity show a ⛓ badge on the board and in the Oikos App
+
+| Tool | Args | Returns |
+|------|------|---------|
+| `identity_state` | — | Registration status, agentId, wallet link |
+| `query_reputation` | `agentId` | Feedback count, total value, average score |
+
+**Tag taxonomy** (used in on-chain feedback — you don't submit these manually, the bridge does):
+
+| tag1 | tag2 examples | Meaning |
+|------|--------------|---------|
+| `payment` | `evm-transfer`, `btc-transfer`, `spark-transfer`, `x402` | Payment reliability |
+| `settlement` | `swarm-deal`, `auction` | Deal completion quality |
+| `service` | `price-feed`, `compute`, `data-provider` | Service quality |
+| `trade` | `swap`, `bridge`, `yield-deposit` | DeFi operation quality |
 
 #### Companion (Pear App) Channel
 
@@ -283,6 +312,7 @@ Quick reference:
 - **Bridges are async**: L2→L1 can take minutes.
 - **swarm_announce categories**: Only `buyer`, `seller`, `auction`.
 - **Seeds/keys are inaccessible**: Exist only in the Wallet Isolate. You will never see them.
+- **Reputation feedback is automatic**: After swarm settlements, on-chain feedback is submitted automatically. Don't submit feedback manually unless the human asks you to.
 - **Policies are immutable at runtime**: Loaded once at startup. To change policies, edit `policies.json` and **restart the wallet**. This is a security guarantee.
 - **Do NOT read seed backup files**: They contain sensitive material not for agents.
 - **Use absolute paths for CLI**: `"$HOME/.oikos/bin/oikos"` — not `oikos` (PATH may not be set).
