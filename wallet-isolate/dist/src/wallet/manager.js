@@ -9,7 +9,9 @@
  * This module NEVER logs, returns, or exposes the seed in any way.
  */
 import { ERC8004_CONTRACTS, TRANSFER_EVENT_TOPIC, EIP712_DOMAIN, SET_AGENT_WALLET_TYPES } from '../erc8004/constants.js';
-import { encodeRegister, encodeSetAgentWallet, encodeGiveFeedback, encodeGetSummary, decodeUint256, decodeSummaryResult, } from '../erc8004/abi-encode.js';
+import { encodeRegister, encodeSetAgentWallet, encodeGiveFeedback, encodeGetSummary, decodeUint256, decodeSummaryResult, encodeReadFeedback, decodeReadFeedbackResult, encodeGetClients, decodeAddressArray, encodeGetLastIndex, decodeUint64, encodeAppendResponse, encodeSetMetadata, encodeGetMetadata, } from '../erc8004/abi-encode.js';
+import { AAVE_V3_SEPOLIA, AAVE_TOKENS_SEPOLIA } from '../defi/constants.js';
+import { encodeApprove, encodeAaveSupply, encodeAaveWithdraw } from '../defi/abi-encode.js';
 /** Decimals per token for formatting */
 function getDecimals(symbol) {
     switch (symbol) {
@@ -240,6 +242,7 @@ export class WalletManager {
     /**
      * Swap tokens via Velora DEX protocol.
      * Requires @tetherto/wdk-protocol-swap-velora-evm.
+     * Note: Velora API only supports mainnet chains — Sepolia swaps will fail.
      */
     async swap(chain, fromSymbol, toSymbol, fromAmount) {
         this.ensureInitialized();
@@ -264,13 +267,18 @@ export class WalletManager {
             return { success: true, txHash: result.hash };
         }
         catch (err) {
-            const message = err instanceof Error ? err.message : 'Unknown swap error';
+            const raw = err instanceof Error ? err.message : 'Unknown swap error';
+            // Provide actionable context for testnet failures
+            const message = raw.includes('network') || raw.includes('chain') || raw.includes('unsupported')
+                ? `Velora DEX does not support Sepolia testnet. Swap requires mainnet chains (Ethereum, Arbitrum, Polygon, Plasma). Original error: ${raw}`
+                : raw;
             return { success: false, error: message };
         }
     }
     /**
      * Bridge tokens cross-chain via USDT0 protocol.
      * Requires @tetherto/wdk-protocol-bridge-usdt0-evm.
+     * Note: USDT0 is not deployed on Sepolia — bridge requires mainnet chains.
      */
     async bridge(fromChain, toChain, symbol, amount) {
         this.ensureInitialized();
@@ -293,13 +301,17 @@ export class WalletManager {
             return { success: true, txHash: result.hash };
         }
         catch (err) {
-            const message = err instanceof Error ? err.message : 'Unknown bridge error';
+            const raw = err instanceof Error ? err.message : 'Unknown bridge error';
+            // Provide actionable context — USDT0 has no Sepolia contracts
+            const message = `USDT0 bridging requires mainnet chains (Ethereum, Arbitrum, Polygon, Plasma, Stable). `
+                + `Sepolia testnet does not have USDT0 contracts deployed. Original error: ${raw}`;
             return { success: false, error: message };
         }
     }
     /**
      * Deposit tokens into Aave lending pool.
-     * Requires @tetherto/wdk-protocol-lending-aave-evm.
+     * Tries WDK protocol module first; falls back to direct Aave V3 Pool
+     * contract calls on Sepolia (WDK module is mainnet-only).
      */
     async deposit(chain, symbol, amount, _protocol) {
         this.ensureInitialized();
@@ -308,11 +320,29 @@ export class WalletManager {
             const token = getTokenAddress(chain, symbol);
             if (!token)
                 return { success: false, error: `No token address for ${symbol} on ${chain}` };
-            const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
-            const aave = new AaveProtocolEvm(account);
-            const result = await aave.supply({ token, amount });
-            return { success: true, txHash: result.hash };
+            // Try WDK protocol module first (works on mainnet chains)
+            try {
+                const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
+                const aave = new AaveProtocolEvm(account);
+                const result = await aave.supply({ token, amount });
+                return { success: true, txHash: result.hash };
+            }
+            catch {
+                // WDK module doesn't support this chain (e.g., Sepolia) — fall back to direct calls
+                console.error(`[wallet-isolate] WDK Aave module failed on ${chain}, falling back to direct Aave V3 calls`);
+            }
+            // Direct Aave V3 Pool calls — Sepolia fallback
+            // Aave on Sepolia uses its own test tokens, different from WDK's
+            const aaveToken = AAVE_TOKENS_SEPOLIA[symbol] ?? token;
+            const selfAddress = await account.getAddress();
+            // Step 1: Approve the Pool to spend our tokens
+            const approveData = encodeApprove(AAVE_V3_SEPOLIA.pool, amount);
+            await account.sendTransaction({ to: aaveToken, value: 0n, data: approveData });
+            // Step 2: Supply to Aave Pool
+            const supplyData = encodeAaveSupply(aaveToken, amount, selfAddress, 0);
+            const tx = await account.sendTransaction({ to: AAVE_V3_SEPOLIA.pool, value: 0n, data: supplyData });
+            return { success: true, txHash: tx.hash };
         }
         catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown deposit error';
@@ -321,7 +351,8 @@ export class WalletManager {
     }
     /**
      * Withdraw tokens from Aave lending pool.
-     * Requires @tetherto/wdk-protocol-lending-aave-evm.
+     * Tries WDK protocol module first; falls back to direct Aave V3 Pool
+     * contract calls on Sepolia (WDK module is mainnet-only).
      */
     async withdraw(chain, symbol, amount, _protocol) {
         this.ensureInitialized();
@@ -330,11 +361,24 @@ export class WalletManager {
             const token = getTokenAddress(chain, symbol);
             if (!token)
                 return { success: false, error: `No token address for ${symbol} on ${chain}` };
-            const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
-            const aave = new AaveProtocolEvm(account);
-            const result = await aave.withdraw({ token, amount });
-            return { success: true, txHash: result.hash };
+            // Try WDK protocol module first (works on mainnet chains)
+            try {
+                const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
+                const aave = new AaveProtocolEvm(account);
+                const result = await aave.withdraw({ token, amount });
+                return { success: true, txHash: result.hash };
+            }
+            catch {
+                // WDK module doesn't support this chain — fall back to direct calls
+                console.error(`[wallet-isolate] WDK Aave module failed on ${chain}, falling back to direct Aave V3 calls`);
+            }
+            // Direct Aave V3 Pool calls — Sepolia fallback
+            const aaveToken = AAVE_TOKENS_SEPOLIA[symbol] ?? token;
+            const selfAddress = await account.getAddress();
+            const withdrawData = encodeAaveWithdraw(aaveToken, amount, selfAddress);
+            const tx = await account.sendTransaction({ to: AAVE_V3_SEPOLIA.pool, value: 0n, data: withdrawData });
+            return { success: true, txHash: tx.hash };
         }
         catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown withdraw error';
@@ -444,10 +488,10 @@ export class WalletManager {
      * Query on-chain reputation from the ReputationRegistry via eth_call.
      * This is a read-only call (no gas, no tx).
      */
-    async getOnChainReputation(chain, agentId) {
+    async getOnChainReputation(chain, agentId, opts) {
         this.ensureInitialized();
         try {
-            const calldata = encodeGetSummary(agentId);
+            const calldata = encodeGetSummary(agentId, opts?.clients, opts?.tag1, opts?.tag2);
             const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
             const summary = decodeSummaryResult(resultHex);
             return {
@@ -459,6 +503,109 @@ export class WalletManager {
         catch {
             // Read-only query — return defaults on failure
             return { feedbackCount: 0, totalValue: '0', valueDecimals: 0 };
+        }
+    }
+    // ── ERC-8004 Read Operations (Phase 4) ──
+    /**
+     * Read a single feedback entry from the ReputationRegistry.
+     * View call (no gas).
+     */
+    async readFeedback(chain, agentId, clientAddress, feedbackIndex) {
+        this.ensureInitialized();
+        try {
+            const calldata = encodeReadFeedback(agentId, clientAddress, feedbackIndex);
+            const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
+            return decodeReadFeedbackResult(resultHex);
+        }
+        catch {
+            return { value: 0, valueDecimals: 0, isRevoked: false };
+        }
+    }
+    /**
+     * Get all addresses that have given feedback for an agent.
+     * View call (no gas).
+     */
+    async getClients(chain, agentId) {
+        this.ensureInitialized();
+        try {
+            const calldata = encodeGetClients(agentId);
+            const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
+            return decodeAddressArray(resultHex);
+        }
+        catch {
+            return [];
+        }
+    }
+    /**
+     * Get the last feedback index for a specific client-agent pair.
+     * View call (no gas).
+     */
+    async getLastIndex(chain, agentId, clientAddress) {
+        this.ensureInitialized();
+        try {
+            const calldata = encodeGetLastIndex(agentId, clientAddress);
+            const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.reputationRegistry, calldata);
+            return decodeUint64(resultHex);
+        }
+        catch {
+            return 0;
+        }
+    }
+    /**
+     * Append a response to feedback (agent defends its reputation).
+     * Transaction — costs gas.
+     */
+    async appendResponse(chain, agentId, clientAddress, feedbackIndex, responseURI, responseHash) {
+        this.ensureInitialized();
+        try {
+            const account = await this.getAccount(chain);
+            const calldata = encodeAppendResponse(agentId, clientAddress, feedbackIndex, responseURI, responseHash);
+            const tx = await account.sendTransaction({
+                to: ERC8004_CONTRACTS.reputationRegistry,
+                value: 0n,
+                data: calldata,
+            });
+            return { success: true, txHash: tx.hash };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : 'Unknown appendResponse error';
+            return { success: false, error: msg };
+        }
+    }
+    /**
+     * Set metadata on the IdentityRegistry (extensible key-value store).
+     * Transaction — costs gas.
+     */
+    async setIdentityMetadata(chain, agentId, key, valueHex) {
+        this.ensureInitialized();
+        try {
+            const account = await this.getAccount(chain);
+            const calldata = encodeSetMetadata(agentId, key, valueHex);
+            const tx = await account.sendTransaction({
+                to: ERC8004_CONTRACTS.identityRegistry,
+                value: 0n,
+                data: calldata,
+            });
+            return { success: true, txHash: tx.hash };
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : 'Unknown setMetadata error';
+            return { success: false, error: msg };
+        }
+    }
+    /**
+     * Get metadata from the IdentityRegistry.
+     * View call (no gas).
+     */
+    async getIdentityMetadata(chain, agentId, key) {
+        this.ensureInitialized();
+        try {
+            const calldata = encodeGetMetadata(agentId, key);
+            const resultHex = await this.ethCall(chain, ERC8004_CONTRACTS.identityRegistry, calldata);
+            return resultHex;
+        }
+        catch {
+            return '0x';
         }
     }
     // ── RGB Asset Operations ──
@@ -541,7 +688,7 @@ export class WalletManager {
         }
         throw new Error('WDK account does not support EIP-712 signTypedData');
     }
-    /** Get the WDK account for a given chain. */
+    /** Get the WDK account for a given chain (may be read-only — fine for queries). */
     async getAccount(chain) {
         this.ensureInitialized();
         // wdk is guaranteed non-null after ensureInitialized
@@ -599,6 +746,7 @@ export class MockWalletManager {
     initialized = false;
     nextAgentId = 1;
     feedbackStore = [];
+    nextFeedbackIndex = 0;
     mockRgbAssets = new Map();
     nextRgbAssetId = 1;
     async initialize(_seed, chains) {
@@ -749,11 +897,13 @@ export class MockWalletManager {
     }
     async giveFeedback(_chain, targetAgentId, value, valueDecimals, _tag1, _tag2, _endpoint, _feedbackURI, _feedbackHash) {
         this.ensureInit();
-        this.feedbackStore.push({ targetAgentId, value, valueDecimals });
+        const feedbackIndex = this.nextFeedbackIndex++;
+        const clientAddress = '0x' + 'a'.repeat(40); // Mock client address
+        this.feedbackStore.push({ targetAgentId, clientAddress, feedbackIndex, value, valueDecimals });
         const mockHash = `0xfeedback${Date.now().toString(16)}`;
         return { success: true, txHash: mockHash };
     }
-    async getOnChainReputation(_chain, agentId) {
+    async getOnChainReputation(_chain, agentId, _opts) {
         this.ensureInit();
         const entries = this.feedbackStore.filter(f => f.targetAgentId === agentId);
         if (entries.length === 0) {
@@ -765,6 +915,43 @@ export class MockWalletManager {
             totalValue: String(totalValue),
             valueDecimals: entries[0]?.valueDecimals ?? 0,
         };
+    }
+    // ── ERC-8004 Read Operations (Mock) ──
+    async readFeedback(_chain, agentId, clientAddress, feedbackIndex) {
+        this.ensureInit();
+        const entry = this.feedbackStore.find(f => f.targetAgentId === agentId && f.clientAddress === clientAddress && f.feedbackIndex === feedbackIndex);
+        return entry ? { value: entry.value, valueDecimals: entry.valueDecimals, isRevoked: false } : { value: 0, valueDecimals: 0, isRevoked: false };
+    }
+    async getClients(_chain, agentId) {
+        this.ensureInit();
+        const clients = new Set();
+        for (const f of this.feedbackStore) {
+            if (f.targetAgentId === agentId)
+                clients.add(f.clientAddress);
+        }
+        return Array.from(clients);
+    }
+    async getLastIndex(_chain, agentId, clientAddress) {
+        this.ensureInit();
+        let maxIndex = 0;
+        for (const f of this.feedbackStore) {
+            if (f.targetAgentId === agentId && f.clientAddress === clientAddress && f.feedbackIndex > maxIndex) {
+                maxIndex = f.feedbackIndex;
+            }
+        }
+        return maxIndex;
+    }
+    async appendResponse(_chain, _agentId, _clientAddress, _feedbackIndex, _responseURI, _responseHash) {
+        this.ensureInit();
+        return { success: true, txHash: `0xmockresponse${Date.now().toString(16)}` };
+    }
+    async setIdentityMetadata(_chain, _agentId, _key, _valueHex) {
+        this.ensureInit();
+        return { success: true, txHash: `0xmockmetadata${Date.now().toString(16)}` };
+    }
+    async getIdentityMetadata(_chain, _agentId, _key) {
+        this.ensureInit();
+        return '0x';
     }
     // ── RGB Asset Operations (Mock) ──
     async rgbIssueAsset(ticker, name, supply, precision) {

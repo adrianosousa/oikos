@@ -33,21 +33,25 @@ export declare class WalletManager implements WalletOperations {
     /**
      * Swap tokens via Velora DEX protocol.
      * Requires @tetherto/wdk-protocol-swap-velora-evm.
+     * Note: Velora API only supports mainnet chains — Sepolia swaps will fail.
      */
     swap(chain: Chain, fromSymbol: TokenSymbol, toSymbol: TokenSymbol, fromAmount: bigint): Promise<TransactionResult>;
     /**
      * Bridge tokens cross-chain via USDT0 protocol.
      * Requires @tetherto/wdk-protocol-bridge-usdt0-evm.
+     * Note: USDT0 is not deployed on Sepolia — bridge requires mainnet chains.
      */
     bridge(fromChain: Chain, toChain: Chain, symbol: TokenSymbol, amount: bigint): Promise<TransactionResult>;
     /**
      * Deposit tokens into Aave lending pool.
-     * Requires @tetherto/wdk-protocol-lending-aave-evm.
+     * Tries WDK protocol module first; falls back to direct Aave V3 Pool
+     * contract calls on Sepolia (WDK module is mainnet-only).
      */
     deposit(chain: Chain, symbol: TokenSymbol, amount: bigint, _protocol: string): Promise<TransactionResult>;
     /**
      * Withdraw tokens from Aave lending pool.
-     * Requires @tetherto/wdk-protocol-lending-aave-evm.
+     * Tries WDK protocol module first; falls back to direct Aave V3 Pool
+     * contract calls on Sepolia (WDK module is mainnet-only).
      */
     withdraw(chain: Chain, symbol: TokenSymbol, amount: bigint, _protocol: string): Promise<TransactionResult>;
     /**
@@ -71,7 +75,45 @@ export declare class WalletManager implements WalletOperations {
      * Query on-chain reputation from the ReputationRegistry via eth_call.
      * This is a read-only call (no gas, no tx).
      */
-    getOnChainReputation(chain: Chain, agentId: string): Promise<OnChainReputation>;
+    getOnChainReputation(chain: Chain, agentId: string, opts?: {
+        clients?: string[];
+        tag1?: string;
+        tag2?: string;
+    }): Promise<OnChainReputation>;
+    /**
+     * Read a single feedback entry from the ReputationRegistry.
+     * View call (no gas).
+     */
+    readFeedback(chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number): Promise<{
+        value: number;
+        valueDecimals: number;
+        isRevoked: boolean;
+    }>;
+    /**
+     * Get all addresses that have given feedback for an agent.
+     * View call (no gas).
+     */
+    getClients(chain: Chain, agentId: string): Promise<string[]>;
+    /**
+     * Get the last feedback index for a specific client-agent pair.
+     * View call (no gas).
+     */
+    getLastIndex(chain: Chain, agentId: string, clientAddress: string): Promise<number>;
+    /**
+     * Append a response to feedback (agent defends its reputation).
+     * Transaction — costs gas.
+     */
+    appendResponse(chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number, responseURI: string, responseHash: string): Promise<TransactionResult>;
+    /**
+     * Set metadata on the IdentityRegistry (extensible key-value store).
+     * Transaction — costs gas.
+     */
+    setIdentityMetadata(chain: Chain, agentId: string, key: string, valueHex: string): Promise<TransactionResult>;
+    /**
+     * Get metadata from the IdentityRegistry.
+     * View call (no gas).
+     */
+    getIdentityMetadata(chain: Chain, agentId: string, key: string): Promise<string>;
     rgbIssueAsset(_ticker: string, _name: string, _supply: bigint, _precision: number): Promise<TransactionResult & {
         assetId?: string;
     }>;
@@ -114,7 +156,7 @@ export declare class WalletManager implements WalletOperations {
         }>>;
         message: Record<string, unknown>;
     }): Promise<string>;
-    /** Get the WDK account for a given chain. */
+    /** Get the WDK account for a given chain (may be read-only — fine for queries). */
     private getAccount;
     /**
      * Make a raw JSON-RPC eth_call to a contract (read-only, no gas).
@@ -132,6 +174,7 @@ export declare class MockWalletManager implements WalletOperations {
     private initialized;
     private nextAgentId;
     private feedbackStore;
+    private nextFeedbackIndex;
     private mockRgbAssets;
     private nextRgbAssetId;
     initialize(_seed: string, chains: ChainConfig[]): Promise<void>;
@@ -153,7 +196,21 @@ export declare class MockWalletManager implements WalletOperations {
     registerIdentity(_chain: Chain, _agentURI: string): Promise<IdentityOperationResult>;
     setAgentWallet(_chain: Chain, _agentId: string, _deadline: number): Promise<IdentityOperationResult>;
     giveFeedback(_chain: Chain, targetAgentId: string, value: number, valueDecimals: number, _tag1: string, _tag2: string, _endpoint: string, _feedbackURI: string, _feedbackHash: string): Promise<TransactionResult>;
-    getOnChainReputation(_chain: Chain, agentId: string): Promise<OnChainReputation>;
+    getOnChainReputation(_chain: Chain, agentId: string, _opts?: {
+        clients?: string[];
+        tag1?: string;
+        tag2?: string;
+    }): Promise<OnChainReputation>;
+    readFeedback(_chain: Chain, agentId: string, clientAddress: string, feedbackIndex: number): Promise<{
+        value: number;
+        valueDecimals: number;
+        isRevoked: boolean;
+    }>;
+    getClients(_chain: Chain, agentId: string): Promise<string[]>;
+    getLastIndex(_chain: Chain, agentId: string, clientAddress: string): Promise<number>;
+    appendResponse(_chain: Chain, _agentId: string, _clientAddress: string, _feedbackIndex: number, _responseURI: string, _responseHash: string): Promise<TransactionResult>;
+    setIdentityMetadata(_chain: Chain, _agentId: string, _key: string, _valueHex: string): Promise<TransactionResult>;
+    getIdentityMetadata(_chain: Chain, _agentId: string, _key: string): Promise<string>;
     rgbIssueAsset(ticker: string, name: string, supply: bigint, precision: number): Promise<TransactionResult & {
         assetId?: string;
     }>;

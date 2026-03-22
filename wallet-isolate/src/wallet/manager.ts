@@ -24,6 +24,8 @@ import {
   encodeAppendResponse,
   encodeSetMetadata, encodeGetMetadata,
 } from '../erc8004/abi-encode.js';
+import { AAVE_V3_SEPOLIA, AAVE_TOKENS_SEPOLIA } from '../defi/constants.js';
+import { encodeApprove, encodeAaveSupply, encodeAaveWithdraw } from '../defi/abi-encode.js';
 
 /** Decimals per token for formatting */
 function getDecimals(symbol: TokenSymbol): number {
@@ -334,6 +336,7 @@ export class WalletManager implements WalletOperations {
   /**
    * Swap tokens via Velora DEX protocol.
    * Requires @tetherto/wdk-protocol-swap-velora-evm.
+   * Note: Velora API only supports mainnet chains — Sepolia swaps will fail.
    */
   async swap(chain: Chain, fromSymbol: TokenSymbol, toSymbol: TokenSymbol, fromAmount: bigint): Promise<TransactionResult> {
     this.ensureInitialized();
@@ -359,7 +362,11 @@ export class WalletManager implements WalletOperations {
       });
       return { success: true, txHash: result.hash };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown swap error';
+      const raw = err instanceof Error ? err.message : 'Unknown swap error';
+      // Provide actionable context for testnet failures
+      const message = raw.includes('network') || raw.includes('chain') || raw.includes('unsupported')
+        ? `Velora DEX does not support Sepolia testnet. Swap requires mainnet chains (Ethereum, Arbitrum, Polygon, Plasma). Original error: ${raw}`
+        : raw;
       return { success: false, error: message };
     }
   }
@@ -367,6 +374,7 @@ export class WalletManager implements WalletOperations {
   /**
    * Bridge tokens cross-chain via USDT0 protocol.
    * Requires @tetherto/wdk-protocol-bridge-usdt0-evm.
+   * Note: USDT0 is not deployed on Sepolia — bridge requires mainnet chains.
    */
   async bridge(fromChain: Chain, toChain: Chain, symbol: TokenSymbol, amount: bigint): Promise<TransactionResult> {
     this.ensureInitialized();
@@ -391,14 +399,18 @@ export class WalletManager implements WalletOperations {
       });
       return { success: true, txHash: result.hash };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown bridge error';
+      const raw = err instanceof Error ? err.message : 'Unknown bridge error';
+      // Provide actionable context — USDT0 has no Sepolia contracts
+      const message = `USDT0 bridging requires mainnet chains (Ethereum, Arbitrum, Polygon, Plasma, Stable). `
+        + `Sepolia testnet does not have USDT0 contracts deployed. Original error: ${raw}`;
       return { success: false, error: message };
     }
   }
 
   /**
    * Deposit tokens into Aave lending pool.
-   * Requires @tetherto/wdk-protocol-lending-aave-evm.
+   * Tries WDK protocol module first; falls back to direct Aave V3 Pool
+   * contract calls on Sepolia (WDK module is mainnet-only).
    */
   async deposit(chain: Chain, symbol: TokenSymbol, amount: bigint, _protocol: string): Promise<TransactionResult> {
     this.ensureInitialized();
@@ -409,12 +421,32 @@ export class WalletManager implements WalletOperations {
       const token = getTokenAddress(chain, symbol);
       if (!token) return { success: false, error: `No token address for ${symbol} on ${chain}` };
 
-      const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
-      const aave = new AaveProtocolEvm(account as any);
+      // Try WDK protocol module first (works on mainnet chains)
+      try {
+        const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
+        const aave = new AaveProtocolEvm(account as any);
+        const result = await aave.supply({ token, amount });
+        return { success: true, txHash: result.hash };
+      } catch {
+        // WDK module doesn't support this chain (e.g., Sepolia) — fall back to direct calls
+        console.error(`[wallet-isolate] WDK Aave module failed on ${chain}, falling back to direct Aave V3 calls`);
+      }
 
-      const result = await aave.supply({ token, amount });
-      return { success: true, txHash: result.hash };
+      // Direct Aave V3 Pool calls — Sepolia fallback
+      // Aave on Sepolia uses its own test tokens, different from WDK's
+      const aaveToken = AAVE_TOKENS_SEPOLIA[symbol] ?? token;
+      const selfAddress = await account.getAddress();
+
+      // Step 1: Approve the Pool to spend our tokens
+      const approveData = encodeApprove(AAVE_V3_SEPOLIA.pool, amount);
+      await account.sendTransaction({ to: aaveToken, value: 0n, data: approveData });
+
+      // Step 2: Supply to Aave Pool
+      const supplyData = encodeAaveSupply(aaveToken, amount, selfAddress, 0);
+      const tx = await account.sendTransaction({ to: AAVE_V3_SEPOLIA.pool, value: 0n, data: supplyData });
+
+      return { success: true, txHash: tx.hash };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown deposit error';
       return { success: false, error: message };
@@ -423,7 +455,8 @@ export class WalletManager implements WalletOperations {
 
   /**
    * Withdraw tokens from Aave lending pool.
-   * Requires @tetherto/wdk-protocol-lending-aave-evm.
+   * Tries WDK protocol module first; falls back to direct Aave V3 Pool
+   * contract calls on Sepolia (WDK module is mainnet-only).
    */
   async withdraw(chain: Chain, symbol: TokenSymbol, amount: bigint, _protocol: string): Promise<TransactionResult> {
     this.ensureInitialized();
@@ -434,12 +467,26 @@ export class WalletManager implements WalletOperations {
       const token = getTokenAddress(chain, symbol);
       if (!token) return { success: false, error: `No token address for ${symbol} on ${chain}` };
 
-      const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
-      const aave = new AaveProtocolEvm(account as any);
+      // Try WDK protocol module first (works on mainnet chains)
+      try {
+        const { default: AaveProtocolEvm } = await import('@tetherto/wdk-protocol-lending-aave-evm');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WDK account satisfies interface at runtime
+        const aave = new AaveProtocolEvm(account as any);
+        const result = await aave.withdraw({ token, amount });
+        return { success: true, txHash: result.hash };
+      } catch {
+        // WDK module doesn't support this chain — fall back to direct calls
+        console.error(`[wallet-isolate] WDK Aave module failed on ${chain}, falling back to direct Aave V3 calls`);
+      }
 
-      const result = await aave.withdraw({ token, amount });
-      return { success: true, txHash: result.hash };
+      // Direct Aave V3 Pool calls — Sepolia fallback
+      const aaveToken = AAVE_TOKENS_SEPOLIA[symbol] ?? token;
+      const selfAddress = await account.getAddress();
+
+      const withdrawData = encodeAaveWithdraw(aaveToken, amount, selfAddress);
+      const tx = await account.sendTransaction({ to: AAVE_V3_SEPOLIA.pool, value: 0n, data: withdrawData });
+
+      return { success: true, txHash: tx.hash };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown withdraw error';
       return { success: false, error: message };
