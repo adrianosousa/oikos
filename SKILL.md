@@ -187,7 +187,7 @@ Use `--port <n>` if not on default 3420. Use `--json` for piping.
 
 **Endpoint:** `POST http://127.0.0.1:3420/mcp` (JSON-RPC 2.0)
 
-For full tool reference (30 tools, args, examples), read: `skills/wdk-wallet/SKILL.md`
+For full tool reference (args, examples), read: `skills/wdk-wallet/SKILL.md`
 
 #### Essential Read-Only Tools
 
@@ -221,13 +221,28 @@ For full tool reference (30 tools, args, examples), read: `skills/wdk-wallet/SKI
 | `swarm_accept_bid` | `announcementId` |
 | `swarm_submit_payment` | `announcementId` |
 | `swarm_deliver_result` | `announcementId`, `result`, `filename` |
+| `swarm_remove_announcement` | `announcementId` |
+| `swarm_room_state` | `announcementId` |
+
+#### Spark / Lightning Tools
+
+| Tool | Args |
+|------|------|
+| `spark_balance` | — |
+| `spark_address` | — |
+| `spark_send` | `amount`, `to`, `reason`, `confidence` |
+| `spark_create_invoice` | `amountSats`, `memo` |
+| `spark_pay_invoice` | `encodedInvoice`, `maxFeeSats` |
+| `spark_get_transfers` | — |
 
 #### On-Chain Identity & Reputation (ERC-8004)
 
-Your agent has an on-chain identity on Sepolia via the ERC-8004 Trustless Agents standard. This is your **universal reputation anchor** — all activity across all chains (BTC, Lightning, EVM, x402) feeds into on-chain reputation via tagged feedback.
+Oikos supports on-chain identity on Sepolia via the ERC-8004 Trustless Agents standard. When enabled, this becomes your **universal reputation anchor** — all activity across all chains (BTC, Lightning, EVM, x402) feeds into on-chain reputation via tagged feedback.
 
-**What happens automatically:**
-- Identity is registered at first startup (ERC-721 NFT minted, agentId assigned)
+**Requires `ERC8004_ENABLED=true`** in `.env` (or passed as env var at startup). Disabled by default. Check status with `identity_state`.
+
+**When enabled, what happens automatically:**
+- Identity is registered at startup (ERC-721 NFT minted, agentId assigned)
 - After every swarm settlement, reputation feedback is auto-submitted on-chain with tags (e.g., `settlement/swarm-deal`, `payment/btc-transfer`)
 - Peers see your on-chain reputation on the board alongside your off-chain score
 
@@ -248,6 +263,16 @@ Your agent has an on-chain identity on Sepolia via the ERC-8004 Trustless Agents
 | `settlement` | `swarm-deal`, `auction` | Deal completion quality |
 | `service` | `price-feed`, `compute`, `data-provider` | Service quality |
 | `trade` | `swap`, `bridge`, `yield-deposit` | DeFi operation quality |
+
+#### x402 Machine Payments
+
+You can **buy** and **sell** HTTP API services for USDT0 micropayments using the x402 protocol (HTTP 402 Payment Required + EIP-3009 signed authorization). No API keys, no accounts — just HTTP + crypto.
+
+- **As buyer**: `x402_fetch` auto-detects 402 responses, signs payment via your wallet, retries with payment header. Policy-enforced.
+- **As seller**: Your agent exposes paid endpoints at `/api/x402/*`. Other agents pay per-request. Discovery at `/api/x402/services`.
+- **Economics**: `x402_status` shows total spent, total earned, services paid — key metric for self-sustaining agents.
+
+Chains: Plasma (eip155:9745) and Stable (eip155:988) with near-zero fees. Full reference: `skills/policy-engine/16-x402-payments.md`.
 
 #### Companion (Pear App) Channel
 
@@ -312,7 +337,7 @@ Quick reference:
 - **Bridges are async**: L2→L1 can take minutes.
 - **swarm_announce categories**: Only `buyer`, `seller`, `auction`.
 - **Seeds/keys are inaccessible**: Exist only in the Wallet Isolate. You will never see them.
-- **Reputation feedback is automatic**: After swarm settlements, on-chain feedback is submitted automatically. Don't submit feedback manually unless the human asks you to.
+- **Reputation feedback is automatic** (when `ERC8004_ENABLED=true`): After swarm settlements, on-chain feedback is submitted automatically. Don't submit feedback manually unless the human asks you to.
 - **Policies are immutable at runtime**: Loaded once at startup. To change policies, edit `policies.json` and **restart the wallet**. This is a security guarantee.
 - **Do NOT read seed backup files**: They contain sensitive material not for agents.
 - **Use absolute paths for CLI**: `"$HOME/.oikos/bin/oikos"` — not `oikos` (PATH may not be set).
