@@ -12,6 +12,11 @@
   <img src="https://img.shields.io/badge/TypeScript-strict-blue.svg" alt="TypeScript">
   <img src="https://img.shields.io/badge/Tether%20Hackathon-Track%201-purple.svg" alt="Hackathon">
 </p>
+<p align="center">
+  <a href="https://docs.pears.com/"><img src="https://img.shields.io/badge/Pear_Runtime-Holepunch-50af95" alt="Pear Runtime"></a>
+  <a href="https://github.com/nicolo-ribaudo/tc39-proposal-wdk"><img src="https://img.shields.io/badge/WDK-Tether-50af95" alt="WDK"></a>
+  <a href="https://github.com/tetherto/qvac-fabric-llm.cpp"><img src="https://img.shields.io/badge/QVAC_Fabric-Tether-50af95" alt="QVAC"></a>
+</p>
 
 <p align="center">
 Process-isolated, multi-chain wallet infrastructure for autonomous AI agents.<br>
