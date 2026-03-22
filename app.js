@@ -1012,7 +1012,7 @@ async function updateCurrentView () {
 async function checkPairing () {
   var status = await api('/api/companion/status')
   if (!status) return false
-  var modal = document.getElementById('pairing-modal')
+  var modal = document.getElementById('pairing-screen')
   if (!modal) return false
 
   // Show own pubkey
@@ -1021,7 +1021,7 @@ async function checkPairing () {
 
   // If already paired and connected, hide modal
   if (status.agentPubkey && status.connected) {
-    modal.classList.add('hidden')
+    modal.style.display = 'none'
     return true
   }
 
@@ -1031,12 +1031,12 @@ async function checkPairing () {
     if (agentInput) agentInput.value = status.agentPubkey
     var statusEl = document.getElementById('pairing-status')
     if (statusEl) statusEl.textContent = 'Connecting to ' + status.agentPubkeyShort + '...'
-    modal.classList.remove('hidden')
+    modal.style.display = 'flex'
     return false
   }
 
   // Not paired — show modal
-  modal.classList.remove('hidden')
+  modal.style.display = 'flex'
   return false
 }
 
@@ -1083,8 +1083,8 @@ function initPairing () {
           var s = await api('/api/companion/status')
           if (s && s.connected) {
             clearInterval(poller)
-            var modal = document.getElementById('pairing-modal')
-            if (modal) modal.classList.add('hidden')
+            var modal = document.getElementById('pairing-screen')
+            if (modal) modal.style.display = 'none'
             if (statusEl) statusEl.textContent = ''
             connectBtn.disabled = false
             await updateCurrentView()
@@ -1092,8 +1092,8 @@ function initPairing () {
             clearInterval(poller)
             if (statusEl) { statusEl.textContent = 'Connected but agent not found yet. It will connect automatically.'; statusEl.style.color = 'var(--yellow)' }
             connectBtn.disabled = false
-            var modal = document.getElementById('pairing-modal')
-            if (modal) modal.classList.add('hidden')
+            var modal = document.getElementById('pairing-screen')
+            if (modal) modal.style.display = 'none'
           }
         }, 1500)
       } else {

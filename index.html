@@ -771,33 +771,50 @@
   </div>
 </div>
 
-<!-- Pairing Modal (onboarding — shown when no agent is connected) -->
-<div class="modal-overlay" id="pairing-modal" style="z-index:9999;">
-  <div class="modal" style="width:420px;">
-    <div class="modal-title" style="color:var(--brand-yellow);font-size:14px;">Pair with Agent</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
-      Connect this app to your AI agent. Copy your app pubkey below and set it as<br>
-      <code style="font-size:10px;background:var(--bg2);padding:1px 4px;border-radius:3px;">COMPANION_OWNER_PUBKEY</code> on the agent. Then paste the agent's swarm pubkey here.
+<!-- Pairing Screen (full-screen onboarding — shown when no agent is connected) -->
+<div id="pairing-screen" style="position:fixed;inset:0;z-index:9999;background:var(--brand-yellow);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:inherit;">
+  <!-- Logo -->
+  <div style="margin-bottom:2.5rem;">
+    <svg viewBox="0 0 165.48256 54.091259" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Oikos" style="height:64px;width:auto;color:#1a1a1a;">
+      <g transform="translate(-19.482719,-175.4493)">
+        <circle fill="currentColor" cx="51.843533" cy="203.35382" r="17.687586"/>
+        <circle fill="currentColor" cx="120.92068" cy="203.36241" r="17.733706"/>
+        <path fill="currentColor" d="m 84.047666,185.65206 h 24.409814 l -15.713526,18.13847 17.129966,17.24293 H 84.153249 Z"/>
+        <rect fill="currentColor" width="8.4932919" height="35.399162" x="72.367882" y="185.64366"/>
+        <path fill="currentColor" d="m 141.36924,185.61145 v 29.03005 l 25.43894,-29.05908 z"/>
+        <path fill="currentColor" d="m 166.74075,220.99018 v -28.94175 l -25.43894,28.97078 z"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Pairing card -->
+  <div style="background:#1a1a1a;border-radius:12px;padding:2rem;width:400px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+    <div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.1em;">Pair with Agent</div>
+    <div style="font-size:11px;color:#9a9184;margin-bottom:1.5rem;line-height:1.6;">
+      Copy your app pubkey and set it as <code style="font-size:10px;background:#2a2a2a;padding:1px 5px;border-radius:3px;color:var(--brand-yellow);">COMPANION_OWNER_PUBKEY</code> on the agent.<br>
+      Then paste the agent's swarm pubkey below.
     </div>
-    <div class="form-group">
-      <label class="form-label">Your App Pubkey <span style="color:var(--dim);font-weight:400;font-size:10px;">(copy to agent config)</span></label>
-      <div style="display:flex;gap:4px;">
-        <input class="form-input" id="pairing-own-pubkey" readonly style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--green);cursor:pointer;" />
-        <button class="btn" id="pairing-copy-btn" style="font-size:10px;white-space:nowrap;padding:4px 8px;">Copy</button>
+
+    <div style="margin-bottom:1rem;">
+      <div style="font-size:10px;font-weight:700;color:#6b6358;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Your App Pubkey</div>
+      <div style="display:flex;gap:6px;">
+        <input id="pairing-own-pubkey" readonly style="flex:1;font-size:10px;font-family:'JetBrains Mono',monospace;background:#2a2a2a;border:1px solid #3a3a3a;color:var(--brand-yellow);padding:8px 10px;border-radius:6px;cursor:pointer;outline:none;" />
+        <button id="pairing-copy-btn" style="font-size:10px;padding:8px 12px;background:#2a2a2a;border:1px solid #3a3a3a;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;font-family:inherit;">Copy</button>
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Agent Swarm Pubkey <span style="color:var(--dim);font-weight:400;font-size:10px;">(paste from agent)</span></label>
-      <input class="form-input" id="pairing-agent-pubkey" placeholder="64-character hex pubkey" style="font-size:11px;font-family:'JetBrains Mono',monospace;" />
+
+    <div style="margin-bottom:1.25rem;">
+      <div style="font-size:10px;font-weight:700;color:#6b6358;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Agent Swarm Pubkey</div>
+      <input id="pairing-agent-pubkey" placeholder="64-character hex pubkey" style="width:100%;font-size:11px;font-family:'JetBrains Mono',monospace;background:#2a2a2a;border:1px solid #3a3a3a;color:#fff;padding:8px 10px;border-radius:6px;outline:none;box-sizing:border-box;" />
     </div>
-    <div style="display:flex;gap:0.5rem;align-items:center;">
-      <button class="btn btn-primary" id="pairing-connect-btn" style="background:var(--green);border-color:var(--green);color:#fff;">Connect</button>
-      <span id="pairing-status" style="font-size:11px;color:var(--muted);"></span>
+
+    <div style="display:flex;gap:0.75rem;align-items:center;">
+      <button id="pairing-connect-btn" style="font-size:12px;font-weight:700;padding:10px 24px;background:var(--brand-yellow);border:none;color:#1a1a1a;border-radius:6px;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:0.05em;">Connect</button>
+      <span id="pairing-status" style="font-size:11px;color:#6b6358;"></span>
     </div>
-    <div class="sim-result hidden" id="pairing-result" style="margin-top:0.5rem;"></div>
-    <div style="margin-top:1rem;font-size:10px;color:var(--dim);line-height:1.5;">
-      Both sides authenticate via Ed25519 Noise handshake.<br>
-      No passwords, no servers — sovereign P2P connection.
+
+    <div style="margin-top:1.25rem;font-size:10px;color:#4a4a4a;line-height:1.5;">
+      Ed25519 Noise handshake · No passwords · Sovereign P2P
     </div>
   </div>
 </div>
