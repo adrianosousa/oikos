@@ -1007,7 +1007,11 @@ server.listen(INTERNAL_PORT, '127.0.0.1', () => {
   console.log('[companion] Internal API: http://127.0.0.1:' + INTERNAL_PORT)
 })
 
-// ── 5. Start Electron renderer (must happen before any slow async work) ──
+// ── 5. Write port config + Start Electron renderer ──
+
+// Write port config for app.js (Pear loads HTML from filesystem, not HTTP)
+fs.writeFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'oikos-port.js'),
+  `window.__OIKOS_PORT = ${INTERNAL_PORT};\n`)
 
 const bridge = new Bridge()
 await bridge.ready()

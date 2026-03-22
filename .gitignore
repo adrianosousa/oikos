@@ -68,3 +68,4 @@ checkpoints/
 
 # Guardrail PDFs (converted to .md in skills/)
 docs/guardrails/*.pdf
+oikos-port.js

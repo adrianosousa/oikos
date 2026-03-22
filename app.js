@@ -7,7 +7,7 @@
 
 /* global Pear */
 
-var API_BASE = 'http://127.0.0.1:13421'
+var API_BASE = '' // set during waitForServer bootstrap
 var currentView = 'feed'
 var feedMode = 'activity'
 var chatMessageCount = 0
@@ -1176,6 +1176,9 @@ function initPairing () {
 /* ═══ BOOT ═══ */
 async function boot () {
   console.log('[app] Booting Oikos App...')
+  // Read port from config file written by index.js at startup
+  API_BASE = 'http://127.0.0.1:' + (window.__OIKOS_PORT || '13421')
+  console.log('[app] API_BASE:', API_BASE)
   var ready = false
   for (var i = 0; i < 10; i++) {
     try { var res = await fetch(API_BASE + '/api/health'); if (res.ok) { ready = true; break } } catch (e) {}
