@@ -47,6 +47,8 @@ export declare class SwarmCoordinator implements SwarmCoordinatorInterface {
     constructor(wallet: WalletIPCClient, config: SwarmConfig);
     /** Expose underlying Hyperswarm instance for companion to reuse */
     getHyperswarm(): unknown;
+    /** Get the agent's swarm public key (hex) */
+    getPublicKey(): string | null;
     /** Start the swarm: generate identity, join board, begin heartbeat */
     start(): Promise<void>;
     /** Post an announcement to the board */

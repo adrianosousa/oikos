@@ -65,7 +65,11 @@ export declare class WalletIPCClient {
     /** Submit on-chain reputation feedback for a peer agent. */
     proposeFeedback(proposal: FeedbackProposal, source?: ProposalSource): Promise<ExecutionResult>;
     /** Query on-chain reputation from ERC-8004 ReputationRegistry. */
-    queryReputation(agentId: string, chain?: "ethereum"): Promise<ReputationResult>;
+    queryReputation(agentId: string, chain?: "ethereum", opts?: {
+        tag1?: string;
+        tag2?: string;
+        clientAddresses?: string[];
+    }): Promise<ReputationResult>;
     /** Simulate a proposal against the policy engine without executing or burning cooldown. */
     simulateProposal(proposal: ProposalCommon): Promise<PolicyCheckResult>;
     /** Propose issuing a new RGB asset. */

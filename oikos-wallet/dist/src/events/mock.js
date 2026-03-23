@@ -1,12 +1,17 @@
 /**
- * Mock Event Source — 5-minute simulated stream.
+ * Mock Event Source — 90-second agent-wallet demo.
  *
- * Generates a realistic sequence of events for demo/testing:
- * Min 0-1: Low activity, quiet chat
- * Min 2: Viewer count crosses 100 → milestone
- * Min 3: Engagement spike, positive sentiment
- * Min 4: Large donation → excitement wave
- * Min 5: Agent should hit session limit → policy enforcement
+ * Generates a realistic sequence of wallet events for demo/testing:
+ * T+0s:  Agent comes online, checks chains
+ * T+10s: Incoming transfer from peer agent
+ * T+15s: Market signal — XAUt price surge
+ * T+20s: Agent reasons about rebalancing
+ * T+30s: Portfolio milestone reached
+ * T+40s: Swarm deal settlement payment
+ * T+50s: Market signal — gas spike, defer bridge
+ * T+60s: Budget warning — 80% daily used
+ * T+75s: Policy enforcement — session limit hit
+ * T+90s: Cycle complete
  */
 function makeEvent(offsetSeconds, type, data) {
     const timestamp = new Date(Date.now() + offsetSeconds * 1000).toISOString();
@@ -19,95 +24,90 @@ function makeEvent(offsetSeconds, type, data) {
 }
 function buildTimeline() {
     return [
-        // T+0s: Stream starts
+        // T+0s: Agent starts
         {
             offsetSeconds: 0,
             events: [
-                makeEvent(0, 'stream_status', { type: 'stream_status', status: 'live' }),
-                makeEvent(0, 'viewer_count', { type: 'viewer_count', count: 25, delta: 25 }),
+                makeEvent(0, 'agent_status', { type: 'agent_status', status: 'active' }),
+                makeEvent(0, 'network_activity', { type: 'network_activity', chain: 'sepolia', txCount: 142, gasPrice: '3.2 gwei' }),
             ],
         },
-        // T+10s: Quiet chat
+        // T+5s: Agent checking portfolio
+        {
+            offsetSeconds: 5,
+            events: [
+                makeEvent(5, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Checking portfolio balances across chains...', intent: 'info' }),
+                makeEvent(5, 'network_activity', { type: 'network_activity', chain: 'bitcoin-testnet', txCount: 8, gasPrice: '12 sat/vB' }),
+            ],
+        },
+        // T+10s: Incoming transfer
         {
             offsetSeconds: 10,
             events: [
-                makeEvent(10, 'chat_message', { type: 'chat_message', username: 'alice', message: 'hey everyone!', sentiment: 'positive' }),
-                makeEvent(10, 'viewer_count', { type: 'viewer_count', count: 35, delta: 10 }),
+                makeEvent(10, 'incoming_transfer', { type: 'incoming_transfer', from: 'AlphaBot', amount: 100, symbol: 'USDT', chain: 'sepolia', txHash: '0xa1b2...c3d4' }),
+                makeEvent(10, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Received 100 USDT from AlphaBot (price feed payment).', intent: 'info' }),
             ],
         },
-        // T+20s: More chat
+        // T+15s: Market signal
+        {
+            offsetSeconds: 15,
+            events: [
+                makeEvent(15, 'market_signal', { type: 'market_signal', signal: 'XAUt price surge', magnitude: 3.2, source: 'bitfinex' }),
+                makeEvent(15, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'XAUt up 3.2% — evaluating rebalancing opportunity.', intent: 'action' }),
+            ],
+        },
+        // T+20s: Agent reasoning
         {
             offsetSeconds: 20,
             events: [
-                makeEvent(20, 'chat_message', { type: 'chat_message', username: 'bob', message: 'this content is great', sentiment: 'positive' }),
-                makeEvent(20, 'viewer_count', { type: 'viewer_count', count: 55, delta: 20 }),
+                makeEvent(20, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Analyzing swap: 50 USDt -> XAUt at current rate. PolicyEngine: within limits.', intent: 'action' }),
             ],
         },
-        // T+30s: Growing audience
+        // T+30s: Portfolio milestone
         {
             offsetSeconds: 30,
             events: [
-                makeEvent(30, 'viewer_count', { type: 'viewer_count', count: 75, delta: 20 }),
-                makeEvent(30, 'chat_message', { type: 'chat_message', username: 'charlie', message: 'just joined, what did I miss?', sentiment: 'neutral' }),
+                makeEvent(30, 'threshold_reached', { type: 'threshold_reached', name: 'portfolio_1k', value: 1047, threshold: 1000 }),
+                makeEvent(30, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Portfolio crossed $1,000 USD. Multi-asset allocation: 60% USDt, 25% XAUt, 15% USAt.', intent: 'info' }),
             ],
         },
-        // T+45s: MILESTONE — 100 viewers
+        // T+40s: Swarm deal settlement
         {
-            offsetSeconds: 45,
+            offsetSeconds: 40,
             events: [
-                makeEvent(45, 'viewer_count', { type: 'viewer_count', count: 105, delta: 30 }),
-                makeEvent(45, 'milestone', { type: 'milestone', name: '100_viewers', value: 105, threshold: 100 }),
-                makeEvent(45, 'chat_message', { type: 'chat_message', username: 'diana', message: '100 viewers lets gooo!', sentiment: 'positive' }),
+                makeEvent(40, 'incoming_transfer', { type: 'incoming_transfer', from: 'BetaBot', amount: 25, symbol: 'USDT', chain: 'sepolia', txHash: '0xf5e6...a7b8' }),
+                makeEvent(40, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Swarm deal settled: received 25 USDT from BetaBot for yield analysis.', intent: 'info' }),
             ],
         },
-        // T+60s: Engagement spike
+        // T+50s: Gas spike signal
+        {
+            offsetSeconds: 50,
+            events: [
+                makeEvent(50, 'market_signal', { type: 'market_signal', signal: 'ETH gas spike', magnitude: 4.5, source: 'network' }),
+                makeEvent(50, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Gas spike detected (4.5x normal). Deferring cross-chain bridge operation.', intent: 'warning' }),
+                makeEvent(50, 'network_activity', { type: 'network_activity', chain: 'sepolia', txCount: 287, gasPrice: '14.4 gwei' }),
+            ],
+        },
+        // T+60s: Budget warning
         {
             offsetSeconds: 60,
             events: [
-                makeEvent(60, 'engagement_spike', { type: 'engagement_spike', chatRate: 45, previousChatRate: 15, multiplier: 3.0 }),
-                makeEvent(60, 'chat_message', { type: 'chat_message', username: 'eve', message: 'this is amazing content!', sentiment: 'positive' }),
-                makeEvent(60, 'chat_message', { type: 'chat_message', username: 'frank', message: 'best stream today', sentiment: 'positive' }),
+                makeEvent(60, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Daily budget 80% used ($160/$200). Switching to conservative mode.', intent: 'warning' }),
             ],
         },
-        // T+80s: Activity normalizes
+        // T+75s: Policy enforcement
         {
-            offsetSeconds: 80,
+            offsetSeconds: 75,
             events: [
-                makeEvent(80, 'viewer_count', { type: 'viewer_count', count: 85, delta: -20 }),
-                makeEvent(80, 'chat_message', { type: 'chat_message', username: 'grace', message: 'gotta go, catch you later', sentiment: 'neutral' }),
+                makeEvent(75, 'threshold_reached', { type: 'threshold_reached', name: 'session_budget_limit', value: 200, threshold: 200 }),
+                makeEvent(75, 'agent_message', { type: 'agent_message', agentName: 'oikos-demo-agent', message: 'Session budget exhausted. PolicyEngine rejected swap proposal. Waiting for next cycle.', intent: 'warning' }),
             ],
         },
-        // T+100s: Large donation
+        // T+90s: Cycle complete
         {
-            offsetSeconds: 100,
+            offsetSeconds: 90,
             events: [
-                makeEvent(100, 'donation', { type: 'donation', username: 'whale_henry', amount: 50, currency: 'USD', message: 'Keep up the amazing work!' }),
-                makeEvent(100, 'chat_message', { type: 'chat_message', username: 'iris', message: 'omg huge donation!', sentiment: 'positive' }),
-                makeEvent(100, 'engagement_spike', { type: 'engagement_spike', chatRate: 60, previousChatRate: 20, multiplier: 3.0 }),
-            ],
-        },
-        // T+120s: Excitement continues
-        {
-            offsetSeconds: 120,
-            events: [
-                makeEvent(120, 'viewer_count', { type: 'viewer_count', count: 120, delta: 35 }),
-                makeEvent(120, 'chat_message', { type: 'chat_message', username: 'jack', message: 'this creator deserves more support', sentiment: 'positive' }),
-            ],
-        },
-        // T+150s: Stream ending (triggers session limit check)
-        {
-            offsetSeconds: 150,
-            events: [
-                makeEvent(150, 'stream_status', { type: 'stream_status', status: 'ending' }),
-                makeEvent(150, 'chat_message', { type: 'chat_message', username: 'alice', message: 'great stream, thanks!', sentiment: 'positive' }),
-                makeEvent(150, 'viewer_count', { type: 'viewer_count', count: 90, delta: -30 }),
-            ],
-        },
-        // T+180s: Stream offline
-        {
-            offsetSeconds: 180,
-            events: [
-                makeEvent(180, 'stream_status', { type: 'stream_status', status: 'offline' }),
+                makeEvent(90, 'agent_status', { type: 'agent_status', status: 'idle' }),
             ],
         },
     ];
@@ -128,7 +128,7 @@ export class MockEventSource {
         this.startTime = Date.now();
         this.timelineIndex = 0;
         this.scheduleNext();
-        console.error('[events] Mock event source started (3-min simulated stream)');
+        console.error('[events] Mock event source started (90-second agent-wallet demo)');
     }
     stop() {
         if (this.timer) {

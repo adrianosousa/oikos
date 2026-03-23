@@ -91,6 +91,7 @@ export declare class OllamaBrainAdapter implements BrainAdapter {
     readonly name = "ollama";
     private baseUrl;
     private model;
+    private useOpenAI;
     constructor(baseUrl?: string, model?: string);
     chat(message: string, context: WalletContext, history?: ChatMessage[]): Promise<string>;
     /**

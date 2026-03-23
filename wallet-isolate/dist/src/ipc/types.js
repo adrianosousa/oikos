@@ -13,8 +13,9 @@ const VALID_CHAINS = new Set(['ethereum', 'polygon', 'bitcoin', 'arbitrum', 'rgb
 const VALID_REQUEST_TYPES = new Set([
     'propose_payment', 'propose_swap', 'propose_bridge', 'propose_yield', 'propose_feedback',
     'propose_rgb_issue', 'propose_rgb_transfer',
-    'identity_register', 'identity_set_wallet',
+    'identity_register', 'identity_set_wallet', 'identity_append_response', 'identity_set_metadata',
     'query_balance', 'query_balance_all', 'query_address', 'query_policy', 'query_audit', 'query_reputation',
+    'query_feedback', 'query_clients',
     'query_rgb_assets', 'query_policy_check',
     'spark_create_invoice', 'spark_pay_invoice', 'spark_deposit_address', 'spark_get_transfers',
     'x402_sign', 'x402_get_address',
@@ -92,6 +93,55 @@ export function validateIPCRequest(raw) {
             break;
         case 'query_reputation':
             if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0)
+                return null;
+            if (!isValidChain(payload['chain']))
+                return null;
+            // Optional filter fields — validate types if present
+            if (payload['tag1'] !== undefined && typeof payload['tag1'] !== 'string')
+                return null;
+            if (payload['tag2'] !== undefined && typeof payload['tag2'] !== 'string')
+                return null;
+            if (payload['clientAddresses'] !== undefined && !Array.isArray(payload['clientAddresses']))
+                return null;
+            if (Array.isArray(payload['clientAddresses']) && !payload['clientAddresses'].every((a) => typeof a === 'string'))
+                return null;
+            break;
+        case 'query_feedback':
+            if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0)
+                return null;
+            if (typeof payload['clientAddress'] !== 'string' || payload['clientAddress'].length === 0)
+                return null;
+            if (typeof payload['feedbackIndex'] !== 'number')
+                return null;
+            if (!isValidChain(payload['chain']))
+                return null;
+            break;
+        case 'query_clients':
+            if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0)
+                return null;
+            if (!isValidChain(payload['chain']))
+                return null;
+            break;
+        case 'identity_append_response':
+            if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0)
+                return null;
+            if (typeof payload['clientAddress'] !== 'string' || payload['clientAddress'].length === 0)
+                return null;
+            if (typeof payload['feedbackIndex'] !== 'number')
+                return null;
+            if (typeof payload['responseURI'] !== 'string')
+                return null;
+            if (typeof payload['responseHash'] !== 'string')
+                return null;
+            if (!isValidChain(payload['chain']))
+                return null;
+            break;
+        case 'identity_set_metadata':
+            if (typeof payload['agentId'] !== 'string' || payload['agentId'].length === 0)
+                return null;
+            if (typeof payload['key'] !== 'string' || payload['key'].length === 0)
+                return null;
+            if (typeof payload['valueHex'] !== 'string')
                 return null;
             if (!isValidChain(payload['chain']))
                 return null;

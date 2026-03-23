@@ -14,6 +14,7 @@ import type { WalletIPCClient } from '../ipc/client.js';
 import type { BalanceResponse, PolicyStatus } from '../ipc/types.js';
 import type { SwarmCoordinatorInterface } from '../swarm/types.js';
 import type { AgentToCompanionMessage } from './types.js';
+import type { PassphraseAuth } from '../auth/passphrase.js';
 /** State provider — decoupled from any specific brain implementation */
 export interface CompanionStateProvider {
     getBalances(): Promise<BalanceResponse[]>;
@@ -34,6 +35,8 @@ export interface CompanionStateProvider {
         source: string;
         content: string;
     }>>;
+    getAudit?(): Promise<Array<Record<string, unknown>>>;
+    restartWallet?(): Promise<void>;
 }
 export interface CompanionConfig {
     /** Ed25519 public key of the authorized owner (hex) */
@@ -58,7 +61,7 @@ export declare class CompanionCoordinator {
     private swarm;
     private config;
     private hyperswarm;
-    private isSharedSwarm;
+    private ownsHyperswarm;
     private companionChannel;
     private ownerPubkeyBuf;
     private companionTopic;
@@ -69,6 +72,8 @@ export declare class CompanionCoordinator {
     private onInstructionHandler;
     /** Chat handler — set by main.ts to forward to brain and get reply */
     private onChatHandler;
+    /** Passphrase auth module — set via setAuth() from main.ts */
+    private auth;
     constructor(_wallet: WalletIPCClient, stateProvider: CompanionStateProvider, config: CompanionConfig, swarm?: SwarmCoordinatorInterface);
     /** Register instruction handler */
     onInstruction(handler: (text: string) => void): void;
@@ -77,6 +82,8 @@ export declare class CompanionCoordinator {
         reply: string;
         brainName: string;
     } | null>): void;
+    /** Set passphrase auth module for companion auth operations */
+    setAuth(auth: PassphraseAuth): void;
     /** Start listening for companion connections */
     start(): Promise<void>;
     /** Send a message to the connected companion */
@@ -92,6 +99,9 @@ export declare class CompanionCoordinator {
     private _resolveStrategiesDir;
     private _handleStrategySave;
     private _handleStrategyToggle;
+    /** Handle policy save request from companion — write policies.json and restart wallet */
+    private _handlePolicySave;
+    private _handleAuthRequest;
     private _pushStateUpdate;
     /**
      * Forward a companion instruction to OpenClaw via webhook.
@@ -104,6 +114,8 @@ export declare class CompanionCoordinator {
      * If the response contains a reply, send it back immediately via protomux.
      * If not (wake mode), the agent will call companion_reply MCP when ready.
      */
+    /** Route instruction through the brain adapter (Ollama/HTTP LLM) */
+    private _chatViaBrain;
     private _forwardToHook;
 }
 //# sourceMappingURL=coordinator.d.ts.map

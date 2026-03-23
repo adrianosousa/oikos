@@ -75,5 +75,7 @@ export interface OikosServices {
     auth: import('./auth/passphrase.js').PassphraseAuth | null;
     /** Companion coordinator for Pear app ↔ agent bridging */
     companion: CompanionCoordinator | null;
+    /** ERC-8004 Reputation Bridge — auto-feedback after settlements */
+    reputationBridge: import('./reputation/bridge.js').ReputationBridge | null;
 }
 //# sourceMappingURL=types.d.ts.map

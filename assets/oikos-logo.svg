@@ -1,51 +1,84 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   width="165.48256mm"
-   height="54.091259mm"
-   viewBox="0 0 165.48256 54.091259"
+   width="831.57648mm"
+   height="648.065mm"
+   viewBox="0 0 831.57648 648.065"
    version="1.1"
    id="svg1"
    xml:space="preserve"
+   sodipodi:docname="oikos-logo.svg"
+   inkscape:export-filename="../../Desktop/logo-demo.png"
+   inkscape:export-xdpi="300"
+   inkscape:export-ydpi="300"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <style>
+   xmlns:svg="http://www.w3.org/2000/svg"><defs
+   id="defs1" /><sodipodi:namedview
+   id="namedview1"
+   pagecolor="#ffffff"
+   bordercolor="#cccccc"
+   borderopacity="1"
+   inkscape:showpageshadow="0"
+   inkscape:pageopacity="1"
+   inkscape:pagecheckerboard="0"
+   inkscape:deskcolor="#d1d1d1"
+   inkscape:document-units="mm"
+   inkscape:zoom="0.20617466"
+   inkscape:cx="1588.4591"
+   inkscape:cy="1156.7862"
+   inkscape:window-width="1440"
+   inkscape:window-height="832"
+   inkscape:window-x="0"
+   inkscape:window-y="33"
+   inkscape:window-maximized="0"
+   inkscape:current-layer="svg1" />
+  <style
+   id="style1">
     .logo-fill { fill: #000000; }
     @media (prefers-color-scheme: dark) {
       .logo-fill { fill: #ebb743; }
     }
   </style>
-  <g
-     id="layer1"
-     transform="translate(-19.482719,-175.4493)"><circle
-       class="logo-fill"
-       style="fill-opacity:1;stroke-width:0.146419;stroke-linejoin:round;stroke-miterlimit:0"
-       id="path1"
-       cx="51.843533"
-       cy="203.35382"
-       r="17.687586" /><circle
-       class="logo-fill"
-       style="fill-opacity:1;stroke-width:0.146801;stroke-linejoin:round;stroke-miterlimit:0"
-       id="path1-4"
-       cx="120.92068"
-       cy="203.36241"
-       r="17.733706" /><path
-       class="logo-fill"
-       style="fill-opacity:1;stroke-width:0.14871;stroke-linejoin:round;stroke-miterlimit:0"
-       d="m 84.047666,185.65206 h 24.409814 l -15.713526,18.13847 17.129966,17.24293 H 84.153249 Z"
-       id="path2" /><rect
-       class="logo-fill"
-       style="fill-opacity:1;stroke-width:0.212814;stroke-linejoin:round;stroke-miterlimit:0"
-       id="rect2"
-       width="8.4932919"
-       height="35.399162"
-       x="72.367882"
-       y="185.64366" /><path
-       class="logo-fill"
-       style="display:inline;fill-opacity:1;stroke-width:0.146204;stroke-linejoin:round;stroke-miterlimit:0"
-       d="m 141.36924,185.61145 v 29.03005 l 25.43894,-29.05908 z"
-       id="path3" /><path
-       class="logo-fill"
-       style="display:inline;fill-opacity:1;stroke-width:0.146204;stroke-linejoin:round;stroke-miterlimit:0"
-       d="m 166.74075,220.99018 v -28.94175 l -25.43894,28.97078 z"
-       id="path3-8" /></g>
+  <rect
+   style="fill:#e3b959;stroke-width:1.6;stroke-linejoin:round;stroke-miterlimit:0;fill-opacity:1"
+   id="rect1"
+   width="831.57648"
+   height="648.065"
+   x="0"
+   y="0" /><g
+   id="layer1"
+   transform="matrix(1.8126283,0,0,1.8126283,229.95335,-49.066631)"><circle
+     class="logo-fill"
+     style="fill-opacity:1;stroke-width:0.146419;stroke-linejoin:round;stroke-miterlimit:0"
+     id="path1"
+     cx="51.843533"
+     cy="203.35382"
+     r="17.687586" /><circle
+     class="logo-fill"
+     style="fill-opacity:1;stroke-width:0.146801;stroke-linejoin:round;stroke-miterlimit:0"
+     id="path1-4"
+     cx="120.92068"
+     cy="203.36241"
+     r="17.733706" /><path
+     class="logo-fill"
+     style="fill-opacity:1;stroke-width:0.14871;stroke-linejoin:round;stroke-miterlimit:0"
+     d="m 84.047666,185.65206 h 24.409814 l -15.713526,18.13847 17.129966,17.24293 H 84.153249 Z"
+     id="path2" /><rect
+     class="logo-fill"
+     style="fill-opacity:1;stroke-width:0.212814;stroke-linejoin:round;stroke-miterlimit:0"
+     id="rect2"
+     width="8.4932919"
+     height="35.399162"
+     x="72.367882"
+     y="185.64366" /><path
+     class="logo-fill"
+     style="display:inline;fill-opacity:1;stroke-width:0.146204;stroke-linejoin:round;stroke-miterlimit:0"
+     d="m 141.36924,185.61145 v 29.03005 l 25.43894,-29.05908 z"
+     id="path3" /><path
+     class="logo-fill"
+     style="display:inline;fill-opacity:1;stroke-width:0.146204;stroke-linejoin:round;stroke-miterlimit:0"
+     d="m 166.74075,220.99018 v -28.94175 l -25.43894,28.97078 z"
+     id="path3-8" /></g>
 </svg>

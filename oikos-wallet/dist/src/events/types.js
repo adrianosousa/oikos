@@ -1,9 +1,9 @@
 /**
- * Event source types — platform-agnostic.
+ * Event source types — agent-wallet native.
  *
- * Designed to work with any live streaming/content platform.
- * Events are ephemeral — used for real-time reasoning only,
- * never persisted beyond the current reasoning cycle.
+ * Events represent wallet activity, market signals, and agent status.
+ * Used for real-time reasoning and dashboard feed display.
+ * Events are ephemeral — never persisted beyond the current reasoning cycle.
  */
 export {};
 //# sourceMappingURL=types.js.map

@@ -16,7 +16,7 @@
  *   bitcoin: BTC
  */
 
-import type { EventSource, StreamEvent, DonationData } from './types.js';
+import type { EventSource, StreamEvent, IncomingTransferData } from './types.js';
 
 /** Indexer API configuration */
 export interface IndexerConfig {
@@ -173,18 +173,19 @@ export class IndexerEventSource implements EventSource {
       if (!isIncoming) continue;
 
       const amount = tx.amount ?? tx.value ?? '0';
-      const data: DonationData = {
-        type: 'donation',
-        username: from.slice(0, 10) + '...',
+      const data: IncomingTransferData = {
+        type: 'incoming_transfer',
+        from: from.slice(0, 10) + '...',
         amount: parseFloat(amount) || 0,
-        currency: symbol,
-        message: `Incoming ${symbol} transfer on ${chain} (tx: ${hash.slice(0, 16)}...)`,
+        symbol,
+        chain,
+        txHash: hash,
       };
 
       events.push({
         id: `indexer-${hash}`,
         timestamp: tx.timestamp ? new Date(tx.timestamp * 1000).toISOString() : new Date().toISOString(),
-        type: 'donation',
+        type: 'incoming_transfer',
         data,
       });
     }

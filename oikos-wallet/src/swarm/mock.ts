@@ -102,6 +102,10 @@ export class MockSwarmCoordinator implements SwarmCoordinatorInterface {
     this._schedule(50000, () => this._mockPeersBidOnOurAnnouncements());
   }
 
+  getPublicKey(): string | null {
+    return this.identity.pubkey;
+  }
+
   async stop(): Promise<void> {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers = [];

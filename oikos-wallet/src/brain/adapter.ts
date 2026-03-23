@@ -97,15 +97,20 @@ export class OllamaBrainAdapter implements BrainAdapter {
   private baseUrl: string;
   private model: string;
 
+  private useOpenAI = false; // true = llama-server/QVAC (/v1/chat/completions), false = Ollama (/api/chat)
+
   constructor(baseUrl = 'http://127.0.0.1:11434', model = 'oikos-agent') {
-    // Normalize URL: strip /v1 suffix if present (we use native /api/chat endpoint)
+    // Normalize URL: strip /v1 suffix if present
     this.baseUrl = baseUrl.replace(/\/v1\/?$/, '');
     this.model = model;
+    // Auto-detect QVAC/llama-server (port 8090) vs Ollama (port 11434)
+    if (this.baseUrl.includes(':8090')) this.useOpenAI = true;
   }
 
   async chat(message: string, context: WalletContext, history?: ChatMessage[]): Promise<string> {
     const contextBlock = this._buildContext(context);
-    const systemPrompt = `${WALLET_SYSTEM_PROMPT}\n\nSTATE:\n${contextBlock}`;
+    // /no_think disables Qwen3 thinking mode on QVAC/llama-server (content goes to reasoning_content otherwise)
+    const systemPrompt = `${WALLET_SYSTEM_PROMPT}\n/no_think\n\nSTATE:\n${contextBlock}`;
 
     // Build message array: system + recent history + current user message.
     // History gives the model conversational memory across turns.
@@ -129,37 +134,58 @@ export class OllamaBrainAdapter implements BrainAdapter {
     messages.push({ role: 'user', content: message });
 
     try {
-      // Use Ollama native API (not OpenAI-compat) for think:false support.
-      // The /v1/chat/completions endpoint doesn't support disabling Qwen thinking.
-      const res = await fetch(`${this.baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          stream: false,
-          // Disable Qwen3 thinking mode — saves ~200-500 tokens per response.
-          // Without this, the model burns output budget on internal reasoning.
-          think: false,
-          options: {
+      let reply: string;
+
+      if (this.useOpenAI) {
+        // QVAC / llama-server: OpenAI-compatible /v1/chat/completions
+        const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: this.model,
+            messages,
+            stream: false,
             temperature: 0.3,
-            num_predict: 512,
-            // Extended context window — overrides Ollama default (2048).
-            num_ctx: 8192,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`Ollama ${res.status}: ${text.slice(0, 200)}`);
+            max_tokens: 512,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`QVAC ${res.status}: ${text.slice(0, 200)}`);
+        }
+        const data = await res.json() as {
+          choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
+        };
+        const msg = data.choices?.[0]?.message;
+        reply = msg?.content || msg?.reasoning_content || '';
+        if (!reply) throw new Error('Empty response from QVAC');
+      } else {
+        // Ollama native API — supports think:false for Qwen3
+        const res = await fetch(`${this.baseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: this.model,
+            messages,
+            stream: false,
+            think: false,
+            options: {
+              temperature: 0.3,
+              num_predict: 512,
+              num_ctx: 8192,
+            },
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`Ollama ${res.status}: ${text.slice(0, 200)}`);
+        }
+        const data = await res.json() as {
+          message?: { content?: string };
+        };
+        reply = data.message?.content ?? '';
+        if (!reply) throw new Error('Empty response from Ollama');
       }
-
-      const data = await res.json() as {
-        message?: { content?: string };
-      };
-      const reply = data.message?.content ?? '';
-      if (!reply) throw new Error('Empty response from Ollama');
 
       // Strip <think> blocks if present (Qwen reasoning mode fallback)
       return reply.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();

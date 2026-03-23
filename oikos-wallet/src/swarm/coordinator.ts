@@ -85,6 +85,11 @@ export class SwarmCoordinator implements SwarmCoordinatorInterface {
     return this.discovery?.getSwarmInstance() ?? null;
   }
 
+  /** Get the agent's swarm public key (hex) */
+  getPublicKey(): string | null {
+    return this.keypair ? this.keypair.publicKey.toString('hex') : null;
+  }
+
   /** Start the swarm: generate identity, join board, begin heartbeat */
   async start(): Promise<void> {
     if (this.started) return;

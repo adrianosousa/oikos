@@ -69,8 +69,8 @@ export interface OikosConfig {
     indexerApiKey: string;
     /** WDK Indexer base URL */
     indexerBaseUrl: string;
-    /** Enable ERC-8004 on-chain identity registration */
-    erc8004Enabled: boolean;
+    /** Path to persist ERC-8004 identity state (agentId, registration). */
+    identityPath: string;
     /** Enable companion P2P channel */
     companionEnabled: boolean;
     /** Ed25519 public key of the authorized owner (hex, 64 chars) */

@@ -32,6 +32,7 @@ export declare class MockSwarmCoordinator implements SwarmCoordinatorInterface {
     private started;
     constructor(wallet: WalletIPCClient, config: MockSwarmConfig);
     start(): Promise<void>;
+    getPublicKey(): string | null;
     stop(): Promise<void>;
     getState(): SwarmState;
     onEvent(handler: (event: SwarmEvent) => void): void;

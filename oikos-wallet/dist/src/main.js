@@ -15,9 +15,10 @@ import { WalletIPCClient } from './ipc/client.js';
 import { loadOikosConfig } from './config/env.js';
 import { createDashboard } from './dashboard/server.js';
 import { EventBus } from './events/bus.js';
-import { getDemoCreators, getDefaultCreator } from './creators/registry.js';
 import { PricingService } from './pricing/client.js';
-import { resolve } from 'path';
+import { resolve, join } from 'path';
+import { homedir } from 'os';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { createBrainAdapter } from './brain/adapter.js';
 import { processActions } from './brain/actions.js';
 async function main() {
@@ -62,7 +63,7 @@ async function main() {
         const eventSource = new MockEventSource();
         eventSource.onEvents((events) => eventBus.emit(events));
         eventSource.start();
-        console.error('[oikos] Events: mock (3-minute cycle)');
+        console.error('[oikos] Events: mock (90-second agent lifecycle)');
     }
     else if (config.indexerApiKey) {
         const ethAddress = await wallet.queryAddress('ethereum').then(r => r.address).catch(() => '');
@@ -149,6 +150,15 @@ async function main() {
         });
         await swarm.start();
         console.error(`[oikos] Swarm: ${config.mockSwarm ? 'mock' : 'live'} (${config.agentName})`);
+        // Auto-export swarm pubkey for Pear app auto-discovery
+        const swarmPubkey = swarm.getPublicKey();
+        if (swarmPubkey) {
+            const oikosDir = join(homedir(), '.oikos');
+            if (!existsSync(oikosDir))
+                mkdirSync(oikosDir, { recursive: true });
+            writeFileSync(join(oikosDir, 'agent-swarm-pubkey.txt'), swarmPubkey);
+            console.error(`[oikos] Swarm pubkey exported to ~/.oikos/agent-swarm-pubkey.txt`);
+        }
     }
     // 6. Start companion (if enabled)
     let companion = null;
@@ -224,6 +234,23 @@ async function main() {
                 }
                 return strategies;
             },
+            getAudit: async () => {
+                const result = await wallet.queryAudit();
+                return result;
+            },
+            restartWallet: async () => {
+                console.error('[companion] Restarting wallet isolate for policy update...');
+                wallet.stop();
+                await new Promise(r => setTimeout(r, 500));
+                wallet.start(walletPath, config.walletRuntime, {
+                    MOCK_WALLET: config.mockWallet ? 'true' : 'false',
+                    POLICY_FILE: config.policyFile,
+                    AUDIT_LOG_PATH: config.auditLogPath,
+                });
+                // Wait for isolate to initialize
+                await new Promise(r => setTimeout(r, 3000));
+                console.error('[companion] Wallet isolate restarted with updated policy');
+            },
         };
         companion = new CC(wallet, stateProvider, {
             ownerPubkey: config.companionOwnerPubkey,
@@ -254,7 +281,7 @@ async function main() {
         await companion.start();
         console.error(`[oikos] Companion: listening for owner`);
     }
-    // 7. Bootstrap ERC-8004 identity (if enabled)
+    // 7. Bootstrap ERC-8004 identity (always-on, lazy registration when funded)
     const identity = {
         registered: false,
         agentId: null,
@@ -262,29 +289,87 @@ async function main() {
         agentURI: null,
         registrationTxHash: null,
     };
-    if (config.erc8004Enabled) {
+    const { LazyRegistrar } = await import('./identity/lazy-register.js');
+    // Helper: bootstrap reputation bridge once identity is registered
+    let reputationBridge = null;
+    const bootstrapBridge = async () => {
+        if (reputationBridge || !identity.registered || !swarm)
+            return;
+        const { ReputationBridge } = await import('./reputation/bridge.js');
+        const autoFeedback = process.env['AUTO_FEEDBACK_ENABLED'] !== 'false';
+        const peerLookup = {
+            getErc8004AgentId: (peerPubkey) => {
+                const state = swarm.getState();
+                const peer = state.boardPeers.find((p) => p.pubkey === peerPubkey);
+                return peer?.erc8004AgentId;
+            },
+            getPeerInfo: (peerPubkey) => {
+                const state = swarm.getState();
+                return state.boardPeers.find((p) => p.pubkey === peerPubkey);
+            },
+        };
+        let walletAddress = '';
         try {
-            const creators = getDemoCreators();
-            const defaultCreator = getDefaultCreator(creators, 'ethereum');
-            if (defaultCreator) {
-                const agentURI = `http://127.0.0.1:${config.dashboardPort}/agent-card.json`;
-                const regResult = await wallet.registerIdentity(agentURI);
-                if (regResult.status === 'registered') {
-                    identity.registered = true;
-                    identity.agentId = regResult.agentId ?? null;
-                    identity.registrationTxHash = regResult.txHash ?? null;
-                    identity.agentURI = agentURI;
-                    // Set wallet (deadline: 1 hour from now)
-                    const deadline = Math.floor(Date.now() / 1000) + 3600;
-                    const walletResult = await wallet.setAgentWallet(identity.agentId ?? '', deadline);
-                    identity.walletSet = walletResult.status === 'wallet_set';
-                }
+            const addr = await wallet.queryAddress('ethereum');
+            walletAddress = addr.address;
+        }
+        catch { /* ok */ }
+        reputationBridge = new ReputationBridge(wallet, {
+            registered: identity.registered,
+            agentId: identity.agentId ?? undefined,
+            walletAddress,
+        }, peerLookup, {
+            enabled: autoFeedback,
+            dashboardBaseUrl: `http://127.0.0.1:${config.dashboardPort}`,
+            rateLimit: 1,
+        });
+        swarm.onEvent((event) => {
+            if (event.kind === 'settlement_completed') {
+                void reputationBridge.onSettlement(event);
             }
+        });
+        console.error(`[erc8004] Reputation Bridge: ${autoFeedback ? 'active' : 'disabled'}`);
+    };
+    const registrar = new LazyRegistrar(wallet, identity, {
+        identityPath: config.identityPath,
+        dashboardPort: config.dashboardPort,
+        dashboardHost: config.dashboardHost,
+    }, {
+        onRegistered: (id) => {
+            // Propagate to swarm
+            if (id.agentId && swarm?.updateErc8004AgentId) {
+                swarm.updateErc8004AgentId(id.agentId);
+            }
+            // Bootstrap reputation bridge (deferred until identity exists)
+            void bootstrapBridge();
+        },
+    });
+    // Try loading persisted identity first
+    if (registrar.tryLoad()) {
+        // Already registered from a previous session
+        if (identity.agentId && swarm?.updateErc8004AgentId) {
+            swarm.updateErc8004AgentId(identity.agentId);
         }
-        catch (err) {
-            console.error('[oikos] ERC-8004 bootstrap failed:', err);
+        void bootstrapBridge();
+    }
+    else {
+        // Try registering now (if funded), otherwise start watcher
+        const registered = await registrar.tryRegister();
+        if (!registered) {
+            registrar.startWatcher();
+            // Opportunistic trigger: try registering on any incoming transfer event
+            eventBus.onEvents((events) => {
+                if (identity.registered)
+                    return;
+                const hasIncoming = events.some((e) => {
+                    const data = e.data;
+                    return data?.['type'] === 'incoming_transfer';
+                });
+                if (hasIncoming) {
+                    void registrar.tryRegister();
+                }
+            });
         }
-        console.error(`[oikos] ERC-8004: ${identity.registered ? `registered (agentId: ${identity.agentId ?? 'unknown'})` : 'disabled'}`);
     }
     // 8. Start RGB transport bridge (if enabled)
     let rgbBridge = null;
@@ -339,9 +424,14 @@ async function main() {
         x402: x402Client,
         sparkEnabled,
         auth,
+        reputationBridge,
         companion: companion ?? null,
     };
-    // 11. Register companion chat handler (now that brain is available)
+    // 11. Wire auth module to companion for protomux-based auth operations
+    if (companion) {
+        companion.setAuth(auth);
+    }
+    // 11b. Register companion chat handler (now that brain is available)
     if (companion && brain) {
         companion.onChat(async (text) => {
             try {

@@ -382,6 +382,7 @@ export interface SwarmCoordinatorInterface {
   start(): Promise<void>;
   stop(): Promise<void>;
   getState(): SwarmState;
+  getPublicKey(): string | null;
   onEvent(handler: (event: SwarmEvent) => void): void;
   postAnnouncement(opts: {
     category: AnnouncementCategory;

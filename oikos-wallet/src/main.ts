@@ -17,7 +17,9 @@ import { loadOikosConfig } from './config/env.js';
 import { createDashboard } from './dashboard/server.js';
 import { EventBus } from './events/bus.js';
 import { PricingService } from './pricing/client.js';
-import { resolve } from 'path';
+import { resolve, join } from 'path';
+import { homedir } from 'os';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import type { OikosServices, IdentityState, CompanionInstruction, SwarmInterface } from './types.js';
 import { createBrainAdapter } from './brain/adapter.js';
 import type { ChatMessage } from './brain/adapter.js';
@@ -76,7 +78,7 @@ async function main(): Promise<void> {
     const eventSource = new MockEventSource();
     eventSource.onEvents((events) => eventBus.emit(events));
     eventSource.start();
-    console.error('[oikos] Events: mock (3-minute cycle)');
+    console.error('[oikos] Events: mock (90-second agent lifecycle)');
   } else if (config.indexerApiKey) {
     const ethAddress = await wallet.queryAddress('ethereum').then(r => r.address).catch(() => '');
     const addresses: Record<string, string> = {};
@@ -164,6 +166,15 @@ async function main(): Promise<void> {
 
     await swarm.start();
     console.error(`[oikos] Swarm: ${config.mockSwarm ? 'mock' : 'live'} (${config.agentName})`);
+
+    // Auto-export swarm pubkey for Pear app auto-discovery
+    const swarmPubkey = swarm.getPublicKey();
+    if (swarmPubkey) {
+      const oikosDir = join(homedir(), '.oikos');
+      if (!existsSync(oikosDir)) mkdirSync(oikosDir, { recursive: true });
+      writeFileSync(join(oikosDir, 'agent-swarm-pubkey.txt'), swarmPubkey);
+      console.error(`[oikos] Swarm pubkey exported to ~/.oikos/agent-swarm-pubkey.txt`);
+    }
   }
 
   // 6. Start companion (if enabled)
@@ -381,7 +392,7 @@ async function main(): Promise<void> {
         if (identity.registered) return;
         const hasIncoming = events.some((e) => {
           const data = e.data as unknown as Record<string, unknown> | undefined;
-          return data?.['type'] === 'donation' || data?.['type'] === 'incoming_transfer';
+          return data?.['type'] === 'incoming_transfer';
         });
         if (hasIncoming) {
           void registrar.tryRegister();
@@ -453,7 +464,12 @@ async function main(): Promise<void> {
     companion: companion ?? null,
   };
 
-  // 11. Register companion chat handler (now that brain is available)
+  // 11. Wire auth module to companion for protomux-based auth operations
+  if (companion) {
+    companion.setAuth(auth);
+  }
+
+  // 11b. Register companion chat handler (now that brain is available)
   if (companion && brain) {
     companion.onChat(async (text: string) => {
       try {

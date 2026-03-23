@@ -194,11 +194,57 @@ async function handleRequest(request, executor, wallet, policy, audit, responder
                 }
                 case 'query_reputation': {
                     const req = request.payload;
-                    const rep = await wallet.getOnChainReputation(req.chain, req.agentId);
+                    const rep = await wallet.getOnChainReputation(req.chain, req.agentId, {
+                        clients: req.clientAddresses,
+                        tag1: req.tag1,
+                        tag2: req.tag2,
+                    });
                     response = {
                         id: request.id,
                         type: 'reputation_result',
                         payload: { agentId: req.agentId, feedbackCount: rep.feedbackCount, totalValue: rep.totalValue, valueDecimals: rep.valueDecimals }
+                    };
+                    break;
+                }
+                case 'query_feedback': {
+                    const req = request.payload;
+                    const fb = await wallet.readFeedback(req.chain, req.agentId, req.clientAddress, req.feedbackIndex);
+                    response = {
+                        id: request.id,
+                        type: 'feedback_read',
+                        payload: { agentId: req.agentId, clientAddress: req.clientAddress, feedbackIndex: req.feedbackIndex, ...fb },
+                    };
+                    break;
+                }
+                case 'query_clients': {
+                    const req = request.payload;
+                    const clients = await wallet.getClients(req.chain, req.agentId);
+                    response = {
+                        id: request.id,
+                        type: 'clients_result',
+                        payload: { agentId: req.agentId, clients },
+                    };
+                    break;
+                }
+                case 'identity_append_response': {
+                    const req = request.payload;
+                    const result = await wallet.appendResponse(req.chain, req.agentId, req.clientAddress, req.feedbackIndex, req.responseURI, req.responseHash);
+                    audit.logIdentityOperation('identity_append_response', result);
+                    response = {
+                        id: request.id,
+                        type: 'identity_result',
+                        payload: { status: result.success ? 'registered' : 'failed', txHash: result.txHash, error: result.error },
+                    };
+                    break;
+                }
+                case 'identity_set_metadata': {
+                    const req = request.payload;
+                    const result = await wallet.setIdentityMetadata(req.chain, req.agentId, req.key, req.valueHex);
+                    audit.logIdentityOperation('identity_set_metadata', result);
+                    response = {
+                        id: request.id,
+                        type: 'identity_result',
+                        payload: { status: result.success ? 'registered' : 'failed', txHash: result.txHash, error: result.error },
                     };
                     break;
                 }
@@ -380,9 +426,18 @@ async function main() {
     const policyConfig = loadPolicies();
     const policy = new PolicyEngine(policyConfig);
     console.error(`[wallet-isolate] Loaded ${policyConfig.policies.length} policy(ies)`);
-    // 2. Initialize audit log
+    // 2. Initialize audit log (hydrate from disk to survive restarts)
+    const auditPath = getEnv('AUDIT_LOG_PATH', 'audit.jsonl');
     const auditAppend = createAuditAppender();
     const audit = new AuditLog(auditAppend);
+    try {
+        const existing = readFileSync(auditPath, 'utf-8');
+        if (existing)
+            audit.hydrate(existing.split('\n'));
+    }
+    catch {
+        // No existing file — first run, nothing to hydrate
+    }
     // 3. Initialize wallet
     const useMock = getEnv('MOCK_WALLET', 'true') === 'true';
     let wallet;

@@ -61,12 +61,13 @@ export { mountMCP } from './mcp/server.js';
 export { EventBus } from './events/bus.js';
 export type {
   StreamEvent,
-  ChatMessageData,
-  ViewerCountData,
-  DonationData,
-  MilestoneData,
-  EngagementData,
-  StreamStatusData,
+  AgentMessageData,
+  NetworkActivityData,
+  IncomingTransferData,
+  ThresholdReachedData,
+  MarketSignalData,
+  AgentStatusData,
+  SwarmEventData,
   EventSource,
 } from './events/types.js';
 

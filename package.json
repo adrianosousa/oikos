@@ -33,6 +33,7 @@
     "oikos": "oikos-wallet/dist/src/cli.js"
   },
   "scripts": {
+    "postinstall": "npm run build",
     "update": "./scripts/update.sh",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",

@@ -23,7 +23,7 @@ export class CompanionCoordinator {
     swarm;
     config;
     hyperswarm = null;
-    isSharedSwarm = false;
+    ownsHyperswarm = false;
     companionChannel = null;
     ownerPubkeyBuf;
     companionTopic;
@@ -34,6 +34,8 @@ export class CompanionCoordinator {
     onInstructionHandler = null;
     /** Chat handler — set by main.ts to forward to brain and get reply */
     onChatHandler = null;
+    /** Passphrase auth module — set via setAuth() from main.ts */
+    auth = null;
     constructor(_wallet, stateProvider, config, swarm) {
         this.stateProvider = stateProvider;
         this.config = config;
@@ -51,19 +53,23 @@ export class CompanionCoordinator {
     onChat(handler) {
         this.onChatHandler = handler;
     }
+    /** Set passphrase auth module for companion auth operations */
+    setAuth(auth) {
+        this.auth = auth;
+    }
     /** Start listening for companion connections */
     async start() {
         if (this.started)
             return;
-        // Try to reuse the swarm's Hyperswarm instance (same UDP socket, same DHT connection)
-        // This avoids opening a second UDP port which may be blocked by Docker/NAT
+        // Reuse swarm's Hyperswarm if available (same keypair, same DHT connection).
+        // Two Hyperswarm instances with the same keypair on the same machine causes DHT conflicts.
+        // The companion joins its OWN topic on the shared instance for channel isolation.
         const swarmHyperswarm = this.swarm && typeof this.swarm.getHyperswarm === 'function'
             ? this.swarm.getHyperswarm()
             : null;
         if (swarmHyperswarm) {
-            console.error('[companion] Reusing swarm Hyperswarm instance (shared UDP socket)');
+            console.error('[companion] Reusing swarm Hyperswarm (shared keypair, dedicated companion topic)');
             this.hyperswarm = swarmHyperswarm;
-            this.isSharedSwarm = true;
         }
         else {
             const { loadOrCreateKeypair } = await import('../swarm/identity.js');
@@ -79,6 +85,7 @@ export class CompanionCoordinator {
                 catch { /* invalid relay pubkey, skip */ }
             }
             this.hyperswarm = new Hyperswarm(opts);
+            this.ownsHyperswarm = true;
             // Maintain persistent connection to relay node for bridging
             if (this.config.relayPubkey) {
                 try {
@@ -92,19 +99,19 @@ export class CompanionCoordinator {
         this.hyperswarm.on('connection', (socket) => {
             this._onConnection(socket);
         });
-        // When sharing the swarm's Hyperswarm, the board topic is already joined.
-        // The companion piggybacks on board connections via protomux — no separate topic needed.
-        if (!this.isSharedSwarm) {
-            const discovery = this.hyperswarm.join(this.companionTopic, {
-                server: true,
-                client: false,
-            });
-            await discovery.flushed();
-            console.error(`[companion] Listening on companion topic: ${this.companionTopic.toString('hex').slice(0, 16)}...`);
-        }
-        else {
-            console.error(`[companion] Piggyback on swarm board (shared Hyperswarm, no separate topic)`);
-        }
+        // Always join the dedicated companion topic — even when sharing swarm's Hyperswarm.
+        // Piggybacking on the board topic causes channel instability: the swarm coordinator
+        // cycles connections for peers that don't participate in board/feed protocols.
+        const discovery = this.hyperswarm.join(this.companionTopic, {
+            server: true,
+            client: false,
+        });
+        // Timeout after 10s — DHT announcement continues in background even if flushed() is slow
+        await Promise.race([
+            discovery.flushed(),
+            new Promise(r => setTimeout(r, 10000)),
+        ]);
+        console.error(`[companion] Listening on companion topic: ${this.companionTopic.toString('hex').slice(0, 16)}...`);
         this.updateInterval = setInterval(() => {
             void this._pushStateUpdate();
         }, this.config.updateIntervalMs);
@@ -142,7 +149,7 @@ export class CompanionCoordinator {
         if (this.updateInterval)
             clearInterval(this.updateInterval);
         // Don't destroy shared Hyperswarm — it belongs to the swarm coordinator
-        if (this.hyperswarm && !this.isSharedSwarm)
+        if (this.hyperswarm && this.ownsHyperswarm)
             await this.hyperswarm.destroy();
         this.started = false;
         this.connected = false;
@@ -198,26 +205,15 @@ export class CompanionCoordinator {
                         this.onInstructionHandler(msg.text);
                     }
                     // Route 1: OpenClaw webhook (preferred — instant, no polling)
+                    // Route 2: Brain adapter fallback (Ollama/HTTP) — used when hook fails or isn't running
                     if (this.config.hookUrl) {
                         this._forwardToHook(msg.text).catch((err) => {
-                            console.error(`[companion] Hook error: ${err instanceof Error ? err.message : String(err)}`);
+                            console.error(`[companion] Hook unavailable, falling back to brain: ${err instanceof Error ? err.message : String(err)}`);
+                            this._chatViaBrain(msg.text);
                         });
                     }
-                    // Route 2: Brain adapter fallback (Ollama/HTTP)
-                    else if (this.onChatHandler) {
-                        this.onChatHandler(msg.text).then((result) => {
-                            if (result) {
-                                const reply = {
-                                    type: 'chat_reply',
-                                    text: result.reply,
-                                    brainName: result.brainName,
-                                    timestamp: Date.now(),
-                                };
-                                this.send(reply);
-                            }
-                        }).catch((err) => {
-                            console.error(`[companion] Chat handler error: ${err instanceof Error ? err.message : String(err)}`);
-                        });
+                    else {
+                        this._chatViaBrain(msg.text);
                     }
                     break;
                 case 'approval_response':
@@ -231,6 +227,12 @@ export class CompanionCoordinator {
                     break;
                 case 'strategy_toggle':
                     this._handleStrategyToggle(msg.requestId, msg.filename, msg.enabled);
+                    break;
+                case 'policy_save':
+                    void this._handlePolicySave(msg.requestId, msg.rules, msg.name);
+                    break;
+                case 'auth_request':
+                    this._handleAuthRequest(msg.requestId, msg.action, msg.payload);
                     break;
                 default:
                     console.error(`[companion] Unknown message type: ${msg.type}`);
@@ -296,6 +298,129 @@ export class CompanionCoordinator {
             this.send({ type: 'strategy_result', requestId, success: false, error: msg, timestamp: Date.now() });
         }
     }
+    /** Handle policy save request from companion — write policies.json and restart wallet */
+    async _handlePolicySave(requestId, rules, name) {
+        try {
+            if (!rules || !Array.isArray(rules) || rules.length === 0) {
+                this.send({ type: 'policy_result', requestId, success: false, error: 'non-empty rules array required', timestamp: Date.now() });
+                return;
+            }
+            // Find policies.json (same paths as dashboard/server.ts)
+            const configPaths = [
+                join(process.cwd(), 'policies.json'),
+                join(process.cwd(), '..', 'policies.json'),
+            ];
+            let configPath = configPaths.find(p => existsSync(p));
+            if (!configPath)
+                configPath = configPaths[0];
+            // Read existing or create default
+            const config = existsSync(configPath)
+                ? JSON.parse(readFileSync(configPath, 'utf-8'))
+                : { policies: [{ id: 'default', name: 'Default Policy', rules: [] }] };
+            // Update first policy's rules
+            if (config.policies?.[0]) {
+                config.policies[0].rules = rules;
+                if (name)
+                    config.policies[0].name = name;
+            }
+            writeFileSync(configPath, JSON.stringify(config, null, 2));
+            console.error(`[companion] Updated policy config: ${rules.length} rules`);
+            // Restart wallet isolate to load new policies (preserves immutability guarantee)
+            if (this.stateProvider.restartWallet) {
+                await this.stateProvider.restartWallet();
+                console.error('[companion] Wallet isolate restarted with new policy');
+            }
+            this.send({ type: 'policy_result', requestId, success: true, rulesCount: rules.length, timestamp: Date.now() });
+            // Push fresh state after restart
+            void this._pushStateUpdate();
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[companion] Policy save error: ${msg}`);
+            this.send({ type: 'policy_result', requestId, success: false, error: msg, timestamp: Date.now() });
+        }
+    }
+    _handleAuthRequest(requestId, action, payload) {
+        const sendResponse = (success, data, error) => {
+            const resp = {
+                type: 'auth_response', requestId, success,
+                data, error, timestamp: Date.now(),
+            };
+            this.send(resp);
+        };
+        if (!this.auth) {
+            // Auth module not loaded — return disabled status for reads, error for writes
+            if (action === 'status')
+                return sendResponse(true, { enabled: false });
+            if (action === 'pending')
+                return sendResponse(true, { pending: [] });
+            return sendResponse(false, undefined, 'Auth module not loaded');
+        }
+        try {
+            switch (action) {
+                case 'status':
+                    return sendResponse(true, this.auth.getStatus());
+                case 'setup': {
+                    const pp = String(payload?.passphrase ?? '');
+                    if (!pp)
+                        return sendResponse(false, undefined, 'Passphrase required');
+                    const ok = this.auth.setup(pp, {
+                        threshold: payload?.threshold,
+                        timeoutMinutes: payload?.timeoutMinutes,
+                    });
+                    return sendResponse(ok, undefined, ok ? undefined : 'Passphrase too short (min 4 chars)');
+                }
+                case 'verify': {
+                    const pp = String(payload?.passphrase ?? '');
+                    if (!pp)
+                        return sendResponse(false, { valid: false }, 'Passphrase required');
+                    const valid = this.auth.verify(pp);
+                    const status = this.auth.getStatus();
+                    return sendResponse(true, { valid, expiresAt: valid ? status.expiresAt : null });
+                }
+                case 'disable': {
+                    const pp = String(payload?.passphrase ?? '');
+                    if (!pp)
+                        return sendResponse(false, undefined, 'Passphrase required');
+                    const ok = this.auth.disable(pp);
+                    return sendResponse(ok, undefined, ok ? undefined : 'Incorrect passphrase');
+                }
+                case 'change': {
+                    const cur = String(payload?.currentPassphrase ?? '');
+                    const next = String(payload?.newPassphrase ?? '');
+                    if (!cur || !next)
+                        return sendResponse(false, undefined, 'Both passphrases required');
+                    const ok = this.auth.change(cur, next);
+                    return sendResponse(ok, undefined, ok ? undefined : 'Current passphrase incorrect or new too short');
+                }
+                case 'settings':
+                    this.auth.updateSettings({
+                        threshold: payload?.threshold,
+                        timeoutMinutes: payload?.timeoutMinutes,
+                        requireForPolicyChanges: payload?.requireForPolicyChanges,
+                        requireForStrategyActivation: payload?.requireForStrategyActivation,
+                    });
+                    return sendResponse(true);
+                case 'pending':
+                    return sendResponse(true, { pending: this.auth.getPendingList() });
+                case 'resolve': {
+                    const pp = String(payload?.passphrase ?? '');
+                    const proposalId = String(payload?.proposalId ?? '');
+                    if (!pp || !proposalId)
+                        return sendResponse(false, undefined, 'Passphrase and proposalId required');
+                    const approved = this.auth.resolvePending(proposalId, pp);
+                    return sendResponse(true, { approved });
+                }
+                default:
+                    return sendResponse(false, undefined, `Unknown auth action: ${action}`);
+            }
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[companion] Auth error: ${msg}`);
+            sendResponse(false, undefined, msg);
+        }
+    }
     async _pushStateUpdate() {
         if (!this.connected)
             return;
@@ -358,6 +483,32 @@ export class CompanionCoordinator {
             }
             catch { /* strategies dir may not exist */ }
         }
+        // Audit trail (from wallet IPC)
+        if (this.stateProvider.getAudit) {
+            try {
+                const entries = await this.stateProvider.getAudit();
+                if (entries.length > 0) {
+                    this.send({ type: 'audit_update', entries, timestamp: Date.now() });
+                }
+            }
+            catch { /* wallet may not be ready */ }
+        }
+        // Auth status push
+        if (this.auth) {
+            try {
+                const status = this.auth.getStatus();
+                const pending = this.auth.getPendingList().map((p) => ({
+                    proposalId: p.proposalId, description: p.description, amount: p.amount,
+                    createdAt: p.createdAt, expiresAt: p.expiresAt,
+                    resolved: p.resolved, approved: p.approved,
+                }));
+                const authMsg = {
+                    type: 'auth_update', status, pending, timestamp: Date.now(),
+                };
+                this.send(authMsg);
+            }
+            catch { /* auth may not be ready */ }
+        }
         // Swarm status (with full data for UI rendering)
         if (this.swarm) {
             const swarmState = this.swarm.getState();
@@ -402,6 +553,26 @@ export class CompanionCoordinator {
      * If the response contains a reply, send it back immediately via protomux.
      * If not (wake mode), the agent will call companion_reply MCP when ready.
      */
+    /** Route instruction through the brain adapter (Ollama/HTTP LLM) */
+    _chatViaBrain(text) {
+        if (!this.onChatHandler) {
+            console.error('[companion] No chat handler registered — cannot reply');
+            return;
+        }
+        this.onChatHandler(text).then((result) => {
+            if (result) {
+                const reply = {
+                    type: 'chat_reply',
+                    text: result.reply,
+                    brainName: result.brainName,
+                    timestamp: Date.now(),
+                };
+                this.send(reply);
+            }
+        }).catch((err) => {
+            console.error(`[companion] Chat handler error: ${err instanceof Error ? err.message : String(err)}`);
+        });
+    }
     async _forwardToHook(text) {
         const hookUrl = this.config.hookUrl;
         if (!hookUrl)
@@ -450,6 +621,7 @@ export class CompanionCoordinator {
         }
         catch (err) {
             console.error(`[companion] Hook fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+            throw err; // Re-throw so caller can fall back to brain adapter
         }
     }
 }

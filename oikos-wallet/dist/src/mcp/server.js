@@ -820,10 +820,23 @@ const handlers = {
         const strategiesDir = candidates.find(d => existsSync(d)) ?? candidates[0];
         if (!existsSync(strategiesDir))
             mkdirSync(strategiesDir, { recursive: true });
+        // Guard: agent/purchased strategies are always saved disabled — only human approval can enable
+        let finalContent = content;
+        const isAgentAuthored = /source:\s*(agent|purchased)/i.test(content);
+        let requiresApproval = false;
+        if (isAgentAuthored) {
+            finalContent = finalContent.replace(/enabled:\s*true/gi, 'enabled: false');
+            // Inject enabled: false if the field is missing entirely
+            if (!/enabled:/i.test(finalContent)) {
+                finalContent = finalContent.replace(/^---\n/, '---\nenabled: false\n');
+            }
+            requiresApproval = true;
+            console.error(`[strategies] Agent-authored strategy forced to enabled: false (requires human approval)`);
+        }
         const exists = existsSync(join(strategiesDir, safeName));
-        writeFileSync(join(strategiesDir, safeName), content);
+        writeFileSync(join(strategiesDir, safeName), finalContent);
         console.error(`[strategies] ${exists ? 'Updated' : 'Created'} strategy: ${safeName}`);
-        return { success: true, filename: safeName, action: exists ? 'updated' : 'created' };
+        return { success: true, filename: safeName, action: exists ? 'updated' : 'created', requiresApproval };
     },
     async toggle_strategy(params) {
         const filename = params['filename'];

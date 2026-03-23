@@ -1,54 +1,56 @@
 /**
- * Event source types — platform-agnostic.
+ * Event source types — agent-wallet native.
  *
- * Designed to work with any live streaming/content platform.
- * Events are ephemeral — used for real-time reasoning only,
- * never persisted beyond the current reasoning cycle.
+ * Events represent wallet activity, market signals, and agent status.
+ * Used for real-time reasoning and dashboard feed display.
+ * Events are ephemeral — never persisted beyond the current reasoning cycle.
  */
-/** A single event from any content platform */
+/** A single event from the wallet/agent system */
 export interface StreamEvent {
     /** Unique event ID */
     id: string;
     /** ISO 8601 timestamp */
     timestamp: string;
     /** Event type */
-    type: 'chat_message' | 'viewer_count' | 'donation' | 'milestone' | 'engagement_spike' | 'stream_status' | 'swarm';
-    /** Platform-agnostic event data */
-    data: ChatMessageData | ViewerCountData | DonationData | MilestoneData | EngagementData | StreamStatusData | SwarmEventData;
+    type: 'agent_message' | 'network_activity' | 'incoming_transfer' | 'threshold_reached' | 'market_signal' | 'agent_status' | 'swarm';
+    /** Event data */
+    data: AgentMessageData | NetworkActivityData | IncomingTransferData | ThresholdReachedData | MarketSignalData | AgentStatusData | SwarmEventData;
 }
-export interface ChatMessageData {
-    type: 'chat_message';
-    username: string;
+export interface AgentMessageData {
+    type: 'agent_message';
+    agentName: string;
     message: string;
-    sentiment?: 'positive' | 'neutral' | 'negative';
+    intent?: 'info' | 'action' | 'warning';
 }
-export interface ViewerCountData {
-    type: 'viewer_count';
-    count: number;
-    delta: number;
+export interface NetworkActivityData {
+    type: 'network_activity';
+    chain: string;
+    txCount: number;
+    gasPrice?: string;
 }
-export interface DonationData {
-    type: 'donation';
-    username: string;
+export interface IncomingTransferData {
+    type: 'incoming_transfer';
+    from: string;
     amount: number;
-    currency: string;
-    message?: string;
+    symbol: string;
+    chain?: string;
+    txHash?: string;
 }
-export interface MilestoneData {
-    type: 'milestone';
+export interface ThresholdReachedData {
+    type: 'threshold_reached';
     name: string;
     value: number;
     threshold: number;
 }
-export interface EngagementData {
-    type: 'engagement_spike';
-    chatRate: number;
-    previousChatRate: number;
-    multiplier: number;
+export interface MarketSignalData {
+    type: 'market_signal';
+    signal: string;
+    magnitude: number;
+    source: string;
 }
-export interface StreamStatusData {
-    type: 'stream_status';
-    status: 'live' | 'offline' | 'starting' | 'ending';
+export interface AgentStatusData {
+    type: 'agent_status';
+    status: 'active' | 'idle' | 'starting' | 'stopping';
 }
 export interface SwarmEventData {
     type: 'swarm';

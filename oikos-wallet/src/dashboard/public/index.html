@@ -688,9 +688,68 @@
       .chat-panel { width: 100%; height: 45vh; border-left: none; border-top: 2px solid var(--brand-black); }
       .content { height: 55vh; }
     }
+    /* ═══ WELCOME OVERLAY ═══ */
+    #welcome-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #welcome-overlay.hidden { display: none; }
+    .welcome-card {
+      background: var(--card); border: 2px solid var(--brand-black);
+      padding: 1.25rem 1.5rem; width: 520px; max-width: 90vw;
+    }
+    .welcome-card .welcome-title {
+      font-size: 13px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.1em; margin-bottom: 0.25rem;
+    }
+    .welcome-card .welcome-sub { color: var(--muted); font-size: 11px; margin-bottom: 1rem; }
+    .welcome-card .welcome-label {
+      font-size: 10px; color: var(--dim); text-transform: uppercase;
+      letter-spacing: 0.06em; font-weight: 700; margin: 0.75rem 0 0.3rem;
+    }
+    .welcome-card ul { list-style: none; padding: 0; margin: 0; }
+    .welcome-card li { padding: 0.2rem 0; font-size: 12px; color: var(--muted); }
+    .welcome-card li::before { content: '\25B8 '; color: var(--dim); }
+    .welcome-card .arch {
+      font-size: 11px; color: var(--dim); margin: 0.75rem 0;
+      padding: 0.5rem; border: 1px solid var(--border); text-align: center;
+    }
+    .welcome-card button {
+      display: block; width: 100%; padding: 0.45rem 0.85rem; margin-top: 1rem;
+      font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+      border: 2px solid var(--brand-black); background: var(--card);
+      color: var(--text); text-transform: uppercase; letter-spacing: 0.05em;
+      transition: background 0.1s;
+    }
+    .welcome-card button:hover { background: var(--bg); }
   </style>
 </head>
 <body>
+
+<!-- ═══ WELCOME OVERLAY ═══ -->
+<div id="welcome-overlay" class="hidden">
+  <div class="welcome-card">
+    <div class="welcome-title">Oikos Protocol Demo</div>
+    <div class="welcome-sub">Sovereign Agent Wallet Protocol</div>
+    <div class="welcome-label">What you're seeing</div>
+    <ul>
+      <li>Mock wallet holding USDt, XAUt, USAt, BTC, ETH (no real funds)</li>
+      <li>Mock swarm with 2 AI agents (AlphaBot, BetaBot)</li>
+      <li>90-second simulated agent lifecycle with policy enforcement</li>
+      <li>Full audit trail &mdash; every proposal logged, append-only</li>
+    </ul>
+    <div class="welcome-label">What to try</div>
+    <ul>
+      <li><strong>Overview</strong> &mdash; watch events stream in real-time</li>
+      <li><strong>Swarm</strong> &mdash; see peer discovery and deal negotiation</li>
+      <li><strong>Audit Log</strong> &mdash; every proposal: approved, rejected, or failed</li>
+      <li><strong>Chat panel</strong> &mdash; type "check my balance" or "swap 10 USDt to XAUt"</li>
+    </ul>
+    <div class="arch">Wallet Isolate (Bare Runtime) &larr; IPC &rarr; Agent Brain (Node.js)<br>The wallet NEVER sees your LLM. The brain NEVER sees your keys.</div>
+    <button onclick="document.getElementById('welcome-overlay').classList.add('hidden');localStorage.setItem('oikos-tour-seen','1')">Got it &mdash; show me the dashboard</button>
+  </div>
+</div>
 
 <!-- ═══ TOP BAR ═══ -->
 <div class="topbar">
@@ -1056,6 +1115,11 @@
 
 <script>
 /* ═══ OIKOS DASHBOARD — BRUTALIST UI ═══ */
+
+/* Welcome overlay — show on first visit */
+if (!localStorage.getItem('oikos-tour-seen')) {
+  document.getElementById('welcome-overlay').classList.remove('hidden');
+}
 
 var API_BASE = '';
 var currentView = 'overview';

@@ -12,7 +12,7 @@ export type { OikosConfig, OikosMode } from './config/env.js';
 export { createDashboard } from './dashboard/server.js';
 export { mountMCP } from './mcp/server.js';
 export { EventBus } from './events/bus.js';
-export type { StreamEvent, ChatMessageData, ViewerCountData, DonationData, MilestoneData, EngagementData, StreamStatusData, EventSource, } from './events/types.js';
+export type { StreamEvent, AgentMessageData, NetworkActivityData, IncomingTransferData, ThresholdReachedData, MarketSignalData, AgentStatusData, SwarmEventData, EventSource, } from './events/types.js';
 export { PricingService } from './pricing/client.js';
 export type { AssetPrice as PricingAssetPrice, PortfolioValuation as PricingPortfolioValuation, PricePoint, } from './pricing/client.js';
 export type { AgentCapability, AgentIdentity, SwarmCoordinatorInterface, SwarmState, SwarmEconomics, SwarmPeerInfo, ActiveRoom, SwarmEvent, BoardAnnouncement, BoardHeartbeat, BoardMessage, RoomMessage, FeedMessage, } from './swarm/types.js';

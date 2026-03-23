@@ -1068,6 +1068,21 @@ setInterval(async function () {
 
 /* ═══ UPDATE DISPATCHER ═══ */
 async function updateCurrentView () {
+  // Update connection banner
+  var health = await api('/api/health')
+  var banner = document.getElementById('disconnected-banner')
+  if (banner) {
+    if (health && health.companionConnected) {
+      banner.style.display = 'none'
+    } else {
+      banner.style.display = 'block'
+    }
+  }
+  // Disable/enable write actions based on connection state
+  var connected = !!(health && health.companionConnected)
+  var chatSend = document.getElementById('chat-send')
+  if (chatSend) { chatSend.disabled = !connected; chatSend.title = connected ? '' : 'Connect to agent first' }
+
   switch (currentView) {
     case 'feed': await updateFeed(); break
     case 'wealth': await updateWealth(); break
@@ -1088,8 +1103,8 @@ async function checkPairing () {
   var ownInput = document.getElementById('pairing-own-pubkey')
   if (ownInput && status.companionPubkey) ownInput.value = status.companionPubkey
 
-  // If already paired and connected, hide modal
-  if (status.agentPubkey && status.connected) {
+  // If already paired and connected, or wallet reachable via HTTP (local mode), hide modal
+  if (status.connected) {
     modal.style.display = 'none'
     return true
   }

@@ -41,13 +41,21 @@ export declare function encodeSetAgentWallet(agentId: string, newWallet: string,
  */
 export declare function encodeGiveFeedback(agentId: string, value: number, valueDecimals: number, tag1: string, tag2: string, endpoint: string, feedbackURI: string, feedbackHash: string): string;
 /**
+ * Encode a dynamic `address[]` as ABI tail data.
+ * Format: length word + each address as a 32-byte word.
+ */
+export declare function encodeAddressArray(addresses: string[]): string;
+/**
  * Encode `getSummary(uint256 agentId, address[] clients, string tag1, string tag2)`.
  * This is a view call (eth_call, not a transaction).
  *
  * Head: agentId + offset(clients) + offset(tag1) + offset(tag2)
  * Tail: clients_data + tag1_data + tag2_data
+ *
+ * When clientAddresses/tag1/tag2 are not provided, defaults to empty
+ * arrays/strings for backward compatibility.
  */
-export declare function encodeGetSummary(agentId: string): string;
+export declare function encodeGetSummary(agentId: string, clientAddresses?: string[], tag1?: string, tag2?: string): string;
 /**
  * Decode a uint256 from a 32-byte hex word.
  * Used for parsing agentId from Transfer event log data.
@@ -62,4 +70,67 @@ export declare function decodeSummaryResult(hex: string): {
     totalValue: string;
     valueDecimals: number;
 };
+/**
+ * Encode `readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)`.
+ * View call — returns (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked).
+ */
+export declare function encodeReadFeedback(agentId: string, clientAddress: string, feedbackIndex: number): string;
+/**
+ * Decode readFeedback return data.
+ * Returns: (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked)
+ *
+ * For simplicity we decode value + valueDecimals + isRevoked from fixed positions.
+ * tag1 and tag2 are dynamic strings — we skip them in this basic decoder.
+ */
+export declare function decodeReadFeedbackResult(hex: string): {
+    value: number;
+    valueDecimals: number;
+    isRevoked: boolean;
+};
+/**
+ * Encode `getClients(uint256 agentId)`.
+ * View call — returns address[] of all feedback givers.
+ */
+export declare function encodeGetClients(agentId: string): string;
+/**
+ * Decode getClients return data: address[].
+ * Returns array of checksummed addresses.
+ */
+export declare function decodeAddressArray(hex: string): string[];
+/**
+ * Encode `getLastIndex(uint256 agentId, address clientAddress)`.
+ * View call — returns uint64.
+ */
+export declare function encodeGetLastIndex(agentId: string, clientAddress: string): string;
+/**
+ * Decode getLastIndex return: uint64.
+ */
+export declare function decodeUint64(hex: string): number;
+/**
+ * Encode `appendResponse(uint256 agentId, address clientAddress, uint64 feedbackIndex,
+ *   string responseURI, bytes32 responseHash)`.
+ * Transaction — agent responds to feedback with evidence.
+ */
+export declare function encodeAppendResponse(agentId: string, clientAddress: string, feedbackIndex: number, responseURI: string, responseHash: string): string;
+/**
+ * Encode `revokeFeedback(uint256 agentId, uint64 feedbackIndex)`.
+ * Transaction — revoke own feedback.
+ */
+export declare function encodeRevokeFeedback(agentId: string, feedbackIndex: number): string;
+/**
+ * Encode `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`.
+ * Transaction — set extensible key-value metadata on identity.
+ */
+export declare function encodeSetMetadata(agentId: string, key: string, value: string): string;
+/**
+ * Encode `getMetadata(uint256 agentId, string metadataKey)`.
+ * View call — returns bytes.
+ */
+export declare function encodeGetMetadata(agentId: string, key: string): string;
+/**
+ * Encode `getResponseCount(uint256 agentId, address clientAddress,
+ *   uint64 feedbackIndex, address[] responders)`.
+ * View call — returns uint64 count of responses.
+ */
+export declare function encodeGetResponseCount(agentId: string, clientAddress: string, feedbackIndex: number, responders?: string[]): string;
 //# sourceMappingURL=abi-encode.d.ts.map

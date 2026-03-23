@@ -22,6 +22,14 @@
 
 set -euo pipefail
 
+# Check Node.js version
+NODE_MAJOR=$(node -v 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
+if [[ -z "$NODE_MAJOR" ]] || [[ "$NODE_MAJOR" -lt 22 ]]; then
+  echo "[oikos] ERROR: Node.js >= 22 required (found: $(node -v 2>/dev/null || echo 'none'))"
+  echo "[oikos] Install: https://nodejs.org/ or 'nvm install 22'"
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -69,7 +77,7 @@ echo "  ║                                                           ║"
 echo "  ║   Wallet:    ${WALLET_RUNTIME} (mock, no real blockchain)            ║"
 echo "  ║   Agent:     connect yours via MCP/REST/CLI               ║"
 echo "  ║   Swarm:     mock (2 peers: AlphaBot, BetaBot)            ║"
-echo "  ║   Events:    mock (3-min simulated stream)                ║"
+echo "  ║   Events:    mock (90-second agent lifecycle)              ║"
 echo "  ║   Identity:  ERC-8004 (mock mode)                         ║"
 echo "  ║   RGB:       enabled (mock transport bridge)              ║"
 echo "  ║                                                           ║"
@@ -84,6 +92,9 @@ echo -e "\033[0m"
 echo ""
 
 cd "$PROJECT_DIR"
+
+# Auto-open browser after server starts
+(sleep 3 && open "http://127.0.0.1:${DASHBOARD_PORT}" 2>/dev/null || xdg-open "http://127.0.0.1:${DASHBOARD_PORT}" 2>/dev/null || true) &
 
 exec env \
   OIKOS_MODE=mock \

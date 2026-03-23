@@ -130,8 +130,8 @@ export function loadOikosConfig() {
         // WDK Indexer
         indexerApiKey: getEnv('INDEXER_API_KEY', ''),
         indexerBaseUrl: getEnv('INDEXER_BASE_URL', 'https://wdk-api.tether.io/api/v1'),
-        // ERC-8004
-        erc8004Enabled: getEnv('ERC8004_ENABLED', 'false') === 'true',
+        // ERC-8004 (always-on, lazy registration when funded)
+        identityPath: getEnv('IDENTITY_PATH', join(process.cwd(), '.oikos-identity.json')),
         // Companion — auto-enabled when owner pubkey is set
         companionOwnerPubkey: getEnv('COMPANION_OWNER_PUBKEY', ''),
         companionEnabled: getEnv('COMPANION_ENABLED', '') === 'true'

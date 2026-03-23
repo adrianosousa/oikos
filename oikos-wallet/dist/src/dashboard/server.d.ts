@@ -12,7 +12,7 @@
  *
  * Auth: Optional Bearer token (SESSION_TOKEN env). If set,
  * all /api/* endpoints require Authorization header
- * (except /api/health, /api/token, and /api/board).
+ * (except /api/health and /api/board).
  * Pattern from rgb-wallet-pear.
  *
  * @security All proposals flow through the Wallet Isolate's PolicyEngine.

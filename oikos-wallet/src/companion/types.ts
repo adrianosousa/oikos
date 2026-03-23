@@ -172,6 +172,58 @@ export interface CompanionPolicyResult {
   timestamp: number;
 }
 
+/** Auth request from companion (setup, verify, disable, etc.) */
+export interface CompanionAuthRequest {
+  type: 'auth_request';
+  action: 'status' | 'setup' | 'verify' | 'disable' | 'change' | 'settings' | 'pending' | 'resolve';
+  requestId: string;
+  payload?: {
+    passphrase?: string;
+    threshold?: number;
+    timeoutMinutes?: number;
+    proposalId?: string;
+    currentPassphrase?: string;
+    newPassphrase?: string;
+    requireForPolicyChanges?: boolean;
+    requireForStrategyActivation?: boolean;
+  };
+  timestamp: number;
+}
+
+/** Auth response from agent to companion */
+export interface CompanionAuthResponse {
+  type: 'auth_response';
+  requestId: string;
+  success: boolean;
+  data?: Record<string, unknown>;
+  error?: string;
+  timestamp: number;
+}
+
+/** Periodic auth status push from agent to companion */
+export interface CompanionAuthUpdate {
+  type: 'auth_update';
+  status: {
+    enabled: boolean;
+    threshold: number;
+    timeoutMinutes: number;
+    authenticated: boolean;
+    expiresAt: number | null;
+    requireForPolicyChanges: boolean;
+    requireForStrategyActivation: boolean;
+  };
+  pending: Array<{
+    proposalId: string;
+    description: string;
+    amount: number;
+    createdAt: number;
+    expiresAt: number;
+    resolved: boolean;
+    approved: boolean;
+  }>;
+  timestamp: number;
+}
+
 // ── Union Types ──
 
 /** Messages sent FROM the agent TO the companion */
@@ -188,7 +240,9 @@ export type AgentToCompanionMessage =
   | CompanionStrategyUpdate
   | CompanionStrategyResult
   | CompanionPolicyResult
-  | CompanionAuditUpdate;
+  | CompanionAuditUpdate
+  | CompanionAuthResponse
+  | CompanionAuthUpdate;
 
 /** Messages sent FROM the companion TO the agent */
 export type CompanionToAgentMessage =
@@ -197,7 +251,8 @@ export type CompanionToAgentMessage =
   | CompanionPing
   | CompanionStrategySave
   | CompanionStrategyToggle
-  | CompanionPolicySave;
+  | CompanionPolicySave
+  | CompanionAuthRequest;
 
 /** All companion messages */
 export type CompanionMessage = AgentToCompanionMessage | CompanionToAgentMessage;

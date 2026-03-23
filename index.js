@@ -115,22 +115,33 @@ const keypairPath = path.join(oikosHome, 'companion-keypair.json')
 const keypair = loadOrCreateKeypair(keypairPath)
 const companionPubkey = b4a.toString(keypair.publicKey, 'hex')
 
-// Try env first, then auto-detect from ~/.oikos/agent-pubkey.txt (local pairing)
+// Try env first, then auto-detect from agent-written file, then manual pairing file
 let agentPubkey = env.OIKOS_AGENT_PUBKEY || null
 if (!agentPubkey) {
-  try {
-    const autoPath = path.join(oikosHome, 'agent-pubkey.txt')
-    if (fs.existsSync(autoPath)) {
-      agentPubkey = fs.readFileSync(autoPath, 'utf-8').trim()
-      console.log('[companion] Auto-detected agent pubkey from ~/.oikos/')
-    }
-  } catch { /* no auto-connect */ }
+  // Priority 1: agent-swarm-pubkey.txt (written by agent on startup — always correct)
+  // Priority 2: agent-pubkey.txt (manual pairing / legacy)
+  const candidates = [
+    path.join(oikosHome, 'agent-swarm-pubkey.txt'),
+    path.join(oikosHome, 'agent-pubkey.txt')
+  ]
+  for (const autoPath of candidates) {
+    try {
+      if (fs.existsSync(autoPath)) {
+        const pk = fs.readFileSync(autoPath, 'utf-8').trim()
+        if (/^[0-9a-fA-F]{64}$/.test(pk)) {
+          agentPubkey = pk
+          console.log('[companion] Auto-detected agent pubkey from ' + path.basename(autoPath))
+          break
+        }
+      }
+    } catch { /* try next */ }
+  }
 }
 
 const topicSeed = env.OIKOS_TOPIC_SEED || 'oikos-companion-default'
 
-// Wallet dashboard URL for direct API access (prices, etc.)
-const walletUrl = env.OIKOS_WALLET_URL || 'http://127.0.0.1:3420'
+// Auth state cache (populated by auth_update protomux messages)
+const authState = { enabled: false, authenticated: false, threshold: 100, pending: [] }
 
 console.log('[companion] Pubkey:', companionPubkey.slice(0, 16) + '...')
 console.log('[companion] Set this as COMPANION_OWNER_PUBKEY on your agent.')
@@ -245,6 +256,15 @@ function handleAgentMessage (buf) {
         if (cb) { pendingRequests.delete(msg.requestId); cb(msg) }
         break
       }
+      case 'auth_update':
+        authState.status = msg.status || {}
+        authState.pending = msg.pending || []
+        break
+      case 'auth_response': {
+        const cb = pendingRequests.get(msg.requestId)
+        if (cb) { pendingRequests.delete(msg.requestId); cb(msg) }
+        break
+      }
       default:
         console.log('[companion] Unknown message:', msg.type)
     }
@@ -256,15 +276,17 @@ function handleAgentMessage (buf) {
 async function connectToAgent () {
   if (!agentPubkey) return
 
-  // Use the BOARD topic — same as the swarm. This piggybacks the companion
-  // channel on the existing swarm connection (already NAT-traversed, relay-bridged).
-  // protomux multiplexes: swarm uses oikos/board, we use oikos/companion, same socket.
-  const swarmId = env.SWARM_ID || 'oikos-hackathon-v1'
-  const boardKey = b4a.from('oikos-board-v0--')  // 16 bytes, matches topic.ts
-  const boardTopic = b4a.alloc(32)
-  sodium.crypto_generichash(boardTopic, b4a.from(swarmId), boardKey)
+  // Derive COMPANION topic — matches companion/coordinator.ts lines 103-109.
+  // The agent uses COMPANION_OWNER_PUBKEY (our pubkey) as the BLAKE2b key.
+  // A dedicated topic prevents swarm socket cycling from killing the companion channel.
+  const companionTopic = b4a.alloc(32)
+  sodium.crypto_generichash(
+    companionTopic,
+    b4a.from('oikos-companion-v0:' + topicSeed),
+    keypair.publicKey  // our own Ed25519 pubkey = the owner key
+  )
 
-  console.log('[companion] Board topic:', b4a.toString(boardTopic, 'hex').slice(0, 16) + '...')
+  console.log('[companion] Companion topic:', b4a.toString(companionTopic, 'hex').slice(0, 16) + '...')
   console.log('[companion] Looking for agent:', agentPubkey.slice(0, 16) + '...')
 
   const swarmOpts = { keyPair: keypair }
@@ -348,7 +370,7 @@ async function connectToAgent () {
     console.log('[companion] Channel open. Receiving state updates.')
   })
 
-  const discovery = swarm.join(boardTopic, { server: false, client: true })
+  const discovery = swarm.join(companionTopic, { server: false, client: true })
   await discovery.flushed()
   console.log('[companion] Joined topic. Searching for agent...')
 }
@@ -366,54 +388,6 @@ function readBody (req) {
         resolve({})
       }
     })
-  })
-}
-
-/** HTTP GET helper for bare-http1 (no fetch in Bare Runtime) */
-function httpGet (url) {
-  return new Promise((resolve) => {
-    try {
-      const u = new URL(url)
-      const opts = { hostname: u.hostname, port: u.port || 80, path: u.pathname + u.search, method: 'GET', timeout: 3000 }
-      const req = http.request(opts, (res) => {
-        const chunks = []
-        res.on('data', (chunk) => chunks.push(chunk))
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(Buffer.concat(chunks).toString()))
-          } catch { resolve(null) }
-        })
-      })
-      req.on('error', () => resolve(null))
-      req.on('timeout', () => { req.destroy(); resolve(null) })
-      req.end()
-    } catch { resolve(null) }
-  })
-}
-
-function httpPost (url, body) {
-  return new Promise((resolve) => {
-    try {
-      const u = new URL(url)
-      const payload = JSON.stringify(body)
-      const opts = {
-        hostname: u.hostname, port: u.port || 80,
-        path: u.pathname + u.search, method: 'POST', timeout: 10000,
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-      }
-      const req = http.request(opts, (res) => {
-        const chunks = []
-        res.on('data', (chunk) => chunks.push(chunk))
-        res.on('end', () => {
-          try { resolve(JSON.parse(Buffer.concat(chunks).toString())) }
-          catch { resolve(null) }
-        })
-      })
-      req.on('error', () => resolve(null))
-      req.on('timeout', () => { req.destroy(); resolve(null) })
-      req.write(payload)
-      req.end()
-    } catch { resolve(null) }
   })
 }
 
@@ -524,31 +498,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/health') {
-    // Check wallet reachability via HTTP even if companion channel is down
-    let walletReachable = state.connected
-    if (!walletReachable && walletUrl) {
-      try {
-        const ping = await httpGet(walletUrl + '/api/swarm')
-        walletReachable = !!(ping && ping.enabled !== undefined)
-      } catch (e) { /* not reachable */ }
-    }
     return json(res, {
       status: 'ok',
-      walletConnected: walletReachable,
-      swarmEnabled: state.swarm.enabled || walletReachable,
+      walletConnected: state.connected,
+      swarmEnabled: state.swarm.enabled,
       companionConnected: state.connected,
       eventsBuffered: state.executions.length
     })
   }
 
   if (url === '/api/state') {
-    // Fall back to wallet HTTP when companion not connected
-    if (!state.connected && walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + '/api/state')
-        if (data) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, {
       status: state.connected ? 'running' : 'disconnected',
       balances: state.balances,
@@ -565,77 +524,30 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/balances') {
-    // Fall back to wallet HTTP when companion not connected
-    if ((!state.balances || state.balances.length === 0) && walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + '/api/balances')
-        if (data) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, { balances: state.balances })
   }
 
   if (url === '/api/addresses') {
-    if ((!state.addresses || state.addresses.length === 0) && walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + '/api/addresses')
-        if (data && Array.isArray(data.addresses)) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, { addresses: state.addresses || [] })
   }
 
   if (url === '/api/policies' && req.method === 'GET') {
-    // Protomux first when connected to remote agent
-    if (state.connected && state.policies.length > 0) {
-      return json(res, { policies: state.policies })
-    }
-    // Fall back to local wallet HTTP
-    if (walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + '/api/policies')
-        if (data && data.policies) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, { policies: state.policies })
   }
 
   if (url === '/api/policies' && req.method === 'POST') {
+    if (!companionMessage) return json(res, { error: 'Not connected to agent' }, 503)
     const body = await readBody(req)
-    // Protomux first when connected — modify remote agent's policies
-    if (companionMessage) {
-      const requestId = 'pr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
-      const result = await sendProtomuxRequest({
-        type: 'policy_save', rules: body.rules, name: body.name,
-        requestId, timestamp: Date.now()
-      }, 15000) // longer timeout — includes wallet restart
-      return json(res, result)
-    }
-    // Fall back to local wallet HTTP
-    if (walletUrl) {
-      try {
-        const data = await httpPost(walletUrl + '/api/policies', body)
-        return json(res, data || { error: 'No response from wallet' })
-      } catch (e) {
-        return json(res, { error: 'Failed to update policy' }, 500)
-      }
-    }
-    return json(res, { error: 'Wallet not connected' }, 503)
+    const requestId = 'pr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+    const result = await sendProtomuxRequest({
+      type: 'policy_save', rules: body.rules, name: body.name,
+      requestId, timestamp: Date.now()
+    }, 15000) // longer timeout — includes wallet restart
+    return json(res, result)
   }
 
   if (url === '/api/strategies' && req.method === 'GET') {
-    // Protomux first when connected to remote agent
-    if (state.connected && state.strategies.length > 0) {
-      return json(res, { strategies: state.strategies, modules: [] })
-    }
-    // Fall back to local wallet HTTP
-    if (walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + '/api/strategies')
-        if (data && data.strategies) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
-    return json(res, { strategies: state.strategies.length > 0 ? state.strategies : [], modules: [] })
+    return json(res, { strategies: state.strategies, modules: [] })
   }
 
   if (url === '/api/strategies' && req.method === 'POST') {
@@ -667,96 +579,61 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/strategies/delete' && req.method === 'POST') {
-    // Protomux first when connected
-    if (companionMessage) {
-      const body = await readBody(req)
-      const requestId = 'sd-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
-      const result = await sendProtomuxRequest({
-        type: 'strategy_delete', filename: body.filename,
-        requestId, timestamp: Date.now()
-      })
-      return json(res, result)
-    }
-    // Fall back to local wallet HTTP
-    if (walletUrl) {
-      try {
-        const body = await readBody(req)
-        const data = await httpPost(walletUrl + '/api/strategies/delete', body)
-        return json(res, data || { error: 'No response from wallet' })
-      } catch (e) {
-        return json(res, { error: 'Failed to delete strategy' }, 500)
-      }
-    }
-    return json(res, { error: 'Wallet not connected' }, 503)
+    if (!companionMessage) return json(res, { error: 'Not connected to agent' }, 503)
+    const body = await readBody(req)
+    const requestId = 'sd-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+    const result = await sendProtomuxRequest({
+      type: 'strategy_delete', filename: body.filename,
+      requestId, timestamp: Date.now()
+    })
+    return json(res, result)
   }
 
   if (url.startsWith('/api/audit')) {
-    // When connected to remote agent, ONLY show protomux data (never local wallet)
-    if (state.connected) {
-      // Prefer full audit trail from audit_update; fall back to execution notifications
-      const entries = state.auditEntries.length > 0 ? state.auditEntries : state.executions
-      return json(res, { entries })
-    }
-    // Only fall back to local wallet HTTP when NOT connected
-    if (walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + url)
-        if (data && data.entries && data.entries.length > 0) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
-    return json(res, { entries: [] })
+    const entries = state.auditEntries.length > 0 ? state.auditEntries : state.executions
+    return json(res, { entries })
   }
 
-  // ── Auth API — proxy to wallet dashboard ──
-  if (url.startsWith('/api/auth/') && walletUrl) {
-    try {
-      if (req.method === 'GET') {
-        const data = await httpGet(walletUrl + url)
-        return json(res, data)
-      } else if (req.method === 'POST') {
-        const body = await readBody(req)
-        const data = await httpPost(walletUrl + url, body)
-        return json(res, data)
-      }
-    } catch (e) {
-      return json(res, { error: 'Auth proxy failed: ' + e.message }, 500)
+  // ── Auth API — via protomux companion channel ──
+  if (url === '/api/auth/status' && req.method === 'GET') {
+    return json(res, authState.status || { enabled: false })
+  }
+  if (url === '/api/auth/pending' && req.method === 'GET') {
+    return json(res, { pending: authState.pending || [] })
+  }
+  if (url.startsWith('/api/auth/') && req.method === 'POST') {
+    if (!companionMessage) return json(res, { error: 'Not connected to agent' }, 503)
+    const body = await readBody(req)
+    // Determine action from URL path
+    const pathParts = url.replace('/api/auth/', '').split('/')
+    let action = pathParts[0] // setup, verify, disable, change, settings
+    let payload = body
+    // Handle /api/auth/pending/:id/resolve
+    if (pathParts[0] === 'pending' && pathParts[2] === 'resolve') {
+      action = 'resolve'
+      payload = { proposalId: pathParts[1], passphrase: body.passphrase }
     }
+    const requestId = 'au-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+    const result = await sendProtomuxRequest({
+      type: 'auth_request', action, requestId, payload, timestamp: Date.now()
+    })
+    return json(res, result.data || result)
   }
 
   if (url === '/api/swarm') {
-    // If companion connected, use live state; otherwise fall back to wallet HTTP
-    if (state.connected && state.swarm.enabled) {
-      return json(res, {
-        enabled: state.swarm.enabled,
-        peersConnected: state.swarm.peersConnected,
-        boardPeers: state.swarm.boardPeers || [],
-        announcements: state.swarm.announcementList || [],
-        activeRooms: state.swarm.roomList || [],
-        identity: state.swarm.identity || null,
-        economics: state.swarm.economics || {},
-        recentEvents: []
-      })
-    }
-    if (walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + '/api/swarm')
-        if (data && data.enabled !== undefined) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, {
       enabled: state.swarm.enabled,
-      peersConnected: 0, boardPeers: [], announcements: [],
-      activeRooms: [], identity: null, economics: {}, recentEvents: []
+      peersConnected: state.swarm.peersConnected || 0,
+      boardPeers: state.swarm.boardPeers || [],
+      announcements: state.swarm.announcementList || [],
+      activeRooms: state.swarm.roomList || [],
+      identity: state.swarm.identity || null,
+      economics: state.swarm.economics || {},
+      recentEvents: []
     })
   }
 
   if (url === '/api/economics') {
-    if (walletUrl && !state.connected) {
-      try {
-        const data = await httpGet(walletUrl + '/api/economics')
-        if (data) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, { enabled: state.swarm.enabled, economics: state.swarm.economics })
   }
 
@@ -783,19 +660,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/prices') {
-    // 1. Try companion channel cache (P2P live)
     if (state.prices && state.prices.length > 0) {
       return json(res, { source: 'agent-live', prices: state.prices })
     }
-    // 2. Try fetching directly from wallet dashboard (localhost)
-    try {
-      const data = await httpGet(walletUrl + '/api/prices')
-      if (data && data.prices && data.prices.length > 0) {
-        state.prices = data.prices // cache for next request
-        return json(res, { source: 'wallet-direct', prices: data.prices })
-      }
-    } catch { /* wallet not reachable */ }
-    // 3. Fallback
     return json(res, {
       source: 'fallback',
       prices: [
@@ -808,12 +675,8 @@ const server = http.createServer(async (req, res) => {
     })
   }
 
-  // Historical prices — proxy to wallet dashboard
+  // Historical prices — deferred to protomux (returns empty for now)
   if (url.startsWith('/api/prices/history/')) {
-    try {
-      const data = await httpGet(walletUrl + url)
-      if (data) return json(res, data)
-    } catch { /* wallet not reachable */ }
     return json(res, { symbol: url.split('/').pop(), history: [] })
   }
 
@@ -835,15 +698,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/events') {
-    // Fall back to local wallet HTTP only when not connected
-    if (!state.connected && walletUrl) {
-      try {
-        const limit = new URL(url, 'http://x').searchParams.get('limit') || '50'
-        const data = await httpGet(walletUrl + '/api/events?limit=' + limit)
-        if (data && data.events) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
-    return json(res, { events: [] })
+    return json(res, { events: state.executions })
   }
 
   if (url === '/api/companion/instructions') {
@@ -853,13 +708,6 @@ const server = http.createServer(async (req, res) => {
   // ── Chat endpoints (agent-agnostic bridge) ──
 
   if (url.startsWith('/api/agent/chat/history')) {
-    // Fall back to wallet HTTP when companion not connected
-    if (state.chatMessages.length === 0 && walletUrl) {
-      try {
-        const data = await httpGet(walletUrl + url)
-        if (data) return json(res, data)
-      } catch (e) { /* fall through */ }
-    }
     return json(res, { messages: state.chatMessages })
   }
 
@@ -884,24 +732,6 @@ const server = http.createServer(async (req, res) => {
     // Send instruction via protomux and wait for chat_reply
     const sent = sendToAgent({ type: 'instruction', text: message, timestamp: Date.now() })
     if (!sent) {
-      // Companion not connected — fall back to HTTP proxy to wallet brain
-      if (walletUrl) {
-        try {
-          const data = await httpPost(walletUrl + '/api/agent/chat', { message, from })
-          if (data && data.reply) {
-            const agentMsg = {
-              id: data.messageId || ('msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)),
-              text: data.reply,
-              from: 'agent',
-              brainName: data.brainName || 'ollama',
-              timestamp: Date.now()
-            }
-            state.chatMessages.push(agentMsg)
-            if (state.chatMessages.length > 100) state.chatMessages.shift()
-            return json(res, data)
-          }
-        } catch (e) { /* wallet not reachable, fall through to offline */ }
-      }
       const errMsg = {
         id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
         text: 'Agent not connected. Message queued as instruction.',

@@ -100,6 +100,37 @@ export interface IdentitySetWalletRequest {
 export interface ReputationQuery {
     agentId: string;
     chain: Chain;
+    tag1?: string;
+    tag2?: string;
+    clientAddresses?: string[];
+}
+/** Read a single on-chain feedback entry. */
+export interface FeedbackReadQuery {
+    agentId: string;
+    clientAddress: string;
+    feedbackIndex: number;
+    chain: Chain;
+}
+/** Get all clients who gave feedback for an agent. */
+export interface ClientsQuery {
+    agentId: string;
+    chain: Chain;
+}
+/** Append a response to feedback (defend reputation). */
+export interface AppendResponseRequest {
+    agentId: string;
+    clientAddress: string;
+    feedbackIndex: number;
+    responseURI: string;
+    responseHash: string;
+    chain: Chain;
+}
+/** Set metadata on the identity NFT. */
+export interface SetMetadataRequest {
+    agentId: string;
+    key: string;
+    valueHex: string;
+    chain: Chain;
 }
 export interface SparkInvoiceRequest {
     amountSats?: number;
@@ -132,7 +163,7 @@ export interface X402SignRequest {
     /** Symbol for policy evaluation */
     policySymbol: TokenSymbol;
 }
-export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'identity_register' | 'identity_set_wallet' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address' | 'spark_get_transfers' | 'x402_sign' | 'x402_get_address';
+export type IPCRequestType = 'propose_payment' | 'propose_swap' | 'propose_bridge' | 'propose_yield' | 'propose_feedback' | 'propose_rgb_issue' | 'propose_rgb_transfer' | 'identity_register' | 'identity_set_wallet' | 'query_balance' | 'query_balance_all' | 'query_address' | 'query_policy' | 'query_audit' | 'query_reputation' | 'query_rgb_assets' | 'query_policy_check' | 'spark_create_invoice' | 'spark_pay_invoice' | 'spark_deposit_address' | 'spark_get_transfers' | 'x402_sign' | 'x402_get_address' | 'query_feedback' | 'query_clients' | 'identity_append_response' | 'identity_set_metadata';
 /** Dry-run policy check result — evaluate without executing or recording */
 export interface PolicyCheckResult {
     wouldApprove: boolean;
@@ -143,7 +174,7 @@ export interface IPCRequest {
     id: string;
     type: IPCRequestType;
     source?: ProposalSource;
-    payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal | RGBIssueProposal | RGBTransferProposal | IdentityRegisterRequest | IdentitySetWalletRequest | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery | SparkInvoiceRequest | SparkPayInvoiceRequest | X402SignRequest;
+    payload: PaymentProposal | SwapProposal | BridgeProposal | YieldProposal | FeedbackProposal | RGBIssueProposal | RGBTransferProposal | IdentityRegisterRequest | IdentitySetWalletRequest | BalanceQuery | BalanceAllQuery | AddressQuery | PolicyQuery | AuditQuery | ReputationQuery | FeedbackReadQuery | ClientsQuery | AppendResponseRequest | SetMetadataRequest | SparkInvoiceRequest | SparkPayInvoiceRequest | X402SignRequest;
 }
 export interface ExecutionResult {
     status: 'executed' | 'rejected' | 'failed';
@@ -188,7 +219,21 @@ export interface ReputationResult {
     totalValue: string;
     valueDecimals: number;
 }
-export type IPCResponseType = 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'spark_invoice' | 'spark_pay_result' | 'spark_deposit' | 'spark_transfers' | 'x402_signature' | 'x402_address' | 'error';
+/** Single feedback entry read from on-chain. */
+export interface FeedbackReadResult {
+    agentId: string;
+    clientAddress: string;
+    feedbackIndex: number;
+    value: number;
+    valueDecimals: number;
+    isRevoked: boolean;
+}
+/** List of clients who gave feedback. */
+export interface ClientsResult {
+    agentId: string;
+    clients: string[];
+}
+export type IPCResponseType = 'execution_result' | 'balance' | 'balance_all' | 'address' | 'policy_status' | 'audit_entries' | 'identity_result' | 'reputation_result' | 'rgb_assets' | 'policy_check' | 'spark_invoice' | 'spark_pay_result' | 'spark_deposit' | 'spark_transfers' | 'x402_signature' | 'x402_address' | 'feedback_read' | 'clients_result' | 'error';
 export interface IPCResponse {
     id: string;
     type: IPCResponseType;

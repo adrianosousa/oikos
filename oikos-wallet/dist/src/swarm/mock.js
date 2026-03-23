@@ -69,6 +69,9 @@ export class MockSwarmCoordinator {
         this._schedule(35000, () => this._mockPeersBidOnOurAnnouncements());
         this._schedule(50000, () => this._mockPeersBidOnOurAnnouncements());
     }
+    getPublicKey() {
+        return this.identity.pubkey;
+    }
     async stop() {
         for (const timer of this.timers)
             clearTimeout(timer);

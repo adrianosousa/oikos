@@ -105,14 +105,16 @@ export function buildEventPrompt(
   const summaries = events.map(e => {
     const data = e.data;
     switch (data['type']) {
-      case 'viewer_count':
-        return `[${e.timestamp}] Viewers: ${String(data['count'])}`;
-      case 'donation':
-        return `[${e.timestamp}] DONATION: ${String(data['username'])} $${String(data['amount'])}`;
-      case 'milestone':
-        return `[${e.timestamp}] MILESTONE: ${String(data['name'])}`;
-      case 'engagement_spike':
-        return `[${e.timestamp}] ENGAGEMENT SPIKE: ${String(data['chatRate'])}/min`;
+      case 'incoming_transfer':
+        return `[${e.timestamp}] TRANSFER: ${String(data['amount'])} ${String(data['symbol'])} from ${String(data['from'])}`;
+      case 'market_signal':
+        return `[${e.timestamp}] SIGNAL: ${String(data['signal'])} (${String(data['magnitude'])}x)`;
+      case 'threshold_reached':
+        return `[${e.timestamp}] THRESHOLD: ${String(data['name'])} reached ${String(data['value'])}`;
+      case 'agent_message':
+        return `[${e.timestamp}] AGENT: ${String(data['message'])}`;
+      case 'network_activity':
+        return `[${e.timestamp}] NETWORK: ${String(data['chain'])} — ${String(data['txCount'])} txs`;
       default:
         return `[${e.timestamp}] Event: ${JSON.stringify(data).slice(0, 100)}`;
     }

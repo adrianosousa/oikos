@@ -12,7 +12,7 @@
  *
  * Auth: Optional Bearer token (SESSION_TOKEN env). If set,
  * all /api/* endpoints require Authorization header
- * (except /api/health, /api/token, and /api/board).
+ * (except /api/health and /api/board).
  * Pattern from rgb-wallet-pear.
  *
  * @security All proposals flow through the Wallet Isolate's PolicyEngine.
@@ -36,19 +36,24 @@ export function createDashboard(services, port, host = '127.0.0.1') {
     const publicDir = join(projectRoot, 'src', 'dashboard', 'public');
     app.use(express.static(publicDir));
     app.use(express.json());
-    // ── Bearer Token Auth (rgb-wallet-pear pattern) ──
-    /** Token endpoint — unauthenticated, returns session token */
-    app.get('/api/token', (_req, res) => {
-        if (!sessionToken) {
-            res.json({ token: null, auth: false });
+    // CORS — allow Pear app renderer (runs on localhost:random port) to call wallet directly
+    app.use((_req, res, next) => {
+        const origin = _req.headers['origin'] || '';
+        const allowed = origin.startsWith('http://127.0.0.1') || origin.startsWith('http://localhost');
+        res.setHeader('Access-Control-Allow-Origin', allowed ? origin : 'http://127.0.0.1');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        if (_req.method === 'OPTIONS') {
+            res.sendStatus(204);
             return;
         }
-        res.json({ token: sessionToken });
+        next();
     });
-    /** Auth middleware — skip for health, token, board, and static files */
+    // ── Bearer Token Auth (rgb-wallet-pear pattern) ──
+    /** Auth middleware — skip for health, board, and static files */
     app.use('/api', (req, res, next) => {
-        // Skip auth for public endpoints (health, token, board)
-        if (req.path === '/health' || req.path === '/token' || req.path === '/board') {
+        // Skip auth for public endpoints (health, board)
+        if (req.path === '/health' || req.path === '/board') {
             next();
             return;
         }
@@ -729,7 +734,13 @@ export function createDashboard(services, port, host = '127.0.0.1') {
      * Oikos doesn't care what's behind BRAIN_CHAT_URL.
      * Swap the brain, keep the wallet.
      */
-    app.post('/api/agent/chat', async (req, res) => {
+    // GET version for bare-http1 compatibility (Pear main process can't POST via bare-http1)
+    app.get('/api/agent/chat', async (req, res) => {
+        req.body = { message: req.query['message'] ?? '', from: req.query['from'] ?? 'companion' };
+        return chatHandler(req, res);
+    });
+    app.post('/api/agent/chat', chatHandler);
+    async function chatHandler(req, res) {
         const body = req.body;
         const message = String(body['message'] ?? '').trim();
         const from = String(body['from'] ?? 'dashboard');
@@ -809,7 +820,7 @@ export function createDashboard(services, port, host = '127.0.0.1') {
             services.chatMessages.push(errorMsg);
             res.status(502).json({ error: `Brain error: ${msg}` });
         }
-    });
+    }
     // ── Passphrase Auth API ──
     app.get('/api/auth/status', (_req, res) => {
         res.json(services.auth ? services.auth.getStatus() : { enabled: false });
@@ -876,6 +887,9 @@ export function createDashboard(services, port, host = '127.0.0.1') {
         services.auth.updateSettings({ threshold, timeoutMinutes, requireForPolicyChanges, requireForStrategyActivation });
         res.json({ success: true });
     });
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
     /** Browser auth page — for Telegram/Discord/remote authorization */
     app.get('/auth/:proposalId', (req, res) => {
         if (!services.auth) {
@@ -901,8 +915,8 @@ input:focus{border-color:#60a5fa}button{padding:0.6rem 1.2rem;font-family:inheri
 .approve{background:#2d8a4e;color:#fff;border-color:#2d8a4e}.reject{background:#2a2a2f;color:#f87171;border-color:#f87171}
 .result{margin-top:1rem;padding:0.5rem;font-size:12px;display:none}</style></head><body>
 <div class="card"><div class="title">Authorize Transaction</div>
-<div class="detail">${pending.description}</div>
-<div class="amount">$${pending.amount.toFixed(2)} USDT</div>
+<div class="detail">${escapeHtml(pending.description)}</div>
+<div class="amount">$${escapeHtml(String(pending.amount.toFixed(2)))} USDT</div>
 <div class="detail">Expires: ${new Date(pending.expiresAt).toLocaleTimeString()}</div>
 <input type="password" id="pp" placeholder="Enter passphrase" autofocus />
 <div><button class="approve" onclick="auth(true)">Authorize</button><button class="reject" onclick="auth(false)">Reject</button></div>

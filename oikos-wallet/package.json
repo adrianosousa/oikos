@@ -16,7 +16,8 @@
     "build": "tsc",
     "start": "node dist/src/main.js",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "echo 'oikos-wallet: integration tests run via wallet-isolate' && exit 0"
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",

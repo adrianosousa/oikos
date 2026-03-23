@@ -19,8 +19,18 @@ export declare const ERC8004_CONTRACTS: {
 export declare const SELECTORS: {
     readonly register: "0xf2c298be";
     readonly setAgentWallet: "0x2d1ef5ae";
+    readonly setMetadata: "0x466648da";
+    readonly getMetadata: "0xcb4799f2";
+    readonly setAgentURI: "0x0af28bd3";
     readonly giveFeedback: "0x3c036a7e";
     readonly getSummary: "0x81bbba58";
+    readonly readFeedback: "0x232b0810";
+    readonly readAllFeedback: "0xd9d84224";
+    readonly getClients: "0x42dd519c";
+    readonly getLastIndex: "0xf2d81759";
+    readonly appendResponse: "0xc2349ab2";
+    readonly revokeFeedback: "0x4ab3ca99";
+    readonly getResponseCount: "0x6e04cacd";
 };
 /**
  * EIP-712 domain for `setAgentWallet` signature verification.

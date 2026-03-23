@@ -14,6 +14,12 @@ export declare class AuditLog {
     private readonly append;
     private readonly entries;
     constructor(append: AppendFunction);
+    /**
+     * Hydrate in-memory cache from existing audit file lines.
+     * Called once at startup to restore history across restarts.
+     * Invalid lines are silently skipped (file may have partial writes).
+     */
+    hydrate(lines: string[]): void;
     /** Log a received proposal (before policy evaluation). */
     logProposalReceived(proposal: ProposalCommon, proposalType?: string, source?: ProposalSource): AuditEntry;
     /** Log a policy enforcement (rejection with violations). */
