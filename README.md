@@ -42,7 +42,7 @@ Agents hold <strong>USDt</strong>, <strong>XAUt</strong>, and <strong>USAt</stro
 ## Quick Demo
 
 ```bash
-git clone https://github.com/AdrianSousa/sovclaw.git && cd sovclaw
+git clone https://github.com/AdrianSousa/oikos.git && cd oikos
 npm install    # installs deps + auto-builds TypeScript
 npm run demo   # opens dashboard at localhost:3420
 ```
